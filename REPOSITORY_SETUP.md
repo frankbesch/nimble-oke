@@ -171,7 +171,6 @@ After completing all steps:
 - [ ] LICENSE file visible on GitHub
 - [ ] Optional: Release tag v1.0.0 created
 - [ ] Optional: Repository starred
-- [ ] Verified: No Cursor/AI references visible
 
 ---
 
@@ -189,15 +188,10 @@ Visit your repository and confirm:
 2. **About section shows:**
    - ✅ Updated description
    - ✅ All topics visible
-   - ✅ No references to development tools
 
 3. **Code tab shows:**
-   - ✅ 29 files
-   - ✅ 1 commit
    - ✅ Clean professional presentation
-
-4. **Search for "cursor" in repo:**
-   - ✅ Zero results
+   - ✅ All runbook scripts visible
 
 ---
 
