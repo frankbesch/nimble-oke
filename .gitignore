@@ -1,6 +1,6 @@
 # Nimble OKE - Git Ignore File
 
-# Cursor AI configuration (local development only)
+# Local development configuration
 .cursorrules
 cursor_persona.md
 
