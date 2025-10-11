@@ -20,15 +20,140 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
----
+================================================================================
 
-This project builds upon and references:
-- NVIDIA NIM deployment examples (https://github.com/NVIDIA/nim-deploy)
-- Oracle Cloud Infrastructure documentation
-- Meta Llama model specifications
+IMPORTANT LICENSING NOTICES
 
-Please refer to respective licenses for:
-- NVIDIA NIM and NGC services
-- Oracle Cloud Infrastructure services
-- Meta Llama models
+================================================================================
 
+What This License Covers
+-------------------------
+
+This MIT License applies ONLY to the automation scripts, documentation, and 
+configuration files in this repository, specifically:
+
+  - Makefile and build automation
+  - Shell scripts (scripts/*.sh)
+  - Helm chart templates (helm/templates/*.yaml)
+  - Helm values configuration (helm/values.yaml)
+  - Documentation files (*.md, docs/*.md)
+  - Platform engineering patterns and implementations
+
+You are free to use, modify, and distribute these automation components under
+the MIT License terms above.
+
+What This License Does NOT Cover
+----------------------------------
+
+The following software and services require separate licenses and terms of
+service acceptance. This repository does NOT grant any rights to use:
+
+1. NVIDIA NIM Software
+   - NVIDIA NIM containers and inference microservices
+   - Requires: NVIDIA NIM End User License Agreement (EULA)
+   - License: https://www.nvidia.com/en-us/data-center/products/nim/eula/
+   - Access: Requires NGC account and API key
+   - Terms: https://ngc.nvidia.com/legal/terms
+
+2. Oracle Cloud Infrastructure (OCI)
+   - Oracle Container Engine for Kubernetes (OKE)
+   - OCI compute, networking, and storage services
+   - Requires: OCI account and acceptance of cloud services terms
+   - Terms: https://www.oracle.com/corporate/contracts/cloud-services/
+   - Billing: Pay-as-you-go based on usage
+
+3. Meta Llama Models
+   - Meta Llama 3.1 8B Instruct and other Llama models
+   - Requires: Acceptance of Meta Llama license terms
+   - License: https://llama.meta.com/llama3_1/license/
+   - Usage: Subject to Meta's acceptable use policy
+
+Requirements to Use This Platform
+-----------------------------------
+
+To deploy and use Nimble OKE, you MUST:
+
+1. Obtain NVIDIA NGC account and API key (free registration)
+2. Create Oracle Cloud account and accept OCI terms (paid service)
+3. Review and comply with Meta Llama license terms
+4. Ensure all usage complies with respective vendor terms of service
+5. Understand that cloud usage incurs costs (~$12 for 5-hour smoke test)
+
+You are responsible for:
+  - Obtaining all necessary licenses and approvals
+  - Complying with all vendor terms of service
+  - Paying for cloud infrastructure usage
+  - Ensuring lawful use of AI models
+  - Meeting any regulatory requirements in your jurisdiction
+
+Attribution and Upstream Projects
+-----------------------------------
+
+This project builds upon NVIDIA's official nim-deploy reference implementation:
+  - Upstream: https://github.com/NVIDIA/nim-deploy
+  - License: Check their repository for current license terms
+  - Attribution: Based on NVIDIA nim-deploy Oracle OKE reference
+
+When using this project, please review upstream licensing requirements.
+
+Disclaimer of Affiliation
+--------------------------
+
+This project is NOT officially affiliated with, endorsed by, or supported by:
+  - NVIDIA Corporation
+  - Oracle Corporation
+  - Meta Platforms, Inc.
+
+All product names, logos, and brands are property of their respective owners.
+Use of these names does not imply any affiliation or endorsement.
+
+Disclaimer of Warranties and Limitation of Liability
+-----------------------------------------------------
+
+THE AUTOMATION SCRIPTS AND DOCUMENTATION IN THIS REPOSITORY ARE PROVIDED 
+"AS IS" WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING 
+BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR 
+PURPOSE, OR NON-INFRINGEMENT.
+
+THE AUTHORS AND CONTRIBUTORS:
+  - Make no guarantees about cloud costs or billing
+  - Are not responsible for cloud infrastructure charges
+  - Do not warrant compatibility with future NVIDIA/Oracle/Meta releases
+  - Provide no support or maintenance guarantees
+  - Are not liable for any damages arising from use
+
+Cloud Cost Warning
+------------------
+
+This platform provisions billable cloud resources. Users are solely responsible
+for:
+  - Monitoring cloud costs
+  - Running cleanup scripts to stop charges
+  - Understanding OCI pricing before deployment
+  - Setting budget alerts and limits
+
+Estimated costs provided in documentation are approximations only. Actual costs
+may vary based on region, usage patterns, and OCI pricing changes.
+
+Security and Compliance
+------------------------
+
+Users are responsible for:
+  - Securing NGC API keys and OCI credentials
+  - Implementing proper access controls
+  - Meeting compliance requirements (GDPR, HIPAA, etc.)
+  - Reviewing AI model outputs for appropriateness
+  - Ensuring data privacy and protection
+
+This automation does not guarantee security or compliance with any standards.
+
+================================================================================
+
+For questions about specific vendor licenses or terms, contact:
+  - NVIDIA: https://www.nvidia.com/en-us/contact/
+  - Oracle: https://www.oracle.com/corporate/contact/
+  - Meta: https://ai.meta.com/llama/
+
+For questions about this automation project, see:
+  - Repository: https://github.com/frankbesch/nimble-oke
+  - Issues: https://github.com/frankbesch/nimble-oke/issues
