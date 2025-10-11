@@ -1,8 +1,8 @@
 # Nimble OKE - Git Ignore File
 
 # Local development configuration
-.cursorrules
-cursor_persona.md
+.*rules
+*_persona.md
 
 # Environment and credentials
 *.env
