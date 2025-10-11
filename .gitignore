@@ -1,0 +1,103 @@
+# Nimble OKE - Git Ignore File
+
+# Cursor AI configuration (local development only)
+.cursorrules
+cursor_persona.md
+
+# Environment and credentials
+*.env
+.env
+.env.*
+cluster-info.txt
+.nim-endpoint
+.nim-deployed-at
+nim-config.env
+
+# OCI CLI config
+.oci/
+*.pem
+*.key
+
+# Kubernetes config
+.kube/
+kubeconfig
+*.kubeconfig
+
+# Helm
+charts/*.tgz
+*.lock
+
+# Terraform/IaC state files (if used)
+*.tfstate
+*.tfstate.*
+.terraform/
+terraform.tfvars
+
+# Local development
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+*.out
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+deployment-snapshot.yaml
+metrics-*.txt
+deployment-details.txt
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+.venv
+
+# Node modules (if using any JS tools)
+node_modules/
+npm-debug.log*
+
+# Secrets and sensitive data
+secrets/
+*.secret
+*-secret.yaml
+ngc-credentials.txt
+
+# Backup files
+*.bak
+*.backup
+
+# MacOS
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# Windows
+ehthumbs.db
+Desktop.ini
+
+# Linux
+.directory
+.Trash-*
+
+# Editor backup files
+*~
+*.orig
+
+# Cost tracking output
+cost-report.txt
+usage-report.json
+

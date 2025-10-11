@@ -1,0 +1,29 @@
+apiVersion: v2
+name: nvidia-nim
+description: NVIDIA NIM (NVIDIA Inference Microservices) deployment for OKE with Meta Llama model
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+
+keywords:
+  - nvidia
+  - nim
+  - llm
+  - inference
+  - gpu
+  - oke
+  - oracle
+
+maintainers:
+  - name: NVIDIA NIM on OKE
+    url: https://github.com/NVIDIA/nim-deploy
+
+home: https://www.nvidia.com/en-us/ai/
+sources:
+  - https://github.com/NVIDIA/nim-deploy/tree/main/cloud-service-providers/oracle/oke
+  - https://www.oracle.com/artificial-intelligence/scale-nvidia-nim-inference/
+
+annotations:
+  category: AI/ML
+  licenses: Apache-2.0
+
