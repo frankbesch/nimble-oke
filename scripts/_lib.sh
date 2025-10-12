@@ -100,6 +100,82 @@ wait_for_condition() {
     fi
 }
 
+start_phase() {
+    local phase="$1"
+    echo "$(date +%s)" > "/tmp/nimble-oke-${phase}-start"
+    log_info "=== PHASE: $phase STARTED at $(date '+%H:%M:%S') ==="
+}
+
+end_phase() {
+    local phase="$1"
+    local start_file="/tmp/nimble-oke-${phase}-start"
+    if [[ -f "$start_file" ]]; then
+        local duration=$(($(date +%s) - $(cat "$start_file")))
+        log_success "=== PHASE: $phase COMPLETED in $((duration/60))m $((duration%60))s ==="
+        rm -f "$start_file"
+    fi
+}
+
+start_step() {
+    local step="$1"
+    echo "$(date +%s)" > "/tmp/nimble-oke-step"
+    log_info "→ $step"
+}
+
+end_step() {
+    local step="$1"
+    if [[ -f "/tmp/nimble-oke-step" ]]; then
+        local duration=$(($(date +%s) - $(cat "/tmp/nimble-oke-step")))
+        log_success "✓ $step (${duration}s)"
+        rm -f "/tmp/nimble-oke-step"
+    fi
+}
+
+with_timeout() {
+    local timeout="$1"
+    local desc="$2"
+    shift 2
+    log_info "Running: $desc (timeout: ${timeout}s)"
+    if timeout "$timeout" bash -c "$*"; then
+        log_success "$desc completed"
+        return 0
+    else
+        local exit_code=$?
+        if [[ $exit_code -eq 124 ]]; then
+            log_error "$desc STALLED (timeout: ${timeout}s)"
+        else
+            log_error "$desc FAILED (exit: $exit_code)"
+        fi
+        return $exit_code
+    fi
+}
+
+wait_for_state() {
+    local check_cmd="$1"
+    local desc="$2"
+    local timeout="${3:-300}"
+    local elapsed=0
+    
+    log_info "Waiting: $desc (timeout: ${timeout}s)"
+    
+    while [[ $elapsed -lt $timeout ]]; do
+        if eval "$check_cmd" 2>/dev/null; then
+            log_success "$desc (after ${elapsed}s)"
+            return 0
+        fi
+        
+        if [[ $((elapsed % 15)) -eq 0 ]] && [[ $elapsed -gt 0 ]]; then
+            log_info "Still waiting... (${elapsed}s elapsed)"
+        fi
+        
+        sleep 5
+        elapsed=$((elapsed + 5))
+    done
+    
+    log_error "$desc TIMEOUT after ${timeout}s"
+    return 1
+}
+
 get_default_storage_class() {
     kubectl get storageclass \
         -o jsonpath='{.items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")].metadata.name}' \
@@ -168,10 +244,10 @@ get_cluster_info() {
 
 estimate_hourly_cost() {
     local gpu_count="${1:-1}"
-    local gpu_cost_per_hour=1.75
-    local control_plane_cost=0.10
-    
-    echo "$gpu_count * $gpu_cost_per_hour + $control_plane_cost" | bc -l
+    local gpu_hourly="1.75"
+    local control_plane="0.10"
+    local lb_cost="0.25"
+    echo "($gpu_hourly * $gpu_count) + $control_plane + $lb_cost" | bc -l
 }
 
 estimate_deployment_cost() {
@@ -192,6 +268,23 @@ estimate_deployment_cost() {
 format_cost() {
     local cost="$1"
     printf "%.2f" "$cost"
+}
+
+get_oci_tags_file() {
+    local type="$1"
+    local tags_file="/tmp/oci-tags-$$.json"
+    
+    cat > "$tags_file" <<EOF
+{
+  "project": "nimble-oke",
+  "managed-by": "automation",
+  "resource-type": "$type",
+  "created-at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "environment": "${ENVIRONMENT:-dev}"
+}
+EOF
+    
+    echo "$tags_file"
 }
 
 check_namespace_exists() {
@@ -320,9 +413,11 @@ check_gpu_available() {
 
 export -f log_info log_warn log_error log_success die
 export -f check_command check_env_var cost_guard retry
-export -f wait_for_condition get_default_storage_class get_gpu_nodes get_gpu_count
+export -f wait_for_condition wait_for_state
+export -f start_phase end_phase start_step end_step with_timeout
+export -f get_default_storage_class get_gpu_nodes get_gpu_count
 export -f check_oci_credentials check_kubectl_context check_helm
-export -f get_cluster_info estimate_hourly_cost estimate_deployment_cost format_cost
+export -f get_cluster_info estimate_hourly_cost estimate_deployment_cost format_cost get_oci_tags_file
 export -f check_namespace_exists create_namespace_if_missing
 export -f get_pod_status get_service_external_ip validate_ngc_api_key
 export -f helm_install_or_upgrade cleanup_helm_release cleanup_namespace

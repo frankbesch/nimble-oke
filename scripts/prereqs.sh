@@ -87,31 +87,55 @@ check_oci_compartment() {
     return 0
 }
 
-check_gpu_quota() {
+check_service_limits() {
     if ! check_oci_credentials; then
-        log_warn "Cannot check GPU quota (OCI not configured)"
+        log_warn "Cannot check service limits (OCI not configured)"
         return 1
     fi
     
-    log_info "Checking GPU quota..."
+    log_info "Verifying OCI service limits..."
     
-    local limits
-    if limits=$(oci limits value list --service-name compute 2>/dev/null); then
-        local gpu_limit
-        gpu_limit=$(echo "$limits" | jq -r '.data[] | select(.name | contains("gpu-a10-count")) | .value' 2>/dev/null || echo "0")
-        
-        if [[ "$gpu_limit" != "0" ]] && [[ "$gpu_limit" != "" ]]; then
-            log_success "GPU quota available: $gpu_limit GPU(s)"
-            return 0
-        else
-            log_warn "GPU quota may not be available or limit is 0"
-            log_info "Request quota at: OCI Console → Governance → Limits, Quotas & Usage"
-            return 1
+    local gpu_limit
+    gpu_limit=$(get_gpu_service_limit "${GPU_SHAPE:-VM.GPU.A10.1}")
+    
+    if [[ "$gpu_limit" == "0" ]]; then
+        log_error "GPU service limit is 0 for ${GPU_SHAPE:-VM.GPU.A10.1}"
+        log_info "Request limit increase: OCI Console > Governance > Limits, Quotas and Usage"
+        return 1
+    fi
+    
+    log_success "GPU service limit: $gpu_limit"
+    
+    local oke_limit
+    oke_limit=$(get_oke_cluster_quota)
+    
+    if [[ "$oke_limit" == "0" ]]; then
+        log_error "OKE cluster limit is 0"
+        log_info "Request OKE cluster limit increase in OCI Console"
+        return 1
+    fi
+    
+    log_success "OKE cluster limit: $oke_limit"
+    
+    log_info "Checking GPU capacity in availability domains..."
+    local ads
+    ads=$(list_availability_domains)
+    local capacity_found=false
+    
+    for ad in $ads; do
+        if check_gpu_shape_capacity "${GPU_SHAPE:-VM.GPU.A10.1}" "$ad" 2>/dev/null; then
+            log_success "GPU capacity available in: $ad"
+            capacity_found=true
+            break
         fi
-    else
-        log_warn "Unable to check GPU quota"
-        return 1
+    done
+    
+    if [[ "$capacity_found" == "false" ]]; then
+        log_warn "No GPU capacity found in checked ADs - provisioning may fail"
+        log_info "Try different region or wait for capacity"
     fi
+    
+    return 0
 }
 
 check_cluster_gpu_nodes() {
@@ -179,8 +203,8 @@ main() {
     check_nvidia_device_plugin || ((failed++))
     
     echo ""
-    echo "=== Quota Checks ==="
-    check_gpu_quota || log_warn "GPU quota check inconclusive (non-fatal)"
+    echo "=== OCI Service Limits ==="
+    check_service_limits || log_warn "Service limits check inconclusive (non-fatal)"
     
     echo ""
     if [[ $failed -eq 0 ]]; then

@@ -13,7 +13,7 @@ Nimble OKE is a platform engineering framework for ultra-fast, cost-efficient sm
 ### Design Philosophy
 
 - **Speed** - Deploy and validate in minutes
-- **Cost-Conscious** - Complete smoke test for ~$12
+- **Cost-Conscious** - Complete smoke test for ~$11
 - **Idempotent** - Every operation safe to re-run
 - **Fail-Safe** - Automatic cleanup on errors
 - **Production Patterns** - Enterprise-grade from day one
@@ -156,9 +156,10 @@ docs/api-examples.md           # API usage examples
 |-----------|------|
 | GPU Node (VM.GPU.A10.1) | $8.75 |
 | OKE Control Plane | $0.50 |
+| ENHANCED Cluster | $0.50 |
 | Storage (50GB PVC) | $1.50 |
-| LoadBalancer | $1.00 |
-| **Total** | **~$12** |
+| LoadBalancer | $1.25 |
+| **Total** | **~$11** |
 
 ### Cost Optimization Features
 

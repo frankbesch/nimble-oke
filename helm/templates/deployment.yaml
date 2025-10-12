@@ -71,6 +71,10 @@ spec:
         livenessProbe:
           {{- toYaml .Values.livenessProbe | nindent 10 }}
         {{- end }}
+        {{- if .Values.startupProbe }}
+        startupProbe:
+          {{- toYaml .Values.startupProbe | nindent 10 }}
+        {{- end }}
         securityContext:
           {{- toYaml .Values.securityContext | nindent 10 }}
       volumes:

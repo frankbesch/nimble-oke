@@ -4,6 +4,9 @@
 .*rules
 *_persona.md
 
+# Nimble OKE cache directory
+.nimble-oke/
+
 # Environment and credentials
 *.env
 .env

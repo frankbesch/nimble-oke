@@ -15,7 +15,7 @@ readonly SUBNET_NAME="nimble-oke-subnet"
 readonly PROVISION_TIMEOUT=1800
 
 cleanup_on_failure() {
-    log_warn "Provisioning failed, attempting cleanup..."
+    log_warn "Provisioning failed, cleanup initiated..."
     
     if [[ -f "${SCRIPT_DIR}/cluster-info.txt" ]]; then
         source "${SCRIPT_DIR}/cluster-info.txt"
@@ -112,12 +112,38 @@ main() {
         --route-rules "[{\"destination\":\"0.0.0.0/0\",\"networkEntityId\":\"$igw_id\"}]" \
         --force 2>/dev/null || true
     
-    log_info "Creating subnet..."
+    log_info "Creating API endpoint subnet..."
+    local api_subnet_id
+    api_subnet_id=$(oci network subnet list \
+        --compartment-id "$compartment_id" \
+        --vcn-id "$vcn_id" \
+        --display-name "${SUBNET_NAME}-api" \
+        --query 'data[0].id' \
+        --raw-output 2>/dev/null || echo "")
+    
+    if [[ -z "$api_subnet_id" ]]; then
+        api_subnet_id=$(oci network subnet create \
+            --compartment-id "$compartment_id" \
+            --vcn-id "$vcn_id" \
+            --display-name "${SUBNET_NAME}-api" \
+            --cidr-block "10.0.0.0/28" \
+            --dns-label "api" \
+            --route-table-id "$route_table_id" \
+            --wait-for-state AVAILABLE \
+            --max-wait-seconds 180 \
+            --query 'data.id' \
+            --raw-output)
+        log_success "API subnet created: $api_subnet_id"
+    else
+        log_info "API subnet exists: $api_subnet_id"
+    fi
+    
+    log_info "Creating worker node subnet..."
     local subnet_id
     subnet_id=$(oci network subnet list \
         --compartment-id "$compartment_id" \
         --vcn-id "$vcn_id" \
-        --display-name "$SUBNET_NAME" \
+        --display-name "${SUBNET_NAME}-workers" \
         --query 'data[0].id' \
         --raw-output 2>/dev/null || echo "")
     
@@ -125,17 +151,20 @@ main() {
         subnet_id=$(oci network subnet create \
             --compartment-id "$compartment_id" \
             --vcn-id "$vcn_id" \
-            --display-name "$SUBNET_NAME" \
+            --display-name "${SUBNET_NAME}-workers" \
             --cidr-block "10.0.1.0/24" \
+            --dns-label "workers" \
             --route-table-id "$route_table_id" \
+            --wait-for-state AVAILABLE \
+            --max-wait-seconds 180 \
             --query 'data.id' \
             --raw-output)
-        log_success "Subnet created: $subnet_id"
+        log_success "Worker subnet created: $subnet_id"
     else
-        log_info "Subnet already exists: $subnet_id"
+        log_info "Worker subnet exists: $subnet_id"
     fi
     
-    log_info "Creating OKE cluster (this takes 5-10 minutes)..."
+    log_info "Creating OKE cluster (ENHANCED type, 10-15 minutes)..."
     local cluster_id
     cluster_id=$(oci ce cluster list \
         --compartment-id "$compartment_id" \
@@ -149,15 +178,19 @@ main() {
             --name "$CLUSTER_NAME" \
             --vcn-id "$vcn_id" \
             --kubernetes-version "$K8S_VERSION" \
+            --cluster-type ENHANCED \
+            --endpoint-config "{\"subnetId\":\"$api_subnet_id\",\"isPublicIpEnabled\":true}" \
+            --service-lb-subnet-ids "[\"$subnet_id\"]" \
             --wait-for-state ACTIVE \
+            --max-wait-seconds 900 \
             --query 'data.id' \
             --raw-output)
-        log_success "OKE cluster created: $cluster_id"
+        log_success "OKE cluster created (ENHANCED): $cluster_id"
     else
-        log_info "OKE cluster already exists: $cluster_id"
+        log_info "OKE cluster exists: $cluster_id"
     fi
     
-    log_info "Creating GPU node pool (this takes 5-10 minutes)..."
+    log_info "Creating GPU node pool (10-15 minutes)..."
     local node_pool_id
     node_pool_id=$(oci ce node-pool list \
         --cluster-id "$cluster_id" \
@@ -174,11 +207,12 @@ main() {
             --size "$NODE_COUNT" \
             --subnet-ids "[\"$subnet_id\"]" \
             --wait-for-state ACTIVE \
+            --max-wait-seconds 1200 \
             --query 'data.id' \
-            --raw-output 2>/dev/null) || die "Failed to create GPU node pool (check GPU quota)"
+            --raw-output 2>/dev/null) || die "Failed to create GPU node pool - check GPU quota and capacity in region"
         log_success "GPU node pool created: $node_pool_id"
     else
-        log_info "GPU node pool already exists: $node_pool_id"
+        log_info "GPU node pool exists: $node_pool_id"
     fi
     
     log_info "Saving cluster information..."

@@ -9,10 +9,9 @@ Nimble OKE platform engineering framework is complete and validated for rapid sm
 ## Repository Statistics
 
 - **Total Commits:** 11+
-- **Tracked Files:** 18 (after legacy cleanup)
-- **Lines of Code:** 6,000+ (scripts + docs + Helm)
-- **Scripts:** 8 (1 library + 7 runbook scripts)
-- **Documentation:** 6 files
+- **Tracked Files:** 18 runbook scripts and configurations
+- **Scripts:** 8 runbook automation scripts
+- **Documentation:** 6 operational guides
 - **Helm Templates:** 6 files
 
 ## Platform Engineering Features Verified

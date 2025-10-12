@@ -52,7 +52,7 @@ make cleanup
 make teardown
 ```
 
-**Total Time:** 5 hours | **Cost:** ~$12
+**Total Time:** 5 hours | **Cost:** ~$11
 
 ### Option 2: Use Existing Cluster
 
@@ -97,9 +97,10 @@ make cleanup
 |-----------|------|----------|-------|
 | VM.GPU.A10.1 (1 GPU) | $1.75/hr | 5 hours | $8.75 |
 | OKE Control Plane | $0.10/hr | 5 hours | $0.50 |
+| ENHANCED Cluster | $0.10/hr | 5 hours | $0.50 |
 | Block Storage (50GB) | ~$0.03/GB | 50GB | $1.50 |
-| Load Balancer | ~$0.20/hr | 5 hours | $1.00 |
-| **Total** | | | **~$12** |
+| Load Balancer | ~$0.25/hr | 5 hours | $1.25 |
+| **Total** | | | **~$11** |
 
 ### Cost Optimization
 

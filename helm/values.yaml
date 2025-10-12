@@ -1,41 +1,32 @@
-# NVIDIA NIM on OKE - Configuration Values
-# Meta Llama 3.1 8B Instruct Model
+# NIM Deployment Configuration
+# Meta Llama 3.1 8B Instruct on OKE
 
-# Deployment configuration
-replicaCount: 1  # Start with 1 for cost optimization
+replicaCount: 1
 
 image:
-  # NVIDIA NGC Container Registry
   registry: nvcr.io
   repository: nim/meta/llama-3.1-8b-instruct
   tag: "latest"
   pullPolicy: IfNotPresent
 
-# NVIDIA NGC Credentials
-# Sign up at: https://catalog.ngc.nvidia.com/
 imagePullSecrets:
   - name: ngc-secret
 
 ngc:
-  # Replace with your NGC API Key
   apiKey: "<YOUR_NGC_API_KEY>"
-  # NGC registry credentials
   registry: nvcr.io
   username: "$oauthtoken"
 
-# Model configuration
 model:
   name: "meta/llama-3.1-8b-instruct"
-  # OCI Object Storage for model caching (optional but recommended)
   cache:
     enabled: true
     storageClass: "oci-bv"
     size: "50Gi"
 
-# Resource allocation - optimized for VM.GPU.A10.1
 resources:
   limits:
-    nvidia.com/gpu: 1  # 1 GPU per pod
+    nvidia.com/gpu: 1
     memory: "32Gi"
     cpu: "8"
   requests:
@@ -43,38 +34,34 @@ resources:
     memory: "24Gi"
     cpu: "4"
 
-# Service configuration
 service:
-  type: LoadBalancer  # Use LoadBalancer for external access
+  type: LoadBalancer
   port: 8000
   targetPort: 8000
+  externalTrafficPolicy: Local
   annotations:
-    # OCI Load Balancer annotations
     service.beta.kubernetes.io/oci-load-balancer-shape: "flexible"
     service.beta.kubernetes.io/oci-load-balancer-shape-flex-min: "10"
     service.beta.kubernetes.io/oci-load-balancer-shape-flex-max: "10"
 
-# Environment variables for NIM
 env:
   - name: NIM_CACHE_PATH
     value: "/model-cache"
   - name: NIM_MODEL_PROFILE
-    value: "auto"  # Auto-detect optimal settings
+    value: "auto"
   - name: NGC_API_KEY
     valueFrom:
       secretKeyRef:
         name: nvidia-nim-ngc-api
         key: NGC_API_KEY
 
-# Persistent storage for model cache
 persistence:
   enabled: true
-  storageClass: "oci-bv"  # OCI Block Volume
+  storageClass: "oci-bv"
   accessMode: ReadWriteOnce
   size: 50Gi
   mountPath: /model-cache
 
-# Pod security and node affinity
 podSecurityContext:
   runAsNonRoot: true
   runAsUser: 1000
@@ -89,17 +76,14 @@ securityContext:
       - ALL
   readOnlyRootFilesystem: false
 
-# Node selector for GPU nodes
 nodeSelector:
   nvidia.com/gpu.product: NVIDIA-A10
 
-# Tolerations for GPU nodes
 tolerations:
   - key: nvidia.com/gpu
     operator: Exists
     effect: NoSchedule
 
-# Affinity rules
 affinity:
   nodeAffinity:
     requiredDuringSchedulingIgnoredDuringExecution:
@@ -110,14 +94,12 @@ affinity:
               values:
                 - "true"
 
-# Topology spread constraints for HA
 topologySpreadConstraints:
   enabled: true
   maxSkew: 1
   topologyKey: topology.kubernetes.io/zone
   whenUnsatisfiable: DoNotSchedule
 
-# Readiness and liveness probes
 readinessProbe:
   httpGet:
     path: /v1/health/ready
@@ -136,7 +118,15 @@ livenessProbe:
   timeoutSeconds: 10
   failureThreshold: 3
 
-# Autoscaling (disabled by default for cost optimization)
+startupProbe:
+  httpGet:
+    path: /v1/health/startup
+    port: 8000
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 30
+
 autoscaling:
   enabled: false
   minReplicas: 1
@@ -144,30 +134,22 @@ autoscaling:
   targetCPUUtilizationPercentage: 80
   targetMemoryUtilizationPercentage: 80
 
-# Pod annotations
 podAnnotations:
   prometheus.io/scrape: "true"
   prometheus.io/port: "8000"
   prometheus.io/path: "/metrics"
 
-# Service account
 serviceAccount:
   create: true
   annotations:
-    # OCI service account annotations for instance principals
     oci.oraclecloud.com/principal-type: "instance"
   name: "nim-service-account"
 
-# Additional labels
 labels:
   app.kubernetes.io/name: nvidia-nim
   app.kubernetes.io/component: inference
   app.kubernetes.io/part-of: nim-deployment
 
-# Cost optimization settings
 costOptimization:
-  # Enable this to automatically scale down during off-hours
   scheduleDowntime: false
-  # Preemptible/Spot instance (if supported by node pool)
-  spotInstance: false
 
