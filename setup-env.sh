@@ -55,9 +55,9 @@ else
     echo ""
 fi
 
-# Set region to us-phoenix-1 (optimal for Austin)
-export OCI_REGION="us-phoenix-1"
-echo "✅ Set OCI_REGION to us-phoenix-1 (optimal for Austin)"
+# Set region to us-chicago-1 (where GPU quota was requested)
+export OCI_REGION="us-chicago-1"
+echo "✅ Set OCI_REGION to us-chicago-1 (where GPU quota was requested)"
 echo ""
 
 # Set daily budget

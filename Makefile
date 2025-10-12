@@ -151,6 +151,63 @@ budget-check:
 	@echo "[NIM-OKE] Checking budget..."
 	@$(SCRIPTS_DIR)/cost-simulation.sh $(DURATION) $(GPU_COUNT) $(GPU_SHAPE) validate
 
+# Enhanced dry-run and simulation targets
+provision-dry-run:
+	@echo "[NIM-OKE] Running cluster provisioning dry-run..."
+	@$(SCRIPTS_DIR)/provision-dry-run.sh
+
+check-gpu-quota:
+	@echo "[NIM-OKE] Checking GPU quota availability..."
+	@$(SCRIPTS_DIR)/check-gpu-quota.sh $(GPU_SHAPE) $(OCI_REGION)
+
+simulate-image-cache:
+	@echo "[NIM-OKE] Simulating image caching strategies..."
+	@$(SCRIPTS_DIR)/simulate-image-cache.sh
+
+# Comprehensive pre-deployment testing
+pre-deploy-test:
+	@echo "[NIM-OKE] Running comprehensive pre-deployment tests..."
+	@$(SCRIPTS_DIR)/pre-execution-validation.sh
+	@echo ""
+	@$(SCRIPTS_DIR)/provision-dry-run.sh
+	@echo ""
+	@$(SCRIPTS_DIR)/check-gpu-quota.sh $(GPU_SHAPE) $(OCI_REGION)
+	@echo ""
+	@$(SCRIPTS_DIR)/simulate-image-cache.sh
+	@echo ""
+	@$(SCRIPTS_DIR)/cost-simulation.sh $(DURATION) $(GPU_COUNT) $(GPU_SHAPE)
+
+# Quick smoke test validation
+smoke-test-validate:
+	@echo "[NIM-OKE] Validating smoke test readiness..."
+	@DRY_RUN=true $(SCRIPTS_DIR)/pre-execution-validation.sh 5 1
+	@$(SCRIPTS_DIR)/check-gpu-quota.sh VM.GPU.A10.1 $(OCI_REGION)
+	@$(SCRIPTS_DIR)/cost-simulation.sh 5 1 VM.GPU.A10.1 validate
+
+# NIM-specific testing and optimization
+simulate-nim-deployment:
+	@echo "[NIM-OKE] Simulating NIM deployment process..."
+	@$(SCRIPTS_DIR)/simulate-nim-deployment.sh
+
+detect-nim-failures:
+	@echo "[NIM-OKE] Detecting NIM-specific failure patterns..."
+	@$(SCRIPTS_DIR)/detect-nim-failures.sh
+
+optimize-rapid-iteration:
+	@echo "[NIM-OKE] Analyzing rapid iteration optimization..."
+	@$(SCRIPTS_DIR)/optimize-rapid-iteration.sh
+
+# Comprehensive NIM smoke testing
+nim-smoke-test:
+	@echo "[NIM-OKE] Running comprehensive NIM smoke test validation..."
+	@$(SCRIPTS_DIR)/pre-execution-validation.sh 5 1
+	@echo ""
+	@$(SCRIPTS_DIR)/simulate-nim-deployment.sh 100 $(OCI_REGION) true
+	@echo ""
+	@$(SCRIPTS_DIR)/optimize-rapid-iteration.sh
+	@echo ""
+	@$(SCRIPTS_DIR)/cost-simulation.sh 5 1 VM.GPU.A10.1 validate
+
 test-inference:
 	@echo "[NIM-OKE] Testing inference API..."
 	@$(SCRIPTS_DIR)/verify.sh
