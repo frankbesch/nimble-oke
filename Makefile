@@ -1,4 +1,4 @@
-.PHONY: help discover prereqs install verify operate troubleshoot cleanup clean all
+.PHONY: help discover prereqs install verify operate troubleshoot cleanup clean all session-init session-summary session-compare
 
 SCRIPTS_DIR := scripts
 ENVIRONMENT ?= dev
@@ -23,6 +23,11 @@ help:
 	@echo "Shortcuts:"
 	@echo "  make all             → Run complete workflow (discover→install→verify)"
 	@echo "  make clean           → Alias for cleanup"
+	@echo ""
+	@echo "Session Tracking:"
+	@echo "  make session-init    → Initialize session tracking"
+	@echo "  make session-summary → Show current session summary"
+	@echo "  make session-compare → Compare with previous sessions"
 	@echo ""
 	@echo "Environment:"
 	@echo "  ENVIRONMENT=$(ENVIRONMENT)"
@@ -77,6 +82,19 @@ cleanup-cluster: teardown
 
 all: discover install verify
 	@echo "[NIM-OKE] Complete workflow finished"
+
+# Session tracking targets
+session-init:
+	@echo "[NIM-OKE] Initializing session tracking..."
+	@$(SCRIPTS_DIR)/session-tracker.sh init "session-$(shell date +%Y%m%d-%H%M%S)" "manual"
+
+session-summary:
+	@echo "[NIM-OKE] Current session summary:"
+	@$(SCRIPTS_DIR)/session-tracker.sh summary
+
+session-compare:
+	@echo "[NIM-OKE] Comparing sessions:"
+	@$(SCRIPTS_DIR)/session-tracker.sh compare $(HOME)/.nimble-oke/sessions/current.json
 
 test-inference:
 	@echo "[NIM-OKE] Testing inference API..."

@@ -7,6 +7,10 @@ readonly ENVIRONMENT="${ENVIRONMENT:-dev}"
 readonly COST_THRESHOLD_USD="${COST_THRESHOLD_USD:-5}"
 readonly CONFIRM_COST="${CONFIRM_COST:-}"
 
+# Session tracking
+readonly SESSION_DIR="${HOME}/.nimble-oke/sessions"
+readonly CURRENT_SESSION="${SESSION_DIR}/current.json"
+
 log_info() {
     echo "${LOG_PREFIX}[INFO] $*" >&2
 }
@@ -26,6 +30,42 @@ log_success() {
 die() {
     log_error "$*"
     exit 1
+}
+
+# Session tracking functions
+init_session() {
+    local operation="$1"
+    local session_id="session-$(date +%Y%m%d-%H%M%S)"
+    
+    if [[ -x "scripts/session-tracker.sh" ]]; then
+        local session_file=$(scripts/session-tracker.sh init "$session_id" "$operation" 2>/dev/null)
+        if [[ -n "$session_file" ]]; then
+            log_info "Session tracking initialized: $session_file"
+        fi
+    fi
+}
+
+log_obstacle() {
+    local phase="$1"
+    local obstacle_type="$2"
+    local description="$3"
+    local root_cause="$4"
+    local fix="$5"
+    local time_delay="${6:-0}"
+    local cost_impact="${7:-0}"
+    
+    log_warn "OBSTACLE: $phase - $description"
+    
+    if [[ -x "scripts/session-tracker.sh" ]]; then
+        scripts/session-tracker.sh log-obstacle "$phase" "$obstacle_type" "$description" "$root_cause" "$fix" "$time_delay" "$cost_impact" 2>/dev/null || true
+    fi
+}
+
+end_session() {
+    if [[ -x "scripts/session-tracker.sh" ]]; then
+        scripts/session-tracker.sh calculate-performance 2>/dev/null || true
+        scripts/session-tracker.sh summary 2>/dev/null || true
+    fi
 }
 
 check_command() {
@@ -104,6 +144,11 @@ start_phase() {
     local phase="$1"
     echo "$(date +%s)" > "/tmp/nimble-oke-${phase}-start"
     log_info "=== PHASE: $phase STARTED at $(date '+%H:%M:%S') ==="
+    
+    # Session tracking
+    if [[ -x "scripts/session-tracker.sh" ]]; then
+        scripts/session-tracker.sh start-phase "$phase" 2>/dev/null || true
+    fi
 }
 
 end_phase() {
@@ -112,6 +157,12 @@ end_phase() {
     if [[ -f "$start_file" ]]; then
         local duration=$(($(date +%s) - $(cat "$start_file")))
         log_success "=== PHASE: $phase COMPLETED in $((duration/60))m $((duration%60))s ==="
+        
+        # Session tracking
+        if [[ -x "scripts/session-tracker.sh" ]]; then
+            scripts/session-tracker.sh end-phase "$phase" 2>/dev/null || true
+        fi
+        
         rm -f "$start_file"
     fi
 }
