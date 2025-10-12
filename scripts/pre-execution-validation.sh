@@ -100,11 +100,23 @@ validate_oci_configuration() {
     
     # Check compartment access
     if [[ -n "${OCI_COMPARTMENT_ID:-}" ]]; then
-        if oci iam compartment get --compartment-id "${OCI_COMPARTMENT_ID}" &>/dev/null; then
-            record_validation "oci_compartment" "PASS" "Compartment accessible: ${OCI_COMPARTMENT_ID:0:20}..."
+        # Check if this is root tenancy (compartment API doesn't work for root)
+        if [[ "$OCI_COMPARTMENT_ID" =~ ^ocid1\.tenancy\. ]]; then
+            # Root tenancy - verify by checking if we can list resources
+            if oci iam availability-domain list --compartment-id "${OCI_COMPARTMENT_ID}" &>/dev/null; then
+                record_validation "oci_compartment" "PASS" "Root tenancy accessible: ${OCI_COMPARTMENT_ID:0:20}..."
+            else
+                record_validation "oci_compartment" "FAIL" "Cannot access root tenancy: ${OCI_COMPARTMENT_ID:0:20}..."
+                oci_ok=false
+            fi
         else
-            record_validation "oci_compartment" "FAIL" "Cannot access compartment: ${OCI_COMPARTMENT_ID:0:20}..."
-            oci_ok=false
+            # Child compartment - use compartment API
+            if oci iam compartment get --compartment-id "${OCI_COMPARTMENT_ID}" &>/dev/null; then
+                record_validation "oci_compartment" "PASS" "Compartment accessible: ${OCI_COMPARTMENT_ID:0:20}..."
+            else
+                record_validation "oci_compartment" "FAIL" "Cannot access compartment: ${OCI_COMPARTMENT_ID:0:20}..."
+                oci_ok=false
+            fi
         fi
     else
         record_validation "oci_compartment" "FAIL" "OCI_COMPARTMENT_ID not set"
