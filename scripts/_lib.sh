@@ -6,6 +6,7 @@ readonly LOG_PREFIX="[NIM-OKE]"
 readonly ENVIRONMENT="${ENVIRONMENT:-dev}"
 readonly COST_THRESHOLD_USD="${COST_THRESHOLD_USD:-5}"
 readonly CONFIRM_COST="${CONFIRM_COST:-}"
+readonly DEBUG="${DEBUG:-false}"
 
 # Session tracking
 readonly SESSION_DIR="${HOME}/.nimble-oke/sessions"
@@ -25,6 +26,12 @@ log_error() {
 
 log_success() {
     echo "${LOG_PREFIX}[SUCCESS] $*" >&2
+}
+
+debug() {
+    if [[ "$DEBUG" == "true" ]]; then
+        echo "${LOG_PREFIX}[DEBUG] $*" >&2
+    fi
 }
 
 die() {
@@ -104,13 +111,28 @@ cost_guard() {
 retry() {
     local max_attempts="$1"
     local delay="$2"
-    shift 2
+    local phase="${3:-unknown}"
+    shift 3
     local cmd=("$@")
     local attempt=1
+    local start_time=$(date +%s)
+    
+    debug "Retrying command: ${cmd[*]} (max attempts: $max_attempts, delay: ${delay}s)"
     
     until "${cmd[@]}"; do
         if (( attempt >= max_attempts )); then
+            local end_time=$(date +%s)
+            local total_delay=$((end_time - start_time))
+            
             log_error "Command failed after $max_attempts attempts: ${cmd[*]}"
+            
+            # Auto-log obstacle
+            log_obstacle "$phase" "retry-exhausted" \
+                "Command failed after $max_attempts attempts: ${cmd[*]}" \
+                "Persistent failure - likely configuration or resource issue" \
+                "Check logs and resource availability" \
+                "$total_delay" "$(echo "scale=2; $total_delay * 0.001" | bc -l)"
+            
             return 1
         fi
         log_warn "Attempt $attempt/$max_attempts failed, retrying in ${delay}s..."
@@ -118,6 +140,7 @@ retry() {
         ((attempt++))
     done
     
+    debug "Command succeeded after $((attempt - 1)) attempts"
     return 0
 }
 
@@ -185,18 +208,52 @@ end_step() {
 with_timeout() {
     local timeout="$1"
     local desc="$2"
-    shift 2
+    local phase="${3:-unknown}"
+    shift 3
+    
     log_info "Running: $desc (timeout: ${timeout}s)"
+    
+    # Background progress indicator
+    (
+        local elapsed=0
+        while kill -0 $$ 2>/dev/null; do
+            echo -n "." >&2
+            sleep 5
+            elapsed=$((elapsed + 5))
+            if [[ $((elapsed % 30)) -eq 0 ]]; then
+                echo " ${elapsed}s" >&2
+            fi
+        done
+    ) &
+    local progress_pid=$!
+    
+    # Run actual command
     if timeout "$timeout" bash -c "$*"; then
+        kill $progress_pid 2>/dev/null || true
         log_success "$desc completed"
         return 0
     else
+        kill $progress_pid 2>/dev/null || true
         local exit_code=$?
+        
         if [[ $exit_code -eq 124 ]]; then
             log_error "$desc STALLED (timeout: ${timeout}s)"
+            # Auto-log obstacle for timeouts
+            log_obstacle "$phase" "timeout" \
+                "$desc stalled after ${timeout}s" \
+                "Operation exceeded timeout threshold" \
+                "Increase timeout or optimize operation" \
+                "$timeout" "$(echo "scale=2; $timeout * 0.001" | bc -l)"
         else
             log_error "$desc FAILED (exit: $exit_code)"
+            # Auto-log obstacle for failures
+            log_obstacle "$phase" "execution-error" \
+                "$desc failed with exit code $exit_code" \
+                "Command execution error" \
+                "Check command syntax and dependencies" \
+                "0" "0"
         fi
+        
         return $exit_code
     fi
 }
@@ -205,12 +262,28 @@ wait_for_state() {
     local check_cmd="$1"
     local desc="$2"
     local timeout="${3:-300}"
+    local phase="${4:-unknown}"
     local elapsed=0
     
     log_info "Waiting: $desc (timeout: ${timeout}s)"
     
+    # Background progress indicator
+    (
+        local elapsed=0
+        while kill -0 $$ 2>/dev/null; do
+            echo -n "." >&2
+            sleep 5
+            elapsed=$((elapsed + 5))
+            if [[ $((elapsed % 30)) -eq 0 ]]; then
+                echo " ${elapsed}s" >&2
+            fi
+        done
+    ) &
+    local progress_pid=$!
+    
     while [[ $elapsed -lt $timeout ]]; do
         if eval "$check_cmd" 2>/dev/null; then
+            kill $progress_pid 2>/dev/null || true
             log_success "$desc (after ${elapsed}s)"
             return 0
         fi
@@ -223,7 +296,16 @@ wait_for_state() {
         elapsed=$((elapsed + 5))
     done
     
+    kill $progress_pid 2>/dev/null || true
     log_error "$desc TIMEOUT after ${timeout}s"
+    
+    # Auto-log obstacle for timeouts
+    log_obstacle "$phase" "state-timeout" \
+        "$desc timeout after ${timeout}s" \
+        "Resource failed to reach expected state within timeout" \
+        "Check resource status and increase timeout if needed" \
+        "$timeout" "$(echo "scale=2; $timeout * 0.001" | bc -l)"
+    
     return 1
 }
 
@@ -252,15 +334,22 @@ get_gpu_count() {
 }
 
 check_oci_credentials() {
+    debug "Checking OCI credentials..."
     if ! oci iam region list &>/dev/null; then
         die "OCI CLI not configured or credentials invalid"
     fi
+    debug "OCI credentials valid"
 }
 
 check_kubectl_context() {
+    debug "Checking kubectl context..."
+    local context=$(kubectl config current-context 2>/dev/null || echo "none")
+    debug "Current context: $context"
+    
     if ! kubectl cluster-info &>/dev/null; then
         die "kubectl not configured or cluster unreachable"
     fi
+    debug "kubectl context valid"
 }
 
 check_helm() {

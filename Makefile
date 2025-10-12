@@ -3,6 +3,7 @@
 SCRIPTS_DIR := scripts
 ENVIRONMENT ?= dev
 CONFIRM_COST ?= no
+DEBUG ?= false
 
 help:
 	@echo "Nimble OKE - Rapid Smoke Testing Platform"
@@ -32,17 +33,19 @@ help:
 	@echo "Environment:"
 	@echo "  ENVIRONMENT=$(ENVIRONMENT)"
 	@echo "  CONFIRM_COST=$(CONFIRM_COST)"
+	@echo "  DEBUG=$(DEBUG)"
 	@echo ""
 	@echo "Examples:"
 	@echo "  make provision CONFIRM_COST=yes"
 	@echo "  make discover"
 	@echo "  make install CONFIRM_COST=yes"
+	@echo "  make troubleshoot DEBUG=true"
 	@echo "  make cleanup"
 	@echo "  make teardown"
 
 discover:
 	@echo "[NIM-OKE] Running discovery..."
-	@$(SCRIPTS_DIR)/discover.sh
+	@DEBUG=$(DEBUG) $(SCRIPTS_DIR)/discover.sh
 
 prereqs:
 	@echo "[NIM-OKE] Checking prerequisites..."
@@ -50,7 +53,7 @@ prereqs:
 
 install: prereqs
 	@echo "[NIM-OKE] Installing NIM..."
-	@ENVIRONMENT=$(ENVIRONMENT) CONFIRM_COST=$(CONFIRM_COST) $(SCRIPTS_DIR)/deploy.sh
+	@ENVIRONMENT=$(ENVIRONMENT) CONFIRM_COST=$(CONFIRM_COST) DEBUG=$(DEBUG) $(SCRIPTS_DIR)/deploy.sh
 
 verify:
 	@echo "[NIM-OKE] Verifying deployment..."
@@ -62,7 +65,7 @@ operate:
 
 troubleshoot:
 	@echo "[NIM-OKE] Running troubleshooting..."
-	@$(SCRIPTS_DIR)/troubleshoot.sh
+	@DEBUG=$(DEBUG) $(SCRIPTS_DIR)/troubleshoot.sh
 
 cleanup:
 	@echo "[NIM-OKE] Cleaning up NIM deployment..."

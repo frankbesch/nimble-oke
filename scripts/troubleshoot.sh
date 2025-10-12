@@ -4,6 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/_lib.sh"
+source "${SCRIPT_DIR}/_lib_diagnostics.sh"
 
 readonly RELEASE_NAME="nvidia-nim"
 readonly NAMESPACE="default"
@@ -213,40 +214,77 @@ troubleshoot_network() {
 main() {
     log_info "Running troubleshooting diagnostics..."
     
+    # Quick diagnostic first
+    quick_diagnostic
+    
+    echo ""
+    echo "=== PARALLEL DIAGNOSTICS ==="
+    
+    # Run parallel diagnostics for faster results
+    log_info "Running parallel diagnostic checks..."
+    
+    troubleshoot_pods > "/tmp/nimble-oke-troubleshoot-pods-$$.txt" &
+    local pods_pid=$!
+    
+    troubleshoot_gpu > "/tmp/nimble-oke-troubleshoot-gpu-$$.txt" &
+    local gpu_pid=$!
+    
+    troubleshoot_image_pull > "/tmp/nimble-oke-troubleshoot-image-$$.txt" &
+    local image_pid=$!
+    
+    troubleshoot_service > "/tmp/nimble-oke-troubleshoot-service-$$.txt" &
+    local service_pid=$!
+    
+    troubleshoot_storage > "/tmp/nimble-oke-troubleshoot-storage-$$.txt" &
+    local storage_pid=$!
+    
+    troubleshoot_resources > "/tmp/nimble-oke-troubleshoot-resources-$$.txt" &
+    local resources_pid=$!
+    
+    troubleshoot_network > "/tmp/nimble-oke-troubleshoot-network-$$.txt" &
+    local network_pid=$!
+    
+    # Wait for all diagnostics to complete
+    wait $pods_pid $gpu_pid $image_pid $service_pid $storage_pid $resources_pid $network_pid
+    
+    # Display results
     echo ""
     echo "=== 1. Pod Status ==="
-    troubleshoot_pods
+    cat "/tmp/nimble-oke-troubleshoot-pods-$$.txt"
     
     echo ""
     echo "=== 2. GPU Resources ==="
-    troubleshoot_gpu
+    cat "/tmp/nimble-oke-troubleshoot-gpu-$$.txt"
     
     echo ""
     echo "=== 3. Image Pull ==="
-    troubleshoot_image_pull
+    cat "/tmp/nimble-oke-troubleshoot-image-$$.txt"
     
     echo ""
     echo "=== 4. Service ==="
-    troubleshoot_service
+    cat "/tmp/nimble-oke-troubleshoot-service-$$.txt"
     
     echo ""
     echo "=== 5. Storage ==="
-    troubleshoot_storage
+    cat "/tmp/nimble-oke-troubleshoot-storage-$$.txt"
     
     echo ""
     echo "=== 6. Resource Allocation ==="
-    troubleshoot_resources
+    cat "/tmp/nimble-oke-troubleshoot-resources-$$.txt"
     
     echo ""
     echo "=== 7. Network ==="
-    troubleshoot_network
+    cat "/tmp/nimble-oke-troubleshoot-network-$$.txt"
     
     echo ""
     echo "=== 8. Recent Events ==="
     kubectl get events -n "$NAMESPACE" --sort-by='.lastTimestamp' | tail -20
     
+    # Cleanup temp files
+    rm -f "/tmp/nimble-oke-troubleshoot-"*.txt
+    
     echo ""
-    log_info "Troubleshooting complete"
+    log_success "Troubleshooting complete (parallel execution)"
     log_info "For detailed logs, run: kubectl logs -n $NAMESPACE -l app.kubernetes.io/name=nvidia-nim -f"
 }
 
