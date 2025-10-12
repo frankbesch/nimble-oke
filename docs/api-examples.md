@@ -253,7 +253,7 @@ curl -X POST $NIM_ENDPOINT/v1/chat/completions \
 
 ## Use Case Examples
 
-### Code Generation
+### Programming Examples
 
 ```bash
 curl -X POST $NIM_ENDPOINT/v1/chat/completions \
