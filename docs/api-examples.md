@@ -128,7 +128,7 @@ curl -X POST $NIM_ENDPOINT/v1/chat/completions \
     "messages": [
       {
         "role": "system",
-        "content": "You are a helpful AI assistant specializing in cloud computing."
+        "content": "You are a helpful technical expert specializing in cloud computing."
       },
       {
         "role": "user",
