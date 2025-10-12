@@ -41,9 +41,13 @@ else
     echo ""
 fi
 
-# Set region to us-phoenix-1 (recommended from Austin)
-export OCI_REGION="us-phoenix-1"
-echo "✅ Set OCI_REGION to us-phoenix-1 (recommended for Austin)"
+# Set region to us-chicago-1 (your subscribed region)
+export OCI_REGION="us-chicago-1"
+echo "✅ Set OCI_REGION to us-chicago-1 (your subscribed region)"
+echo ""
+echo "ℹ️  Note: Phoenix (us-phoenix-1) would be better for Austin"
+echo "   To use Phoenix, subscribe to it in OCI Console:"
+echo "   Identity > Regions > Manage Region Subscriptions"
 echo ""
 
 # Set daily budget
