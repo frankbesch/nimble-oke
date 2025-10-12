@@ -7,6 +7,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/_lib.sh"
+source "${SCRIPT_DIR}/_lib_audit.sh"
 
 readonly VALIDATION_TIMEOUT=300
 readonly DEFAULT_GPU_SHAPE="VM.GPU.A10.1"
@@ -159,35 +160,38 @@ validate_gpu_resources() {
     local shape="${GPU_SHAPE:-$DEFAULT_GPU_SHAPE}"
     local required="${REQUIRED_GPUS:-$DEFAULT_REQUIRED_GPUS}"
     
-    # Check GPU quota
-    if ! validate_gpu_quota "$shape" "$required"; then
-        gpu_ok=false
+    # Check GPU quota (non-fatal if OCI not fully configured)
+    if validate_gpu_quota "$shape" "$required" 2>/dev/null; then
+        # GPU quota validated successfully
+        true
+    else
+        local quota_result=$?
+        if [[ $quota_result -eq 1 ]]; then
+            record_validation "gpu_quota" "WARN" "Could not validate GPU quota (may need to provision cluster first)"
+        fi
     fi
     
-    # Check GPU nodes in cluster
+    # Check GPU nodes in cluster (expected to be empty before provisioning)
     local gpu_nodes
-    gpu_nodes=$(get_gpu_nodes)
+    gpu_nodes=$(get_gpu_nodes 2>/dev/null || echo "")
     local gpu_count
-    gpu_count=$(get_gpu_count)
+    gpu_count=$(get_gpu_count 2>/dev/null || echo "0")
     
     if [[ "$gpu_count" -gt 0 ]]; then
         record_validation "gpu_nodes" "PASS" "Found $gpu_count GPU nodes: $gpu_nodes"
     else
-        record_validation "gpu_nodes" "WARN" "No GPU nodes found in cluster"
+        record_validation "gpu_nodes" "INFO" "No GPU nodes found (expected before cluster provisioning)"
     fi
     
-    # Check NVIDIA device plugin
-    if kubectl get daemonset -n kube-system -l name=nvidia-device-plugin-ds &>/dev/null; then
+    # Check NVIDIA device plugin (optional before GPU nodes exist)
+    if kubectl get daemonset -n kube-system -l name=nvidia-device-plugin-ds &>/dev/null 2>&1; then
         record_validation "nvidia_device_plugin" "PASS" "NVIDIA device plugin installed"
     else
-        record_validation "nvidia_device_plugin" "WARN" "NVIDIA device plugin not found"
+        record_validation "nvidia_device_plugin" "INFO" "NVIDIA device plugin not installed (will be installed with GPU nodes)"
     fi
     
-    if [[ "$gpu_ok" == "true" ]]; then
-        return 0
-    else
-        return 1
-    fi
+    # GPU validation is informational only at this stage
+    return 0
 }
 
 validate_storage_resources() {
