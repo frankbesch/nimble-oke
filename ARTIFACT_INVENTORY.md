@@ -1,6 +1,5 @@
 # Nimble OKE - Complete Artifact Inventory
 
-**Generated:** October 10, 2025  
 **Status:** All artifacts production-ready
 
 ## Project Files (24 total)

@@ -337,7 +337,7 @@ Provides ready-to-copy commands for:
 - **Events** - Recent cluster events
 - **Cost Monitoring** - Current hourly/daily costs
 
-### Example Commands Generated
+### Example Commands
 
 ```bash
 # View logs

@@ -1,6 +1,5 @@
 # Nimble OKE - Platform Engineering Verification Report
 
-**Generated:** October 10, 2025  
 **Status:** Smoke-Test Ready
 
 ## Executive Summary
