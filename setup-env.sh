@@ -21,10 +21,24 @@ echo "✅ Found OCI Tenancy:"
 echo "   $TENANCY_ID"
 echo ""
 
-# Set OCI_COMPARTMENT_ID to tenancy (root compartment)
-export OCI_COMPARTMENT_ID="$TENANCY_ID"
-echo "✅ Set OCI_COMPARTMENT_ID to root compartment (tenancy)"
-echo ""
+# Check for nimble-oke compartment
+NIMBLE_COMPARTMENT=$(oci iam compartment list \
+    --compartment-id "$TENANCY_ID" \
+    --name "nimble-oke" \
+    --query 'data[0].id' \
+    --raw-output 2>/dev/null || echo "")
+
+if [[ -n "$NIMBLE_COMPARTMENT" ]]; then
+    export OCI_COMPARTMENT_ID="$NIMBLE_COMPARTMENT"
+    echo "✅ Found nimble-oke compartment"
+    echo "   Using dedicated compartment for isolation and cost tracking"
+    echo ""
+else
+    export OCI_COMPARTMENT_ID="$TENANCY_ID"
+    echo "✅ Using root compartment (tenancy)"
+    echo "   💡 Tip: Create 'nimble-oke' compartment for better organization"
+    echo ""
+fi
 
 # Check for NGC API Key
 if [[ -z "${NGC_API_KEY:-}" ]]; then
