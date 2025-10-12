@@ -12,11 +12,11 @@ Nimble OKE is a platform engineering framework for ultra-fast, cost-efficient sm
 
 ### Design Philosophy
 
-- **Speed** - Deploy and validate in minutes
-- **Cost-Conscious** - Complete smoke test for ~$11
-- **Idempotent** - Every operation safe to re-run
-- **Fail-Safe** - Automatic cleanup on errors
-- **Production Patterns** - Enterprise-grade from day one
+- **Speed** - deploy and validate in minutes
+- **Cost-Conscious** - complete smoke test for ~$11
+- **Idempotent** - every operation safe to re-run
+- **Fail-Safe** - automatic cleanup on errors
+- **Production Patterns** - enterprise-grade from day one
 
 ## Project Architecture
 
@@ -27,11 +27,11 @@ discover → prereqs → deploy → verify → operate → troubleshoot → clea
 ```
 
 Each phase is:
-- Independently executable
-- Idempotent (safe to re-run)
-- Cost-aware with guards
-- Logged with [NIM-OKE] prefix
-- Protected by cleanup hooks
+- independently executable
+- idempotent (safe to re-run)
+- cost-aware with guards
+- logged with [NIM-OKE] prefix
+- protected by cleanup hooks
 
 ### Cost Guard System
 
@@ -43,9 +43,9 @@ else:
 ```
 
 Prevents:
-- Accidental production deployments
-- Surprise bills from expensive operations
-- Forgotten resources running indefinitely
+- accidental production deployments
+- surprise bills from expensive operations
+- forgotten resources running indefinitely
 
 ### Cleanup Hook Pattern
 
@@ -163,11 +163,11 @@ docs/api-examples.md           # API usage examples
 
 ### Cost Optimization Features
 
-- Pre-deployment cost estimation
-- Cost guard confirmation workflow
-- Session cost tracking
-- Automatic cleanup verification
-- Model cache preservation option (KEEP_CACHE=yes)
+- pre-deployment cost estimation
+- cost guard confirmation workflow
+- session cost tracking
+- automatic cleanup verification
+- model cache preservation option (KEEP_CACHE=yes)
 
 ### Alternative Scenarios
 
@@ -180,11 +180,11 @@ docs/api-examples.md           # API usage examples
 ### 1. Runbook-Driven Operations
 
 Every operation follows structured pattern:
-- Prerequisites checked
-- Costs estimated and guarded
-- Progress logged
-- Cleanup on failure
-- Success verified
+- prerequisites checked
+- costs estimated and guarded
+- progress logged
+- cleanup on failure
+- success verified
 
 ### 2. Idempotency Everywhere
 
@@ -245,9 +245,9 @@ Systematic troubleshooting, not guesswork.
 ### Structured Logging
 
 All output follows [NIM-OKE][LEVEL] format:
-- Parseable by log aggregators
-- Clear severity levels
-- Consistent across all scripts
+- parseable by log aggregators
+- clear severity levels
+- consistent across all scripts
 
 ### Error Handling
 
@@ -260,10 +260,10 @@ die() { log_error "$*"; exit 1; }
 ### Input Validation
 
 Every script validates:
-- Required environment variables
-- Tool availability
-- Cluster connectivity
-- Credential validity
+- required environment variables
+- tool availability
+- cluster connectivity
+- credential validity
 
 ### Timeout Protection
 
@@ -292,24 +292,24 @@ Prevents indefinite hangs.
 ## Success Metrics
 
 **Deployment:**
-- Cluster discovered and validated
-- Prerequisites met
+- cluster discovered and validated
+- prerequisites met
 - NIM deployed with cost guard
-- Pods running with GPU
+- pods running with GPU
 - API responding
-- Cleanup successful
+- cleanup successful
 
 **Performance:**
-- Discovery: <30 seconds
-- Prerequisites: <1 minute
-- Deployment: 5-10 minutes (cached) or 45-60 minutes (first time)
-- Verification: <1 minute
-- Cleanup: 1-2 minutes
+- discovery: <30 seconds
+- prerequisites: <1 minute
+- deployment: 5-10 minutes (cached) or 45-60 minutes (first time)
+- verification: <1 minute
+- cleanup: 1-2 minutes
 
 **Cost:**
-- Smoke test: ~$9-12 (5 hours)
-- Hourly: ~$1.85
-- Model cache preservation saves $1.50 per re-deployment
+- smoke test: ~$9-12 (5 hours)
+- hourly: ~$1.85
+- model cache preservation saves $1.50 per re-deployment
 
 ## Next Steps
 
@@ -321,16 +321,16 @@ Prevents indefinite hangs.
 
 ### To Understand
 
-- Study Makefile targets
-- Review `scripts/_lib.sh` for shared patterns
-- Explore Helm chart structure
+- study Makefile targets
+- review `scripts/_lib.sh` for shared patterns
+- explore Helm chart structure
 
 ### To Extend
 
-- Add custom Makefile targets
-- Extend `_lib.sh` with new helpers
-- Customize Helm values for your models
-- Integrate with CI/CD pipelines
+- add custom Makefile targets
+- extend `_lib.sh` with new helpers
+- customize Helm values for your models
+- integrate with CI/CD pipelines
 
 ## References
 

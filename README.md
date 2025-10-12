@@ -1,31 +1,31 @@
 # Nimble OKE - Rapid Smoke Testing for NVIDIA NIM on OCI
 
-Ultra-fast, cost-efficient smoke testing platform for validating GPU-accelerated AI inference microservices on Oracle Cloud Infrastructure.
+GPU-accelerated, cost-efficient smoke testing platform for validating AI inference microservices on Oracle Cloud Infrastructure.
 
 **Based on:** [NVIDIA nim-deploy Oracle OKE Reference](https://github.com/NVIDIA/nim-deploy/tree/main/cloud-service-providers/oracle/oke)
 
-## Why Nimble OKE?
+## Purpose
 
-Validates NVIDIA NIM deployments in minutes, not hours. Purpose-built for rapid smoke testing with minimal cost:
+Validates NVIDIA NIM deployments in minutes. Purpose-built for rapid smoke testing:
 
-- **5-minute deployment** with automated runbook workflow
+- **5-minute deployment** with runbook automation
 - **$11 complete smoke test** (provision to teardown)
-- **Idempotent operations** safe to re-run without side effects
-- **Cost guards** prevent surprise bills with ENVIRONMENT and CONFIRM_COST checks
-- **Automatic cleanup** on failure via trap hooks
+- **Idempotent operations** - safe to re-run
+- **Cost guards** - prevent surprise bills
+- **Automatic cleanup** on failure
 - **Production-grade patterns** from first deployment
 
 ## Platform Features
 
-- **Runbook-Driven Workflow** - Structured discover → prereqs → deploy → verify → operate → troubleshoot → cleanup
+- **Runbook-Driven Workflow** - discover → prereqs → deploy → verify → operate → troubleshoot → cleanup
 - **Cost Guards** - ENVIRONMENT and CONFIRM_COST checks before expensive operations
-- **Idempotent Operations** - Every script safe to re-run with proper state checking
-- **Cleanup Hooks** - Automatic resource cleanup on failure via trap handlers
-- **Structured Logging** - Consistent [NIM-OKE][LEVEL] prefixed output
-- **Smart Discovery** - Automatic detection of default StorageClass and GPU nodes
-- **Session Cost Tracking** - Tracks deployment duration and estimated costs
+- **Idempotent Operations** - every script safe to re-run
+- **Cleanup Hooks** - automatic resource cleanup on failure
+- **Structured Logging** - consistent [NIM-OKE][LEVEL] output
+- **Smart Discovery** - automatic StorageClass and GPU node detection
+- **Session Cost Tracking** - deployment duration and cost estimation
 - **Enhanced Security** - seccompProfile RuntimeDefault, topology spread constraints
-- **Comprehensive Diagnostics** - Dedicated troubleshooting runbook with systematic checks
+- **Comprehensive Diagnostics** - systematic troubleshooting runbook
 
 ## Quick Start
 
@@ -44,7 +44,7 @@ export OCI_REGION=us-phoenix-1
 # Provision OKE cluster with GPU nodes
 make provision CONFIRM_COST=yes
 
-# Deploy, verify, and test NIM
+# Deploy, verify, test NIM
 make all
 
 # Cleanup everything
@@ -52,7 +52,7 @@ make cleanup
 make teardown
 ```
 
-**Total Time:** 5 hours | **Cost:** ~$11
+**Time:** 5 hours | **Cost:** ~$11
 
 ### Option 2: Use Existing Cluster
 
@@ -70,14 +70,14 @@ make verify
 make cleanup
 ```
 
-**Time:** 1-2 hours (NIM deployment only) | **Cost:** ~$3-5
+**Time:** 1-2 hours | **Cost:** ~$3-5
 
 ## Prerequisites
 
 ### Required
 
 - **OCI Account** - [Sign up](https://www.oracle.com/cloud/free/)
-- **GPU Quota** - VM.GPU.A10.1 (at least 1 GPU)
+- **GPU Quota** - VM.GPU.A10.1 (minimum 1 GPU)
 - **NVIDIA NGC Account** - [Register](https://catalog.ngc.nvidia.com/)
 - **NGC API Key** - [Generate key](https://ngc.nvidia.com/setup/api-key)
 
@@ -87,7 +87,7 @@ make cleanup
 - kubectl ([install](https://kubernetes.io/docs/tasks/tools/))
 - Helm 3+ ([install](https://helm.sh/docs/intro/install/))
 - jq ([install](https://stedolan.github.io/jq/download/))
-- bc (usually pre-installed on macOS/Linux)
+- bc (pre-installed on macOS/Linux)
 
 ## Cost Breakdown
 
@@ -104,12 +104,12 @@ make cleanup
 
 ### Cost Optimization
 
-- **Time-boxed testing** - Provision only when actively validating
-- **Automatic cleanup** - `make cleanup` removes all billable resources
-- **Model caching** - PVC preserves model between tests (set KEEP_CACHE=yes)
-- **Cost guards** - Prevents accidental production deployments
+- **Time-boxed testing** - provision only when validating
+- **Automatic cleanup** - `make cleanup` removes billable resources
+- **Model caching** - PVC preserves models between tests (KEEP_CACHE=yes)
+- **Cost guards** - prevent accidental production deployments
 
-**WARNING:** Running 24/7 costs ~$1,250-1,500/month. Always run `make cleanup` after testing.
+**WARNING:** 24/7 operation costs ~$1,250-1,500/month. Always run `make cleanup` after testing.
 
 ## Runbook Architecture
 
@@ -119,17 +119,17 @@ make cleanup
 discover → prereqs → deploy → verify → operate → troubleshoot → cleanup
 ```
 
-**discover** - Understand current cluster state, GPU availability, costs
-**prereqs** - Validate tools, credentials, GPU quota, NGC access
-**deploy** - Install NIM with cost guards and cleanup hooks
-**verify** - Check deployment health, pod status, GPU allocation, API endpoints
-**operate** - Display operational commands and current costs
-**troubleshoot** - Systematic diagnostics for common issues
-**cleanup** - Idempotent resource deletion with cost summary
+**discover** - cluster state, GPU availability, costs
+**prereqs** - validate tools, credentials, GPU quota, NGC access
+**deploy** - install NIM with cost guards and cleanup hooks
+**verify** - deployment health, pod status, GPU allocation, API endpoints
+**operate** - operational commands and current costs
+**troubleshoot** - systematic diagnostics for common issues
+**cleanup** - idempotent resource deletion with cost summary
 
 ### Cost Guards
 
-All expensive operations require confirmation:
+Expensive operations require confirmation:
 
 ```bash
 # Dev environment - prompts if cost > $5
@@ -144,7 +144,7 @@ COST_THRESHOLD_USD=10 make install
 
 ### Idempotency
 
-Every operation is safe to re-run:
+Operations are safe to re-run:
 
 ```bash
 make install  # First run: creates resources
@@ -160,7 +160,7 @@ Automatic cleanup on failures:
 ```bash
 # If deployment fails at any point
 make install
-# → Cleanup hook automatically triggered
+# → Cleanup hook triggered
 # → Helm release uninstalled
 # → PVCs deleted (unless KEEP_CACHE=yes)
 # → Cost summary displayed
@@ -308,22 +308,22 @@ make troubleshoot
 
 ### Security Hardening
 
-- **seccompProfile: RuntimeDefault** - Mandatory syscall filtering
-- **readOnlyRootFilesystem** - False only where NIM requires write access
-- **runAsNonRoot** - All containers run as UID 1000
+- **seccompProfile: RuntimeDefault** - mandatory syscall filtering
+- **readOnlyRootFilesystem** - false only where NIM requires write access
+- **runAsNonRoot** - all containers run as UID 1000
 - **Dropped capabilities** - ALL capabilities dropped by default
 
 ### High Availability
 
-- **Topology Spread Constraints** - Distributes pods across zones
-- **Pod Disruption Budgets** - Ensures minimum availability during updates
-- **Multi-replica support** - Horizontal scaling with GPU scheduling
+- **Topology Spread Constraints** - distributes pods across zones
+- **Pod Disruption Budgets** - ensures minimum availability during updates
+- **Multi-replica support** - horizontal scaling with GPU scheduling
 
 ### Configuration Management
 
-- **Config checksums** - Automatic pod restarts on config changes
+- **Config checksums** - automatic pod restarts on config changes
 - **External secrets** - OCI Vault integration ready
-- **Environment-based values** - Different settings for dev/staging/prod
+- **Environment-based values** - different settings for dev/staging/prod
 
 ## Troubleshooting
 
@@ -350,7 +350,7 @@ Solution: `export NGC_API_KEY=nvapi-your-key-here`
 
 **Pods stuck pending:**
 ```bash
-make troubleshoot  # Runs comprehensive diagnostics
+make troubleshoot  # runs comprehensive diagnostics
 ```
 
 See [docs/RUNBOOK.md](docs/RUNBOOK.md) for complete troubleshooting guide.

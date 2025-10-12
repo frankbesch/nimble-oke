@@ -45,9 +45,9 @@ fi
 ```
 
 **Test Scenarios:**
-- Dev deployment under $5: Proceeds without prompt
-- Dev deployment over $5: Requires CONFIRM_COST=yes
-- Production deployment: Always requires CONFIRM_COST=yes
+- dev deployment under $5: proceeds without prompt
+- dev deployment over $5: requires CONFIRM_COST=yes
+- production deployment: always requires CONFIRM_COST=yes
 - Custom threshold: Respects COST_THRESHOLD_USD
 
 ### 3. Idempotency Verification

@@ -1,6 +1,6 @@
 # Quick Start - Nimble OKE
 
-Get NVIDIA NIM running in 5 minutes with automated runbooks.
+Get NVIDIA NIM running in 5 minutes with runbook automation.
 
 ## Prerequisites
 
@@ -27,10 +27,10 @@ make install
 ```
 
 This executes:
-1. Discovery (cluster state, costs)
-2. Prerequisites check
+1. discovery (cluster state, costs)
+2. prerequisites check
 3. NIM deployment with cost guards
-4. Automatic verification
+4. automatic verification
 
 ## Verify Deployment
 
@@ -39,9 +39,9 @@ make verify
 ```
 
 Checks:
-- Pods running and ready
+- pods running and ready
 - GPU allocated correctly
-- Service endpoints active
+- service endpoints active
 - API health responding
 
 ## Test Inference
@@ -53,8 +53,8 @@ make operate
 Shows operational commands including:
 - API endpoints
 - curl test commands
-- Log viewing
-- Resource monitoring
+- log viewing
+- resource monitoring
 
 Copy and run the curl commands to test inference.
 
@@ -124,15 +124,15 @@ CONFIRM_COST=yes make install
 
 **Prerequisites fail:**
 ```bash
-make prereqs  # See what's missing
+make prereqs  # see what's missing
 export NGC_API_KEY=nvapi-xxx
-make prereqs  # Check again
+make prereqs  # check again
 ```
 
 **Deployment hangs:**
 ```bash
-make troubleshoot  # Run diagnostics
-make logs          # Check pod logs
+make troubleshoot  # run diagnostics
+make logs          # check pod logs
 ```
 
 ## Next Steps
@@ -144,17 +144,17 @@ make logs          # Check pod logs
 ## All Makefile Targets
 
 ```bash
-make help          # Show this help
-make discover      # Discover cluster state
-make prereqs       # Check prerequisites
-make install       # Deploy NIM
-make verify        # Verify deployment
-make operate       # Show operations
-make troubleshoot  # Run diagnostics
-make cleanup       # Cleanup NIM
-make all           # Complete workflow
-make status        # Quick status
-make logs          # View logs
+make help          # show this help
+make discover      # discover cluster state
+make prereqs       # check prerequisites
+make install       # deploy NIM
+make verify        # verify deployment
+make operate       # show operations
+make troubleshoot  # run diagnostics
+make cleanup       # cleanup NIM
+make all           # complete workflow
+make status        # quick status
+make logs          # view logs
 make validate      # prereqs + verify
 ```
 

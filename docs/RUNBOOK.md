@@ -7,11 +7,11 @@ Complete operational guide for NVIDIA NIM smoke testing on OCI OKE.
 **discover → prereqs → deploy → verify → operate → troubleshoot → cleanup**
 
 Every operation follows this structured pattern with:
-- Idempotent execution (safe to re-run)
-- Cost guards before expensive ops
-- Automatic cleanup on failure
-- Structured logging with [NIM-OKE] prefix
-- Session cost tracking
+- idempotent execution (safe to re-run)
+- cost guards before expensive ops
+- automatic cleanup on failure
+- structured logging with [NIM-OKE] prefix
+- session cost tracking
 
 ## Phase 1: Discover
 
@@ -29,23 +29,23 @@ make discover
 
 1. **Cluster Information**
    - Kubernetes version
-   - Total nodes and GPU nodes
-   - Default StorageClass detection
+   - total nodes and GPU nodes
+   - default StorageClass detection
 
 2. **GPU Resources**
    - GPU node inventory
-   - Capacity and allocatable GPUs
+   - capacity and allocatable GPUs
    - GPU product type (NVIDIA-A10)
 
 3. **Existing Deployments**
-   - Current NIM deployments
-   - Running pods and services
-   - Resource allocation
+   - current NIM deployments
+   - running pods and services
+   - resource allocation
 
 4. **Cost Estimation**
-   - Current hourly cost
-   - Daily/monthly projections
-   - Smoke test cost estimate
+   - current hourly cost
+   - daily/monthly projections
+   - smoke test cost estimate
 
 ### Expected Output
 
@@ -74,10 +74,10 @@ Current cluster cost (with 1 GPU node(s)):
 
 ### When to Run
 
-- Before any deployment
-- After cluster changes
-- When troubleshooting resource issues
-- To check current costs
+- before any deployment
+- after cluster changes
+- when troubleshooting resource issues
+- to check current costs
 
 ## Phase 2: Prerequisites
 
