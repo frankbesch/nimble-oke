@@ -695,7 +695,7 @@ API slow or failing
 # 1. Set credentials
 export NGC_API_KEY=nvapi-xxxxxxxxxxxxxxx
 export OCI_COMPARTMENT_ID=ocid1.compartment.oc1...
-export OCI_REGION=us-ashburn-1
+export OCI_REGION=us-phoenix-1
 
 # 2. Discover current state
 make discover

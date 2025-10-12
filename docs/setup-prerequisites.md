@@ -374,7 +374,7 @@ Once all prerequisites are complete:
 2. ✅ Export environment variables:
    ```bash
    export OCI_COMPARTMENT_ID=ocid1.compartment.oc1...
-   export OCI_REGION=us-ashburn-1
+   export OCI_REGION=us-phoenix-1
    export NGC_API_KEY=nvapi-...
    ```
 3. ✅ Proceed to [Deployment Guide](deployment-guide.md)

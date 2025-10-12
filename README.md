@@ -9,13 +9,13 @@ Ultra-fast, cost-efficient smoke testing platform for validating GPU-accelerated
 Validates NVIDIA NIM deployments in minutes, not hours. Purpose-built for rapid smoke testing with minimal cost:
 
 - **5-minute deployment** with automated runbook workflow
-- **$12 complete smoke test** (provision to teardown)
+- **$11 complete smoke test** (provision to teardown)
 - **Idempotent operations** safe to re-run without side effects
 - **Cost guards** prevent surprise bills with ENVIRONMENT and CONFIRM_COST checks
 - **Automatic cleanup** on failure via trap hooks
 - **Production-grade patterns** from first deployment
 
-## Platform Engineering Enhancements
+## Platform Features
 
 - **Runbook-Driven Workflow** - Structured discover → prereqs → deploy → verify → operate → troubleshoot → cleanup
 - **Cost Guards** - ENVIRONMENT and CONFIRM_COST checks before expensive operations
@@ -35,7 +35,7 @@ Validates NVIDIA NIM deployments in minutes, not hours. Purpose-built for rapid 
 # Set credentials
 export NGC_API_KEY=nvapi-your-key-here
 export OCI_COMPARTMENT_ID=ocid1.compartment.oc1...
-export OCI_REGION=us-ashburn-1
+export OCI_REGION=us-phoenix-1
 ```
 
 ### Option 1: Complete Smoke Test (Cluster + NIM)
@@ -380,5 +380,3 @@ For issues or improvements, please refer to the upstream repositories:
 **Remember:** Always run `make cleanup` after testing to stop charges.
 
 ---
-
-**Note:** GitHub repository URL is https://github.com/frankbesch/nimble-oke
