@@ -7,6 +7,7 @@ readonly ENVIRONMENT="${ENVIRONMENT:-dev}"
 readonly COST_THRESHOLD_USD="${COST_THRESHOLD_USD:-5}"
 readonly CONFIRM_COST="${CONFIRM_COST:-}"
 readonly DEBUG="${DEBUG:-false}"
+readonly DRY_RUN="${DRY_RUN:-false}"
 
 # Session tracking
 readonly SESSION_DIR="${HOME}/.nimble-oke/sessions"
@@ -31,6 +32,16 @@ log_success() {
 debug() {
     if [[ "$DEBUG" == "true" ]]; then
         echo "${LOG_PREFIX}[DEBUG] $*" >&2
+    fi
+}
+
+dry_run() {
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log_info "[DRY-RUN] Would execute: $*"
+        return 0
+    else
+        eval "$@"
+        return $?
     fi
 }
 
@@ -425,6 +436,160 @@ get_oci_tags_file() {
 EOF
     
     echo "$tags_file"
+}
+
+# Enhanced resource validation functions
+validate_gpu_quota() {
+    local shape="${1:-VM.GPU.A10.1}"
+    local required_count="${2:-1}"
+    
+    debug "Validating GPU quota for $shape (required: $required_count)"
+    
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log_info "[DRY-RUN] Would check GPU quota for $shape"
+        return 0
+    fi
+    
+    local available_quota
+    available_quota=$(get_gpu_service_limit "$shape")
+    
+    if [[ "$available_quota" -ge "$required_count" ]]; then
+        log_success "GPU quota available: $available_quota $shape"
+        return 0
+    else
+        log_error "GPU quota insufficient: $available_quota available, $required_count required"
+        return 1
+    fi
+}
+
+validate_storage_class() {
+    local storage_class="${1:-oci-bv}"
+    
+    debug "Validating storage class: $storage_class"
+    
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log_info "[DRY-RUN] Would validate storage class: $storage_class"
+        return 0
+    fi
+    
+    if kubectl get storageclass "$storage_class" &>/dev/null; then
+        log_success "Storage class available: $storage_class"
+        return 0
+    else
+        log_error "Storage class not found: $storage_class"
+        log_info "Available storage classes:"
+        kubectl get storageclass 2>/dev/null || log_warn "Unable to list storage classes"
+        return 1
+    fi
+}
+
+validate_network_connectivity() {
+    local target="${1:-kubernetes.default.svc.cluster.local}"
+    local port="${2:-443}"
+    
+    debug "Validating network connectivity to $target:$port"
+    
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log_info "[DRY-RUN] Would test connectivity to $target:$port"
+        return 0
+    fi
+    
+    # Test from a pod if available, otherwise skip
+    local test_pod
+    test_pod=$(kubectl get pods --field-selector=status.phase=Running --no-headers -o custom-columns=":metadata.name" | head -1 2>/dev/null || echo "")
+    
+    if [[ -n "$test_pod" ]]; then
+        if kubectl exec "$test_pod" -- nc -z "$target" "$port" &>/dev/null; then
+            log_success "Network connectivity verified: $target:$port"
+            return 0
+        else
+            log_warn "Network connectivity test failed: $target:$port"
+            return 1
+        fi
+    else
+        log_warn "No running pods available for network connectivity test"
+        return 0
+    fi
+}
+
+validate_ngc_api_connectivity() {
+    debug "Validating NGC API connectivity"
+    
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log_info "[DRY-RUN] Would test NGC API connectivity"
+        return 0
+    fi
+    
+    if [[ -z "${NGC_API_KEY:-}" ]]; then
+        log_error "NGC_API_KEY not set for connectivity test"
+        return 1
+    fi
+    
+    # Test NGC API connectivity
+    local ngc_test_url="https://api.ngc.nvidia.com/v2/auth/status"
+    if curl -s -H "Authorization: Bearer $NGC_API_KEY" "$ngc_test_url" &>/dev/null; then
+        log_success "NGC API connectivity verified"
+        return 0
+    else
+        log_warn "NGC API connectivity test failed"
+        return 1
+    fi
+}
+
+validate_oci_service_limits() {
+    local service="${1:-compute}"
+    
+    debug "Validating OCI service limits for $service"
+    
+    if [[ "$DRY_RUN" == "true" ]]; then
+        log_info "[DRY-RUN] Would check OCI service limits for $service"
+        return 0
+    fi
+    
+    if ! check_oci_credentials; then
+        log_warn "Cannot validate service limits (OCI not configured)"
+        return 1
+    fi
+    
+    local limits
+    limits=$(oci limits value list --service-name "$service" --compartment-id "${OCI_COMPARTMENT_ID:-}" --all 2>/dev/null || echo "")
+    
+    if [[ -n "$limits" ]]; then
+        log_success "OCI service limits accessible for $service"
+        return 0
+    else
+        log_warn "Unable to retrieve OCI service limits for $service"
+        return 1
+    fi
+}
+
+get_gpu_hourly_rate() {
+    local shape="${1:-VM.GPU.A10.1}"
+    
+    # GPU hourly rates (USD per hour)
+    case "$shape" in
+        VM.GPU.A10.1|BM.GPU.A10.1)
+            echo "1.75"
+            ;;
+        VM.GPU3.1|BM.GPU3.1)
+            echo "3.06"
+            ;;
+        VM.GPU3.2|BM.GPU3.2)
+            echo "6.12"
+            ;;
+        VM.GPU3.4|BM.GPU3.4)
+            echo "12.24"
+            ;;
+        VM.GPU3.8|BM.GPU3.8)
+            echo "24.48"
+            ;;
+        *H100*)
+            echo "21.33"
+            ;;
+        *)
+            echo "1.75"  # Default to A10.1 rate
+            ;;
+    esac
 }
 
 check_namespace_exists() {

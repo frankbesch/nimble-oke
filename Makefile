@@ -1,4 +1,4 @@
-.PHONY: help discover prereqs install verify operate troubleshoot cleanup clean all session-init session-summary session-compare
+.PHONY: help discover prereqs install verify operate troubleshoot cleanup clean all session-init session-summary session-compare validate validate-quick validate-cost dry-run test-connectivity cost-simulate cost-scenarios cost-optimization budget-check
 
 SCRIPTS_DIR := scripts
 ENVIRONMENT ?= dev
@@ -24,6 +24,19 @@ help:
 	@echo "Shortcuts:"
 	@echo "  make all             → Run complete workflow (discover→install→verify)"
 	@echo "  make clean           → Alias for cleanup"
+	@echo ""
+	@echo "Pre-execution Validation:"
+	@echo "  make validate        → Run comprehensive validation"
+	@echo "  make validate-quick  → Run quick validation (dry-run mode)"
+	@echo "  make validate-cost   → Run cost validation with custom params"
+	@echo "  make dry-run         → Simulate deployment without costs"
+	@echo "  make test-connectivity → Test network and API connectivity"
+	@echo ""
+	@echo "Cost Analysis:"
+	@echo "  make cost-simulate   → Run detailed cost simulation"
+	@echo "  make cost-scenarios  → Show cost scenarios table"
+	@echo "  make cost-optimization → Show cost optimization tips"
+	@echo "  make budget-check    → Validate against budget limits"
 	@echo ""
 	@echo "Session Tracking:"
 	@echo "  make session-init    → Initialize session tracking"
@@ -99,14 +112,53 @@ session-compare:
 	@echo "[NIM-OKE] Comparing sessions:"
 	@$(SCRIPTS_DIR)/session-tracker.sh compare $(HOME)/.nimble-oke/sessions/current.json
 
+# Pre-execution validation targets
+validate:
+	@echo "[NIM-OKE] Running comprehensive validation..."
+	@$(SCRIPTS_DIR)/pre-execution-validation.sh
+
+validate-quick:
+	@echo "[NIM-OKE] Running quick validation..."
+	@DRY_RUN=true $(SCRIPTS_DIR)/pre-execution-validation.sh
+
+validate-cost:
+	@echo "[NIM-OKE] Running cost validation..."
+	@$(SCRIPTS_DIR)/pre-execution-validation.sh $(DURATION) $(GPU_COUNT)
+
+dry-run:
+	@echo "[NIM-OKE] Running dry-run simulation..."
+	@DRY_RUN=true $(SCRIPTS_DIR)/pre-execution-validation.sh
+	@echo ""
+	@echo "[NIM-OKE] Dry-run complete - no actual deployment performed"
+
+test-connectivity:
+	@echo "[NIM-OKE] Testing connectivity..."
+	@$(SCRIPTS_DIR)/pre-execution-validation.sh
+
+cost-simulate:
+	@echo "[NIM-OKE] Running cost simulation..."
+	@$(SCRIPTS_DIR)/cost-simulation.sh
+
+cost-scenarios:
+	@echo "[NIM-OKE] Showing cost scenarios..."
+	@$(SCRIPTS_DIR)/cost-simulation.sh 0 0 0 scenarios
+
+cost-optimization:
+	@echo "[NIM-OKE] Showing cost optimization tips..."
+	@$(SCRIPTS_DIR)/cost-simulation.sh 0 0 0 optimization
+
+budget-check:
+	@echo "[NIM-OKE] Checking budget..."
+	@$(SCRIPTS_DIR)/cost-simulation.sh $(DURATION) $(GPU_COUNT) $(GPU_SHAPE) validate
+
 test-inference:
 	@echo "[NIM-OKE] Testing inference API..."
 	@$(SCRIPTS_DIR)/verify.sh
 	@echo ""
 	@echo "Run API tests manually or check 'make operate' for commands"
 
-validate: prereqs verify
-	@echo "[NIM-OKE] Validation complete"
+validate-deployment: prereqs verify
+	@echo "[NIM-OKE] Deployment validation complete"
 
 status:
 	@echo "[NIM-OKE] Current deployment status..."

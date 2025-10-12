@@ -176,6 +176,17 @@ check_nvidia_device_plugin() {
 main() {
     log_info "Checking prerequisites..."
     
+    # Enhanced validation if available
+    if [[ -x "${SCRIPT_DIR}/pre-execution-validation.sh" ]]; then
+        log_info "Running enhanced validation..."
+        if "${SCRIPT_DIR}/pre-execution-validation.sh" 5 1; then
+            log_success "Enhanced validation passed"
+            return 0
+        else
+            log_warn "Enhanced validation failed, falling back to basic checks"
+        fi
+    fi
+    
     local failed=0
     
     echo ""
