@@ -1,6 +1,6 @@
 # Nimble OKE - Complete Artifact Inventory
 
-**Status:** All artifacts production-ready
+**Status:** All artifacts ready for initial testing (v0.1.0-dev) - under active development
 
 ## Project Files (24 total)
 

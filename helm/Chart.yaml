@@ -2,8 +2,8 @@ apiVersion: v2
 name: nvidia-nim
 description: NVIDIA NIM (NVIDIA Inference Microservices) deployment for OKE with Meta Llama model
 type: application
-version: 1.0.0
-appVersion: "1.0.0"
+version: 0.1.0-dev
+appVersion: "0.1.0-dev"
 
 keywords:
   - nvidia

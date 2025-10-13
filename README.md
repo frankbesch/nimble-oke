@@ -1,8 +1,33 @@
 # Nimble OKE - Rapid Smoke Testing for NVIDIA NIM on OCI
 
+> **⚠️ Development Status:** First version (v0.1.0-dev) - Under active development  
+> **🚧 Testing Required:** All configurations need validation with actual GPU quota
+
 GPU-accelerated, cost-efficient smoke testing platform for validating AI inference microservices on Oracle Cloud Infrastructure.
 
 **Based on:** [NVIDIA nim-deploy Oracle OKE Reference](https://github.com/NVIDIA/nim-deploy/tree/main/cloud-service-providers/oracle/oke)
+
+## 🚧 Development Status
+
+**Current Version:** v0.1.0-dev (First version under active development)
+
+### What's Ready:
+- ✅ **Complete testing framework** - All simulation and optimization scripts
+- ✅ **Environment configuration** - Chicago region, compartment, budget controls  
+- ✅ **NGC API key validation** - Set and validated
+- ✅ **Cost simulation** - $17.50 deployment within $50 budget
+- ✅ **Security optimization** - NIM-compatible security settings
+- ✅ **Documentation** - Comprehensive technical analysis and guides
+
+### What Needs Testing:
+- ⏳ **GPU quota approval** - CAM-247648 (Oracle reviewing)
+- ⏳ **Cluster provisioning** - Cannot provision without GPU quota
+- ⏳ **NIM deployment** - 48min baseline, 12min optimized (simulated)
+- ⏳ **Performance validation** - All timing estimates are simulated
+- ⏳ **Cost validation** - All cost estimates are simulated
+
+### Development Philosophy:
+This is the **first version** of Nimble OKE. All configurations, timing estimates, and cost projections are based on mathematical modeling and simulation. Real-world performance will be validated after GPU quota approval and actual deployment testing.
 
 ## 💡 Nimble OKE vs. OCI Marketplace NIM
 

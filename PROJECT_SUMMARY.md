@@ -1,6 +1,6 @@
 # Project Summary - Nimble OKE
 
-**Status:** Production-Ready Platform Engineering Framework  
+**Status:** First Version - Under Active Development (v0.1.0-dev)  
 **Created:** October 9, 2025  
 **Purpose:** Rapid smoke testing platform for NVIDIA NIM on OCI OKE with cost guards and idempotent operations
 
@@ -13,7 +13,7 @@ Nimble OKE is a platform engineering framework for ultra-fast, cost-efficient sm
 ### Design Philosophy
 
 - **Speed** - deploy and validate in minutes
-- **Cost-Conscious** - complete smoke test for ~$11
+- **Cost-Conscious** - complete smoke test for ~$17.50 (simulated)
 - **Idempotent** - every operation safe to re-run
 - **Fail-Safe** - automatic cleanup on errors
 - **Production Patterns** - enterprise-grade from day one
@@ -158,8 +158,8 @@ docs/api-examples.md           # API usage examples
 | OKE Control Plane | $0.50 |
 | ENHANCED Cluster | $0.50 |
 | Storage (50GB PVC) | $1.50 |
-| LoadBalancer | $1.25 |
-| **Total** | **~$11** |
+| LoadBalancer | $6.25 |
+| **Total** | **~$17.50** |
 
 ### Cost Optimization Features
 
@@ -306,9 +306,9 @@ Prevents indefinite hangs.
 - verification: <1 minute
 - cleanup: 1-2 minutes
 
-**Cost:**
-- smoke test: ~$9-12 (5 hours)
-- hourly: ~$1.85
+**Cost (simulated):**
+- smoke test: ~$17.50 (5 hours)
+- hourly: ~$3.50
 - model cache preservation saves $1.50 per re-deployment
 
 ## Next Steps
