@@ -60,10 +60,10 @@ Based on [NVIDIA NIM Documentation](https://docs.nvidia.com/nim/cosmos/latest/pr
 |-----------|------|-------------|------------|-------|
 | **GPU Compute** | $2.62/hour | $13.10 | $1,890 | Primary cost |
 | **OKE Cluster** | $0.10/hour | $0.50 | $72 | Managed K8s |
-| **Block Storage (100GB)** | $0.03/GB/month | ~$1.50 | $3 | Model cache |
+| **Block Storage (200GB)** | $0.03/GB/month | ~$0.25 | $5 | Model cache |
 | **Load Balancer** | ~$1.25/hour | $6.25 | $900 | External access |
 | **Network Egress** | Variable | Minimal | Variable | Model downloads |
-| **Total** | **~$3.97-$4.37/hr** | **~$21.85** | **~$2,865** | **Time-box for testing!** |
+| **Total** | **~$4.02/hr** | **~$20.10** | **~$2,885** | **Time-box for testing!** |
 
 ### GPU Specifications (NVIDIA A10)
 

@@ -304,9 +304,9 @@ annotations:
 |-----------|----------------|
 | VM.GPU.A10.1 | $13.10 |
 | OKE Control | $0.50 |
-| Storage | $1.50 |
-| LoadBalancer | $1.00 |
-| **Total** | **~$21.85** |
+| Storage | $0.25 |
+| LoadBalancer | $6.25 |
+| **Total** | **~$20.10** |
 
 **Result:** Cost estimates accurate
 
