@@ -29,26 +29,6 @@ GPU-accelerated, cost-efficient smoke testing platform for validating AI inferen
 ### Development Philosophy:
 This is the **first version** of Nimble OKE. All configurations, timing estimates, and cost projections are based on mathematical modeling and simulation. Real-world performance will be validated after GPU quota approval and actual deployment testing.
 
-## 💡 Nimble OKE vs. OCI Marketplace NIM
-
-While Oracle Cloud Infrastructure offers a managed NVIDIA NIM solution via its Marketplace, the `nimble-oke` project focuses on a **custom, optimized deployment on OCI Container Engine for Kubernetes (OKE)**. This approach provides:
-
-- **Granular Control**: Full control over Kubernetes cluster configuration, networking, and resource allocation
-- **Deep Technical Insight**: Demonstrates proficiency in Kubernetes, Helm, OCI CLI, and GPU-accelerated AI inference deployment
-- **Optimization Validation**: Allows for direct measurement and refinement of performance and cost optimizations at the infrastructure level
-- **Region Flexibility**: Our solution supports multiple regions (user's choice), whereas the Marketplace offering is currently restricted to `us-ashburn-1`
-- **Learning & Competence**: Showcases advanced technical competence in building and optimizing AI inference platforms
-
-**Key Differences:**
-| Aspect | Nimble OKE | Marketplace NIM |
-|--------|------------|-----------------|
-| Platform | OKE (Kubernetes) | OCI Data Science |
-| Deployment | Custom Helm charts | Terraform stack |
-| Region | Dealer's choice (flexible) | us-ashburn-1 only |
-| Control | Full infrastructure control | Managed service |
-| Cost | $3.50-$17.50 (simulated) | $1/hr per GPU |
-| Purpose | Optimizing & practicing NIM on OKE deployment | Quick deployment |
-
 ## Purpose
 
 Validates NVIDIA NIM deployments with comprehensive testing framework. Purpose-built for rapid smoke testing:
@@ -417,6 +397,26 @@ make troubleshoot  # runs comprehensive diagnostics
 ```
 
 See [docs/RUNBOOK.md](docs/RUNBOOK.md) for complete troubleshooting guide.
+
+## 💡 Nimble OKE vs. OCI Marketplace NIM
+
+While Oracle Cloud Infrastructure offers a managed NVIDIA NIM solution via its Marketplace, the `nimble-oke` project focuses on a **custom, optimized deployment on OCI Container Engine for Kubernetes (OKE)**. This approach provides:
+
+- **Granular Control**: Full control over Kubernetes cluster configuration, networking, and resource allocation
+- **Deep Technical Insight**: Demonstrates proficiency in Kubernetes, Helm, OCI CLI, and GPU-accelerated AI inference deployment
+- **Optimization Validation**: Allows for direct measurement and refinement of performance and cost optimizations at the infrastructure level
+- **Region Flexibility**: Our solution supports multiple regions (user's choice), whereas the Marketplace offering is currently restricted to `us-ashburn-1`
+- **Learning & Competence**: Showcases advanced technical competence in building and optimizing AI inference platforms
+
+**Key Differences:**
+| Aspect | Nimble OKE | Marketplace NIM |
+|--------|------------|-----------------|
+| Platform | OKE (Kubernetes) | OCI Data Science |
+| Deployment | Custom Helm charts | Terraform stack |
+| Region | Dealer's choice (flexible) | us-ashburn-1 only |
+| Control | Full infrastructure control | Managed service |
+| Cost | $3.50-$17.50 (simulated) | $1/hr per GPU |
+| Purpose | Optimizing & practicing NIM on OKE deployment | Quick deployment |
 
 ## Additional Resources
 
