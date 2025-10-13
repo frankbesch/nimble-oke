@@ -22,7 +22,7 @@ model:
   cache:
     enabled: true
     storageClass: "oci-bv"
-    size: "50Gi"
+    size: "200Gi"  # Recommended for model caching and avoiding resource constraints
 
 resources:
   # NVIDIA NIM Requirements: 40GB RAM minimum, 90GB recommended

@@ -398,7 +398,8 @@ estimate_hourly_cost() {
     local gpu_hourly="2.62"
     local control_plane="0.10"
     local lb_cost="0.25"
-    echo "($gpu_hourly * $gpu_count) + $control_plane + $lb_cost" | bc -l
+    local storage_cost="0.05"  # 200GB at $0.03/GB/month = ~$0.05/hour
+    echo "($gpu_hourly * $gpu_count) + $control_plane + $lb_cost + $storage_cost" | bc -l
 }
 
 estimate_deployment_cost() {
