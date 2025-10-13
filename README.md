@@ -113,16 +113,56 @@ make cleanup
 
 ## Prerequisites
 
-### Required Accounts & Resources
+### OCI Requirements
 
 | Component | Requirement | Notes |
 |-----------|-------------|-------|
 | **OCI Account** | [Sign up](https://www.oracle.com/cloud/free/) | **Does NOT work on OCI Free tier** - requires paid account |
 | **GPU Quota** | VM.GPU.A10.1 (minimum 1 GPU) | Request via OCI Console → Service Limits → Compute |
-| **NVIDIA NGC Account** | [Register](https://catalog.ngc.nvidia.com/) | Free account required for NIM container access |
+| **OCI Compartment** | OCID required | For resource organization and IAM policies |
+| **Region Support** | Any region with A10 availability | Chicago, Phoenix, Ashburn recommended |
+
+### NVIDIA NIM Requirements (Official)
+
+| Component | Minimum Requirement | Recommended | Notes |
+|-----------|---------------------|-------------|-------|
+| **GPU** | NVIDIA A10 (24GB VRAM) | A100 (40GB/80GB) | Ampere architecture or later required |
+| **GPU Memory** | 24GB VRAM | 40GB+ VRAM | For Llama 3.1 8B model |
+| **CPU Architecture** | x86_64 | x86_64 | ARM not supported |
+| **System Memory (RAM)** | 40GB | 90GB+ | **Critical**: NVIDIA recommends 90GB; minimum 40GB for small models |
+| **Disk Space** | 100GB | 200GB+ | For container images and model cache |
+| **GPU Driver** | NVIDIA 535+ | Latest | Required for CUDA support |
+| **NVIDIA Container Toolkit** | 1.16.2+ | Latest | For GPU access in containers |
+
+### OCI VM.GPU.A10.1 Shape Specifications
+
+The `VM.GPU.A10.1` shape provides:
+
+| Resource | Specification | NIM Compliance |
+|----------|---------------|----------------|
+| **GPU** | 1× NVIDIA A10 (24GB VRAM) | ✅ Meets minimum for Llama 3.1 8B |
+| **vCPUs** | 15 OCPUs | ✅ Exceeds requirements |
+| **Memory** | 240GB RAM | ✅ **Exceeds NVIDIA's 90GB recommendation** |
+| **Network** | 24.6 Gbps | ✅ High-bandwidth for model downloads |
+| **Storage** | 100GB+ block volumes | ✅ Configurable, 100GB+ recommended |
+| **Architecture** | x86_64 (AMD EPYC) | ✅ Compatible |
+| **Hourly Cost** | $1.75/hour | Cost-effective for testing |
+
+### NVIDIA NGC Account
+
+| Component | Requirement | Notes |
+|-----------|-------------|-------|
+| **NGC Account** | [Register](https://catalog.ngc.nvidia.com/) | Free account required for NIM container access |
 | **NGC API Key** | [Generate key](https://ngc.nvidia.com/setup/api-key) | Required for pulling NVIDIA container images |
-| **Memory** | Minimum 8GB RAM | For OCI CLI, kubectl, and local operations |
+| **Model Access** | NGC authentication | Access to `meta/llama-3.1-8b-instruct` model |
+
+### Local Workstation Requirements
+
+| Component | Minimum | Notes |
+|-----------|---------|-------|
+| **Memory** | 8GB RAM | For OCI CLI, kubectl, and local operations |
 | **Storage** | 10GB free space | For container images and temporary files |
+| **Operating System** | macOS/Linux | Windows with WSL2 may work but untested |
 
 ### Required Tools
 
@@ -133,6 +173,16 @@ make cleanup
 | **Helm** | 3.12+ | [Install guide](https://helm.sh/docs/intro/install/) | Kubernetes package management |
 | **jq** | 1.6+ | `brew install jq` (macOS) / `apt install jq` (Ubuntu) | JSON processing |
 | **bc** | Any | Pre-installed on macOS/Linux | Mathematical calculations |
+
+### ⚠️ Critical Requirements
+
+**System Memory**: NVIDIA officially recommends **90GB of RAM** for NIM deployments. The VM.GPU.A10.1 shape on OCI includes **240GB RAM** (15 OCPUs), which exceeds this requirement. Smaller models like Llama 3.1 8B may work with 40GB minimum, but 90GB+ is strongly recommended for production deployments.
+
+**GPU Memory**: The A10 GPU (24GB VRAM) is the minimum for Llama 3.1 8B model. Larger models (70B+) require A100 GPUs with 40GB+ VRAM.
+
+**Disk Space**: The NIM container and model cache require **at least 100GB**. The initial model download can be 50-100GB depending on the model. Plan for 200GB+ for optimal performance with multiple models or caching.
+
+**Software Stack**: OKE automatically provisions nodes with compatible Linux (Oracle Linux 8), NVIDIA drivers (535+), and NVIDIA Container Toolkit (1.16.2+). No manual driver installation required.
 
 ## Cost Breakdown
 
