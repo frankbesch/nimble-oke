@@ -11,7 +11,7 @@ While Oracle Cloud Infrastructure offers a managed NVIDIA NIM solution via its M
 - **Granular Control**: Full control over Kubernetes cluster configuration, networking, and resource allocation
 - **Deep Technical Insight**: Demonstrates proficiency in Kubernetes, Helm, OCI CLI, and GPU-accelerated AI inference deployment
 - **Optimization Validation**: Allows for direct measurement and refinement of performance and cost optimizations at the infrastructure level
-- **Region Flexibility**: Our solution targets `us-chicago-1`, whereas the Marketplace offering is currently restricted to `us-ashburn-1`
+- **Region Flexibility**: Our solution supports multiple regions (user's choice), whereas the Marketplace offering is currently restricted to `us-ashburn-1`
 - **Learning & Competence**: Showcases advanced technical competence in building and optimizing AI inference platforms
 
 **Key Differences:**
@@ -19,10 +19,10 @@ While Oracle Cloud Infrastructure offers a managed NVIDIA NIM solution via its M
 |--------|------------|-----------------|
 | Platform | OKE (Kubernetes) | OCI Data Science |
 | Deployment | Custom Helm charts | Terraform stack |
-| Region | us-chicago-1 | us-ashburn-1 only |
+| Region | Dealer's choice (flexible) | us-ashburn-1 only |
 | Control | Full infrastructure control | Managed service |
 | Cost | $3.50-$17.50 (simulated) | $1/hr per GPU |
-| Purpose | Technical competence demonstration | Quick deployment |
+| Purpose | Optimizing & practicing NIM on OKE deployment | Quick deployment |
 
 ## Purpose
 
