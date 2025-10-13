@@ -181,6 +181,20 @@ docs/api-examples.md           # API usage examples
 - **Extended testing (10 hrs):** ~$20-25
 - **24/7 running:** ~$1,250-1,500/month ⚠️
 
+## System Requirements
+
+### NVIDIA NIM Requirements (Official)
+
+| Component | Minimum | Recommended | OCI VM.GPU.A10.1 |
+|-----------|---------|-------------|------------------|
+| **GPU** | A10 (24GB VRAM) | A100 (40GB/80GB) | ✅ 1× A10 (24GB) |
+| **System Memory** | 40GB RAM | 90GB+ RAM | ✅ 240GB RAM |
+| **Disk Space** | 100GB | 200GB+ | ✅ 100GB+ (configurable) |
+| **GPU Driver** | NVIDIA 535+ | Latest | ✅ Auto-provisioned |
+| **Container Toolkit** | 1.16.2+ | Latest | ✅ Auto-provisioned |
+
+**The VM.GPU.A10.1 shape exceeds all NVIDIA NIM requirements with 240GB RAM (2.6× the 90GB recommendation).**
+
 ## Key Features
 
 ### 1. Runbook-Driven Operations

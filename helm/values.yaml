@@ -25,13 +25,16 @@ model:
     size: "50Gi"
 
 resources:
+  # NVIDIA NIM Requirements: 40GB RAM minimum, 90GB recommended
+  # VM.GPU.A10.1 node provides 240GB RAM (exceeds requirements)
+  # Container requests 24Gi, limits 32Gi (well within node capacity)
   limits:
     nvidia.com/gpu: 1
-    memory: "32Gi"
+    memory: "32Gi"   # 32GB limit (node has 240GB available)
     cpu: "8"
   requests:
     nvidia.com/gpu: 1
-    memory: "24Gi"
+    memory: "24Gi"   # 24GB request (NVIDIA minimum: 40GB node memory)
     cpu: "4"
 
 service:

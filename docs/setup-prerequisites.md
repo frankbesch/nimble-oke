@@ -2,6 +2,44 @@
 
 This guide covers all prerequisites needed before deploying NVIDIA NIM on Oracle Kubernetes Engine.
 
+## System Requirements
+
+### NVIDIA NIM Requirements (Official)
+
+| Component | Minimum | Recommended | Notes |
+|-----------|---------|-------------|-------|
+| **GPU** | NVIDIA A10 (24GB VRAM) | A100 (40GB/80GB) | Ampere architecture or later |
+| **GPU Memory** | 24GB VRAM | 40GB+ VRAM | For Llama 3.1 8B model |
+| **System Memory** | 40GB RAM | 90GB+ RAM | **NVIDIA recommends 90GB** |
+| **Disk Space** | 100GB | 200GB+ | Model cache + container images |
+| **CPU Architecture** | x86_64 | x86_64 | ARM not supported |
+| **GPU Driver** | NVIDIA 535+ | Latest | Auto-provisioned by OKE |
+| **Container Toolkit** | 1.16.2+ | Latest | Auto-provisioned by OKE |
+
+### OCI VM.GPU.A10.1 Shape
+
+The recommended OCI shape for this deployment:
+
+| Resource | Specification | Compliance |
+|----------|---------------|------------|
+| **GPU** | 1× NVIDIA A10 (24GB VRAM) | ✅ Meets Llama 3.1 8B minimum |
+| **vCPUs** | 15 OCPUs | ✅ Exceeds requirements |
+| **Memory** | 240GB RAM | ✅ **Exceeds NVIDIA's 90GB recommendation by 2.6×** |
+| **Network** | 24.6 Gbps | ✅ Fast model downloads |
+| **Storage** | 100GB+ block volumes | ✅ Configurable |
+| **Cost** | $1.75/hour | Cost-effective for testing |
+
+**✅ The VM.GPU.A10.1 shape exceeds all NVIDIA NIM requirements.**
+
+### Local Workstation Requirements
+
+| Component | Minimum | Notes |
+|-----------|---------|-------|
+| **RAM** | 8GB | For OCI CLI, kubectl, local tools |
+| **Disk Space** | 10GB free | For container images, temp files |
+| **OS** | macOS/Linux | Windows WSL2 may work (untested) |
+| **Network** | Stable internet | For OCI API, model downloads |
+
 ## 1. Oracle Cloud Infrastructure (OCI) Account
 
 ### Create OCI Account
