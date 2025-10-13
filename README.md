@@ -15,7 +15,7 @@ GPU-accelerated, cost-efficient smoke testing platform for validating AI inferen
 - ✅ **Complete testing framework** - All simulation and optimization scripts
 - ✅ **Environment configuration** - Chicago region, compartment, budget controls  
 - ✅ **NGC API key validation** - Set and validated
-- ✅ **Cost simulation** - $17.50 deployment within $50 budget
+- ✅ **Cost simulation** - $15.10 deployment within $50 budget
 - ✅ **Security optimization** - NIM-compatible security settings
 - ✅ **Documentation** - Comprehensive technical analysis and guides
 
@@ -48,7 +48,7 @@ Validates NVIDIA NIM deployments with comprehensive testing framework. Purpose-b
 
 - **Mathematical Performance Modeling** - 48min baseline → 12min optimized deployment (70% improvement)
 - **Comprehensive Testing Framework** - Complete simulation without infrastructure costs
-- **Cost Engineering** - $17.50 → $3.50 per iteration optimization (80% cost reduction)
+- **Cost Engineering** - $15.10 → $3.50 per iteration optimization (77% cost reduction)
 - **Failure Pattern Detection** - Proactive troubleshooting for common NIM issues
 - **Rapid Iteration Optimization** - Caching strategies and performance tuning
 - **Security Optimization** - NIM-compatible security settings (seccompProfile disabled for GPU compatibility)
@@ -203,7 +203,7 @@ The `VM.GPU.A10.1` shape provides:
 
 | Strategy | Impact | Implementation |
 |----------|--------|----------------|
-| **Time-boxed testing** | 80% cost reduction | Provision only when validating |
+| **Time-boxed testing** | 77% cost reduction | Provision only when validating |
 | **Automatic cleanup** | Prevents surprise bills | `make cleanup` removes billable resources |
 | **Model caching** | Preserves expensive downloads | PVC preserves models (KEEP_CACHE=yes) |
 | **Cost guards** | Prevents accidental deployments | Confirmation prompts for >$5 operations |
@@ -462,7 +462,7 @@ While Oracle Cloud Infrastructure offers a managed NVIDIA NIM solution via its M
 | Deployment | Custom Helm charts | Terraform stack |
 | Region | Dealer's choice (flexible) | us-ashburn-1 only |
 | Control | Full infrastructure control | Managed service |
-| Cost | $3.50-$17.50 (simulated) | $1/hr per GPU |
+| Cost | $3.50-$15.10 (simulated) | $1/hr per GPU |
 | Purpose | Optimizing & practicing NIM on OKE deployment | Quick deployment |
 
 ## Additional Resources
