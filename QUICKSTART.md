@@ -14,7 +14,7 @@ Get NVIDIA NIM running in 12-48 minutes with runbook automation.
 | **Disk Space** | 100GB | For model cache + containers |
 | **NGC API Key** | Required | [Generate here](https://ngc.nvidia.com/setup/api-key) |
 
-**NVIDIA recommends 90GB RAM** - VM.GPU.A10.1 provides 240GB (2.6× recommendation).
+**NVIDIA recommends 90GB RAM** - VM.GPU.A10.1 provides 240GB (2.6× recommendation). **Cost: $2.62/hour.**
 
 ## Prerequisites
 

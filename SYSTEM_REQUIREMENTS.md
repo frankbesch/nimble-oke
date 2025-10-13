@@ -9,7 +9,7 @@ The **VM.GPU.A10.1** OCI shape **exceeds all NVIDIA NIM requirements** for deplo
 - **240GB RAM** (2.6× NVIDIA's 90GB recommendation)
 - **24GB GPU VRAM** (meets A10 minimum for 8B models)
 - **15 OCPUs** (exceeds compute requirements)
-- **$1.75/hour** (cost-effective for testing and development)
+- **$2.62/hour** (cost-effective for testing and development)
 
 ## NVIDIA NIM Official Requirements
 
@@ -55,12 +55,12 @@ Based on [NVIDIA NIM Documentation](https://docs.nvidia.com/nim/cosmos/latest/pr
 
 | Component | Rate | 5-Hour Test | 24/7 Month | Notes |
 |-----------|------|-------------|------------|-------|
-| **GPU Compute** | $1.75/hour | $8.75 | $1,260 | Primary cost |
+| **GPU Compute** | $2.62/hour | $13.10 | $1,890 | Primary cost |
 | **OKE Cluster** | $0.10/hour | $0.50 | $72 | Managed K8s |
 | **Block Storage (100GB)** | $0.03/GB/month | ~$1.50 | $3 | Model cache |
 | **Load Balancer** | ~$1.25/hour | $6.25 | $900 | External access |
 | **Network Egress** | Variable | Minimal | Variable | Model downloads |
-| **Total** | **~$3.10-$3.50/hr** | **~$17.50** | **~$2,235** | **Time-box for testing!** |
+| **Total** | **~$3.97-$4.37/hr** | **~$21.85** | **~$2,865** | **Time-box for testing!** |
 
 ### GPU Specifications (NVIDIA A10)
 

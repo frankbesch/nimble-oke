@@ -34,7 +34,7 @@ This is the **first version** of Nimble OKE. All configurations, timing estimate
 Validates NVIDIA NIM deployments with comprehensive testing framework. Purpose-built for rapid smoke testing:
 
 - **12-48 minute deployment** (simulated, depending on optimization level)
-- **$3.50-$17.50 complete smoke test** (simulated, depending on duration and optimization)
+- **$4.50-$21.85 complete smoke test** (simulated, depending on duration and optimization)
 - **Idempotent operations** - safe to re-run
 - **Cost guards** - prevent surprise bills
 - **Automatic cleanup** on failure
@@ -91,7 +91,7 @@ make cleanup
 make teardown
 ```
 
-**Time:** 5 hours | **Cost:** ~$17.50 (simulated)
+**Time:** 5 hours | **Cost:** ~$21.85 (simulated)
 
 ### Option 2: Use Existing Cluster
 
@@ -109,7 +109,7 @@ make verify
 make cleanup
 ```
 
-**Time:** 1-2 hours | **Cost:** ~$3.50-$5.00 (simulated)
+**Time:** 1-2 hours | **Cost:** ~$4.50-$6.25 (simulated)
 
 ## Prerequisites
 
@@ -146,7 +146,7 @@ The `VM.GPU.A10.1` shape provides:
 | **Network** | 24.6 Gbps | ✅ High-bandwidth for model downloads |
 | **Storage** | 100GB+ block volumes | ✅ Configurable, 100GB+ recommended |
 | **Architecture** | x86_64 (AMD EPYC) | ✅ Compatible |
-| **Hourly Cost** | $1.75/hour | Cost-effective for testing |
+| **Hourly Cost** | $2.62/hour | Cost-effective for testing |
 
 ### NVIDIA NGC Account
 
@@ -190,12 +190,12 @@ The `VM.GPU.A10.1` shape provides:
 
 | Component | Rate | Duration | Total | Notes |
 |-----------|------|----------|-------|-------|
-| VM.GPU.A10.1 (1 GPU) | $1.75/hr | 5 hours | $8.75 | Primary compute cost |
+| VM.GPU.A10.1 (1 GPU) | $2.62/hr | 5 hours | $13.10 | Primary compute cost |
 | OKE Control Plane | $0.10/hr | 5 hours | $0.50 | Kubernetes management |
 | ENHANCED Cluster | $0.10/hr | 5 hours | $0.50 | Additional cluster features |
 | Block Storage (50GB) | ~$0.03/GB | 50GB | $1.50 | Model storage and cache |
 | Load Balancer | ~$1.25/hr | 5 hours | $6.25 | External access |
-| **Total** | | | **~$17.50** | **Simulated estimate** |
+| **Total** | | | **~$21.85** | **Simulated estimate** |
 
 ### Cost Optimization Strategies
 
@@ -206,7 +206,7 @@ The `VM.GPU.A10.1` shape provides:
 | **Model caching** | Preserves expensive downloads | PVC preserves models (KEEP_CACHE=yes) |
 | **Cost guards** | Prevents accidental deployments | Confirmation prompts for >$5 operations |
 
-**⚠️ WARNING:** 24/7 operation costs ~$1,250-1,500/month. Always run `make cleanup` after testing.
+**⚠️ WARNING:** 24/7 operation costs ~$1,880-2,250/month. Always run `make cleanup` after testing.
 
 ## Runbook Architecture
 

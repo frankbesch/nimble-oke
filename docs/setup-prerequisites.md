@@ -27,7 +27,7 @@ The recommended OCI shape for this deployment:
 | **Memory** | 240GB RAM | ✅ **Exceeds NVIDIA's 90GB recommendation by 2.6×** |
 | **Network** | 24.6 Gbps | ✅ Fast model downloads |
 | **Storage** | 100GB+ block volumes | ✅ Configurable |
-| **Cost** | $1.75/hour | Cost-effective for testing |
+| **Cost** | $2.62/hour | Cost-effective for testing |
 
 **✅ The VM.GPU.A10.1 shape exceeds all NVIDIA NIM requirements.**
 

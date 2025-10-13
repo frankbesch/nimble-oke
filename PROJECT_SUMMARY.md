@@ -15,7 +15,7 @@ Nimble OKE is a platform engineering framework for ultra-fast, cost-efficient sm
 | Principle | Implementation | Benefit |
 |-----------|----------------|---------|
 | **Speed** | Deploy and validate in minutes | Rapid iteration cycles |
-| **Cost-Conscious** | Complete smoke test for ~$17.50 (simulated) | Predictable spending |
+| **Cost-Conscious** | Complete smoke test for ~$21.85 (simulated) | Predictable spending |
 | **Idempotent** | Every operation safe to re-run | No errors on retry |
 | **Fail-Safe** | Automatic cleanup on errors | No resource leaks |
 | **Production Patterns** | Enterprise-grade from day one | Real-world readiness |
@@ -158,12 +158,12 @@ docs/api-examples.md           # API usage examples
 
 | Component | Cost |
 |-----------|------|
-| GPU Node (VM.GPU.A10.1) | $8.75 |
+| GPU Node (VM.GPU.A10.1) | $13.10 |
 | OKE Control Plane | $0.50 |
 | ENHANCED Cluster | $0.50 |
 | Storage (50GB PVC) | $1.50 |
 | LoadBalancer | $6.25 |
-| **Total** | **~$17.50** |
+| **Total** | **~$21.85** |
 
 ### Cost Optimization Features
 
@@ -177,9 +177,9 @@ docs/api-examples.md           # API usage examples
 
 ### Alternative Scenarios
 
-- **Multiple smoke tests (3x):** ~$35-45
-- **Extended testing (10 hrs):** ~$20-25
-- **24/7 running:** ~$1,250-1,500/month ⚠️
+- **Multiple smoke tests (3x):** ~$65-75
+- **Extended testing (10 hrs):** ~$35-45
+- **24/7 running:** ~$1,880-2,250/month ⚠️
 
 ## System Requirements
 
@@ -310,7 +310,7 @@ Prevents indefinite hangs.
 | **Security** | Basic | NIM-optimized (non-root, capabilities, topology disabled) |
 | **Testing Framework** | None | Complete simulation without infrastructure costs |
 | **Performance Optimization** | None | 70% deployment time reduction (48min → 12min) |
-| **Cost Engineering** | None | 80% cost reduction ($17.50 → $3.50 per iteration) |
+| **Cost Engineering** | None | 80% cost reduction ($21.85 → $4.50 per iteration) |
 
 ## Success Metrics
 
@@ -330,8 +330,8 @@ Prevents indefinite hangs.
 - cleanup: 1-2 minutes
 
 **Cost (simulated):**
-- smoke test: ~$17.50 (5 hours)
-- hourly: ~$3.50
+- smoke test: ~$21.85 (5 hours)
+- hourly: ~$4.37
 - model cache preservation saves $1.50 per re-deployment
 
 ## Next Steps

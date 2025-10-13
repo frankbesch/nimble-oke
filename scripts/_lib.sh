@@ -395,7 +395,7 @@ get_cluster_info() {
 
 estimate_hourly_cost() {
     local gpu_count="${1:-1}"
-    local gpu_hourly="1.75"
+    local gpu_hourly="2.62"
     local control_plane="0.10"
     local lb_cost="0.25"
     echo "($gpu_hourly * $gpu_count) + $control_plane + $lb_cost" | bc -l
@@ -569,7 +569,7 @@ get_gpu_hourly_rate() {
     # GPU hourly rates (USD per hour)
     case "$shape" in
         VM.GPU.A10.1|BM.GPU.A10.1)
-            echo "1.75"
+            echo "2.62"
             ;;
         VM.GPU3.1|BM.GPU3.1)
             echo "3.06"
@@ -587,7 +587,7 @@ get_gpu_hourly_rate() {
             echo "21.33"
             ;;
         *)
-            echo "1.75"  # Default to A10.1 rate
+            echo "2.62"  # Default to A10.1 rate
             ;;
     esac
 }

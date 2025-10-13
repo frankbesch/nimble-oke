@@ -115,7 +115,7 @@ show_cost_scenarios() {
         IFS=':' read -r duration gpu_count description <<< "$scenario"
         
         local gpu_cost
-        gpu_cost=$(echo "scale=2; 1.75 * $gpu_count * $duration" | bc -l)
+        gpu_cost=$(echo "scale=2; 2.62 * $gpu_count * $duration" | bc -l)
         local other_costs
         other_costs=$(echo "scale=2; 0.20 * $duration + 1.50 + 1.25 * $duration" | bc -l)
         local total_cost
