@@ -188,6 +188,8 @@ The `VM.GPU.A10.1` shape provides:
 
 ### Smoke Test Run (5 hours)
 
+> **Pricing Note:** Rates are as of December 2024 and subject to change. Volume discounts available for Oracle Universal Credits. See [Oracle IaaS and PaaS Services](https://www.oracle.com/cloud/iaas-paas/) for current pricing.
+
 | Component | Rate | Duration | Total | Notes |
 |-----------|------|----------|-------|-------|
 | VM.GPU.A10.1 (1 GPU) | $2.62/hr | 5 hours | $13.10 | Primary compute cost |
@@ -468,6 +470,8 @@ While Oracle Cloud Infrastructure offers a managed NVIDIA NIM solution via its M
 - **NVIDIA NIM Documentation:** https://docs.nvidia.com/nim/
 - **NVIDIA NGC Catalog:** https://catalog.ngc.nvidia.com/
 - **Oracle OKE Documentation:** https://docs.oracle.com/en-us/iaas/Content/ContEng/home.htm
+- **Oracle IaaS and PaaS Services:** https://www.oracle.com/cloud/iaas-paas/
+- **OCI Cost Estimator:** https://www.oracle.com/cloud/cost-estimator/
 - **Reference Implementation:** https://github.com/NVIDIA/nim-deploy/tree/main/cloud-service-providers/oracle/oke
 - **Complete Runbook:** [docs/RUNBOOK.md](docs/RUNBOOK.md)
 

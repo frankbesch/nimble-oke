@@ -1,7 +1,8 @@
 # System Requirements - NVIDIA NIM on OCI OKE
 
 **Version:** v0.1.0-20251013-dev  
-**Last Updated:** October 13, 2025
+**Last Updated:** October 13, 2025  
+**Pricing Source:** [Oracle IaaS and PaaS Services Highlights](https://www.oracle.com/cloud/iaas-paas/) (December 2024)
 
 ## Executive Summary
 
@@ -52,6 +53,8 @@ Based on [NVIDIA NIM Documentation](https://docs.nvidia.com/nim/cosmos/latest/pr
 | **Architecture** | x86_64 (AMD EPYC) | x86_64 required | ✅ **Compatible** |
 
 ### Cost Structure
+
+> **Note:** All prices are as of December 2024 and are subject to change. Volume discounts may be applicable for Oracle Universal Credits subscriptions. Please contact an Oracle sales representative for an official quote.
 
 | Component | Rate | 5-Hour Test | 24/7 Month | Notes |
 |-----------|------|-------------|------------|-------|
@@ -144,6 +147,18 @@ Based on [NVIDIA NIM Documentation](https://docs.nvidia.com/nim/cosmos/latest/pr
 | **Block Volume storage** | 100GB | 500GB+ | Usually sufficient by default |
 
 **Processing Time:** GPU quota requests typically take 24-48 hours for approval.
+
+### Cost Optimization Options
+
+#### Oracle Universal Credits
+- **Volume Discounts:** Available for Oracle Universal Credits subscriptions
+- **Flexible Billing:** Pay-as-you-go or committed use discounts
+- **Contact Sales:** For official quotes and enterprise pricing
+
+#### Cost Management Tools
+- **OCI Cost Estimator:** [https://www.oracle.com/cloud/cost-estimator/](https://www.oracle.com/cloud/cost-estimator/)
+- **Budget Alerts:** Set up automated cost monitoring
+- **Cost Analysis:** Detailed usage and billing reports
 
 ### Regional Availability
 
@@ -268,6 +283,8 @@ curl -H "Authorization: Bearer $NGC_API_KEY" \
 - **OCI GPU Compute Shapes:** https://docs.oracle.com/en-us/iaas/Content/Compute/References/computeshapes.htm
 - **OCI OKE Documentation:** https://docs.oracle.com/en-us/iaas/Content/ContEng/home.htm
 - **OCI Service Limits:** https://docs.oracle.com/en-us/iaas/Content/General/Concepts/servicelimits.htm
+- **Oracle IaaS and PaaS Services:** https://www.oracle.com/cloud/iaas-paas/
+- **OCI Cost Estimator:** https://www.oracle.com/cloud/cost-estimator/
 
 ### Shape Specifications
 
@@ -277,6 +294,27 @@ curl -H "Authorization: Bearer $NGC_API_KEY" \
 ---
 
 **✅ The VM.GPU.A10.1 shape meets and exceeds all NVIDIA NIM requirements for deploying Llama 3.1 8B Instruct.**
+
+## OCI Deployment Models
+
+Oracle Cloud Infrastructure offers multiple deployment models as referenced in the [Oracle IaaS and PaaS Services Highlights](https://www.oracle.com/cloud/iaas-paas/):
+
+### 1. Oracle-Managed Services (OKE)
+- **Fully Managed:** Oracle manages the Kubernetes control plane
+- **Our Choice:** Nimble OKE uses this model for simplified operations
+- **Benefits:** No infrastructure management, automatic updates, high availability
+
+### 2. Customer-Managed Virtual Machines
+- **Full Control:** Complete control over the compute environment
+- **Use Case:** Custom configurations, specific security requirements
+- **Trade-off:** More operational overhead
+
+### 3. Oracle-Managed Serverless Instances
+- **Serverless:** Pay-per-execution model
+- **Use Case:** Event-driven workloads, batch processing
+- **Limitation:** Not suitable for persistent NIM deployments
+
+**Nimble OKE Strategy:** We use Oracle-managed OKE services combined with customer-managed VM.GPU.A10.1 instances for optimal balance of simplicity and control.
 
 **Next Steps:** See [Setup Prerequisites](docs/setup-prerequisites.md) for detailed deployment instructions.
 
