@@ -12,11 +12,13 @@ Nimble OKE is a platform engineering framework for ultra-fast, cost-efficient sm
 
 ### Design Philosophy
 
-- **Speed** - deploy and validate in minutes
-- **Cost-Conscious** - complete smoke test for ~$17.50 (simulated)
-- **Idempotent** - every operation safe to re-run
-- **Fail-Safe** - automatic cleanup on errors
-- **Production Patterns** - enterprise-grade from day one
+| Principle | Implementation | Benefit |
+|-----------|----------------|---------|
+| **Speed** | Deploy and validate in minutes | Rapid iteration cycles |
+| **Cost-Conscious** | Complete smoke test for ~$17.50 (simulated) | Predictable spending |
+| **Idempotent** | Every operation safe to re-run | No errors on retry |
+| **Fail-Safe** | Automatic cleanup on errors | No resource leaks |
+| **Production Patterns** | Enterprise-grade from day one | Real-world readiness |
 
 ## Project Architecture
 
@@ -68,15 +70,15 @@ scripts/_lib.sh                # Shared library functions
 
 ### Runbook Scripts (7 files)
 
-```
-scripts/discover.sh            # State discovery and cost estimation
-scripts/prereqs.sh             # Prerequisites validation
-scripts/deploy.sh              # NIM deployment with guards
-scripts/verify.sh              # Health verification
-scripts/operate.sh             # Operational commands
-scripts/troubleshoot.sh        # Systematic diagnostics
-scripts/cleanup-nim.sh         # Idempotent cleanup
-```
+| Script | Purpose | Key Features |
+|--------|---------|--------------|
+| `discover.sh` | State discovery and cost estimation | Cluster state, GPU detection, cost projection |
+| `prereqs.sh` | Prerequisites validation | Tool checks, credential validation, quota verification |
+| `deploy.sh` | NIM deployment with guards | Cost guards, cleanup hooks, idempotent operations |
+| `verify.sh` | Health verification | Pod health, GPU allocation, API endpoint testing |
+| `operate.sh` | Operational commands | Status, logs, endpoint URLs, cost tracking |
+| `troubleshoot.sh` | Systematic diagnostics | Failure pattern detection, comprehensive health checks |
+| `cleanup-nim.sh` | Idempotent cleanup | Resource removal, cost summary, cache preservation |
 
 ### Helm Chart (Enhanced)
 
@@ -165,11 +167,13 @@ docs/api-examples.md           # API usage examples
 
 ### Cost Optimization Features
 
-- pre-deployment cost estimation
-- cost guard confirmation workflow
-- session cost tracking
-- automatic cleanup verification
-- model cache preservation option (KEEP_CACHE=yes)
+| Feature | Implementation | Benefit |
+|---------|----------------|---------|
+| **Pre-deployment cost estimation** | Cost calculation before operations | Prevents surprise bills |
+| **Cost guard confirmation workflow** | ENVIRONMENT + CONFIRM_COST checks | Prevents accidental deployments |
+| **Session cost tracking** | Duration × hourly rate calculation | Real-time cost awareness |
+| **Automatic cleanup verification** | Cleanup hooks on failure | No resource leaks |
+| **Model cache preservation** | KEEP_CACHE=yes option | Saves expensive model downloads |
 
 ### Alternative Scenarios
 

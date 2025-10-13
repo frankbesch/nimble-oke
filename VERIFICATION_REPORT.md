@@ -20,16 +20,16 @@ Nimble OKE platform engineering framework is complete and validated for rapid sm
 
 **Flow:** discover → prereqs → deploy → verify → operate → troubleshoot → cleanup
 
-| Script | Lines | Features | Status |
-|--------|-------|----------|--------|
-| `_lib.sh` | 250+ | Logging, cost guards, K8s helpers | VALIDATED |
-| `discover.sh` | 120+ | State discovery, GPU detection | VALIDATED |
-| `prereqs.sh` | 180+ | Prerequisites validation | VALIDATED |
-| `deploy.sh` | 150+ | Deployment with guards | VALIDATED |
-| `verify.sh` | 200+ | Health checks | VALIDATED |
-| `operate.sh` | 150+ | Operational commands | VALIDATED |
-| `troubleshoot.sh` | 250+ | Diagnostics | VALIDATED |
-| `cleanup-nim.sh` | 150+ | Idempotent cleanup | VALIDATED |
+| Script | Lines | Features | Status | Validation |
+|--------|-------|----------|--------|------------|
+| `_lib.sh` | 250+ | Logging, cost guards, K8s helpers | ✅ VALIDATED | Syntax + function tests |
+| `discover.sh` | 120+ | State discovery, GPU detection | ✅ VALIDATED | StorageClass + GPU detection |
+| `prereqs.sh` | 180+ | Prerequisites validation | ✅ VALIDATED | Tool + credential checks |
+| `deploy.sh` | 150+ | Deployment with guards | ✅ VALIDATED | Cost guards + cleanup hooks |
+| `verify.sh` | 200+ | Health checks | ✅ VALIDATED | Pod health + API testing |
+| `operate.sh` | 150+ | Operational commands | ✅ VALIDATED | Status + log retrieval |
+| `troubleshoot.sh` | 250+ | Diagnostics | ✅ VALIDATED | Comprehensive diagnostics |
+| `cleanup-nim.sh` | 150+ | Idempotent cleanup | ✅ VALIDATED | Resource removal + cost summary |
 
 ### 2. Cost Guard Implementation
 
@@ -122,14 +122,14 @@ kubectl get nodes \
 
 ### Files Validated
 
-| File | Lines | Purpose | Status |
-|------|-------|---------|--------|
-| README.md | 300+ | Project overview | COMPLETE |
-| QUICKSTART.md | 150+ | Quick start | COMPLETE |
-| PROJECT_SUMMARY.md | 400+ | This file | COMPLETE |
-| docs/RUNBOOK.md | 600+ | Operational guide | COMPLETE |
-| docs/setup-prerequisites.md | 400+ | Setup guide | COMPLETE |
-| docs/api-examples.md | 750+ | API examples | COMPLETE |
+| File | Lines | Purpose | Status | Coverage |
+|------|-------|---------|--------|----------|
+| README.md | 300+ | Project overview | ✅ COMPLETE | All features documented |
+| QUICKSTART.md | 150+ | Quick start | ✅ COMPLETE | Step-by-step guide |
+| PROJECT_SUMMARY.md | 400+ | Platform summary | ✅ COMPLETE | Technical highlights |
+| docs/RUNBOOK.md | 600+ | Operational guide | ✅ COMPLETE | Complete runbook |
+| docs/setup-prerequisites.md | 400+ | Setup guide | ✅ COMPLETE | Prerequisites detailed |
+| docs/api-examples.md | 750+ | API examples | ✅ COMPLETE | Usage examples |
 
 ### Content Verified
 

@@ -12,46 +12,46 @@
 
 ### Runbook Scripts (10 files)
 
-| File | Size | Purpose |
-|------|------|---------|
-| `scripts/_lib.sh` | 8.1K | Shared library (logging, cost guards, K8s helpers) |
-| `scripts/discover.sh` | 3.4K | Cluster state discovery |
-| `scripts/prereqs.sh` | 5.7K | Prerequisites validation |
-| `scripts/deploy.sh` | 4.4K | NIM deployment with cost guards |
-| `scripts/verify.sh` | 6.3K | Health verification |
-| `scripts/operate.sh` | 4.3K | Operational commands |
-| `scripts/troubleshoot.sh` | 8.0K | Diagnostic runbook |
-| `scripts/cleanup-nim.sh` | 5.2K | NIM deployment cleanup |
-| `scripts/provision-cluster.sh` | 7.9K | OKE cluster provisioning |
-| `scripts/teardown-cluster.sh` | 4.4K | Cluster teardown |
+| File | Size | Purpose | Key Functions |
+|------|------|---------|---------------|
+| `scripts/_lib.sh` | 8.1K | Shared library (logging, cost guards, K8s helpers) | cost_guard, log_*, get_gpu_nodes |
+| `scripts/discover.sh` | 3.4K | Cluster state discovery | StorageClass detection, GPU node discovery |
+| `scripts/prereqs.sh` | 5.7K | Prerequisites validation | Tool checks, credential validation |
+| `scripts/deploy.sh` | 4.4K | NIM deployment with cost guards | Helm install/upgrade, cleanup hooks |
+| `scripts/verify.sh` | 6.3K | Health verification | Pod health, API endpoint testing |
+| `scripts/operate.sh` | 4.3K | Operational commands | Status, logs, endpoint URLs |
+| `scripts/troubleshoot.sh` | 8.0K | Diagnostic runbook | Comprehensive diagnostics |
+| `scripts/cleanup-nim.sh` | 5.2K | NIM deployment cleanup | Resource removal, cost summary |
+| `scripts/provision-cluster.sh` | 7.9K | OKE cluster provisioning | Cluster creation, GPU node pools |
+| `scripts/teardown-cluster.sh` | 4.4K | Cluster teardown | Complete cluster deletion |
 
 **Total Scripts:** 57.7K of automation code
 
 ### Helm Chart (8 files)
 
-| File | Lines | Purpose |
-|------|-------|---------|
-| `helm/Chart.yaml` | 30 | Chart metadata |
-| `helm/values.yaml` | 175 | Configuration (enhanced with HA + security) |
-| `helm/templates/_helpers.tpl` | 62 | Template helpers |
-| `helm/templates/deployment.yaml` | 95 | Deployment with checksums, topology spread |
-| `helm/templates/service.yaml` | 20 | LoadBalancer service |
-| `helm/templates/secret.yaml` | 20 | NGC credentials |
-| `helm/templates/pvc.yaml` | 17 | Persistent volume claim |
-| `helm/templates/serviceaccount.yaml` | 13 | Service account |
+| File | Lines | Purpose | Key Features |
+|------|-------|---------|--------------|
+| `helm/Chart.yaml` | 30 | Chart metadata | Version, app info, dependencies |
+| `helm/values.yaml` | 175 | Configuration (enhanced with HA + security) | Security contexts, topology spread |
+| `helm/templates/_helpers.tpl` | 62 | Template helpers | Label generation, checksum functions |
+| `helm/templates/deployment.yaml` | 95 | Deployment with checksums, topology spread | Config checksums, GPU affinity |
+| `helm/templates/service.yaml` | 20 | LoadBalancer service | External access, port configuration |
+| `helm/templates/secret.yaml` | 20 | NGC credentials | NGC API key management |
+| `helm/templates/pvc.yaml` | 17 | Persistent volume claim | Model storage, cache preservation |
+| `helm/templates/serviceaccount.yaml` | 13 | Service account | RBAC permissions |
 
 **Total Helm:** ~430 lines
 
 ### Documentation (6 files)
 
-| File | Lines | Purpose |
-|------|-------|---------|
-| `README.md` | 360+ | Project overview (rebranded to Nimble OKE) |
-| `QUICKSTART.md` | 160+ | 5-minute quick start |
-| `PROJECT_SUMMARY.md` | 420+ | Platform engineering summary |
-| `docs/RUNBOOK.md` | 670+ | Complete operational runbook |
-| `docs/setup-prerequisites.md` | 410+ | Prerequisites setup guide |
-| `docs/api-examples.md` | 750+ | API usage examples |
+| File | Lines | Purpose | Content Type |
+|------|-------|---------|--------------|
+| `README.md` | 360+ | Project overview (rebranded to Nimble OKE) | Overview, quick start, troubleshooting |
+| `QUICKSTART.md` | 160+ | 5-minute quick start | Step-by-step deployment guide |
+| `PROJECT_SUMMARY.md` | 420+ | Platform engineering summary | Technical highlights, architecture |
+| `docs/RUNBOOK.md` | 670+ | Complete operational runbook | Comprehensive operational guide |
+| `docs/setup-prerequisites.md` | 410+ | Prerequisites setup guide | Tool installation, account setup |
+| `docs/api-examples.md` | 750+ | API usage examples | NIM API usage, code samples |
 
 **Total Docs:** 2,770+ lines
 

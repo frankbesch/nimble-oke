@@ -113,42 +113,50 @@ make cleanup
 
 ## Prerequisites
 
-### Required
+### Required Accounts & Resources
 
-- **OCI Account** - [Sign up](https://www.oracle.com/cloud/free/)
-- **GPU Quota** - VM.GPU.A10.1 (minimum 1 GPU)
-- **NVIDIA NGC Account** - [Register](https://catalog.ngc.nvidia.com/)
-- **NGC API Key** - [Generate key](https://ngc.nvidia.com/setup/api-key)
+| Component | Requirement | Notes |
+|-----------|-------------|-------|
+| **OCI Account** | [Sign up](https://www.oracle.com/cloud/free/) | **Does NOT work on OCI Free tier** - requires paid account |
+| **GPU Quota** | VM.GPU.A10.1 (minimum 1 GPU) | Request via OCI Console → Service Limits → Compute |
+| **NVIDIA NGC Account** | [Register](https://catalog.ngc.nvidia.com/) | Free account required for NIM container access |
+| **NGC API Key** | [Generate key](https://ngc.nvidia.com/setup/api-key) | Required for pulling NVIDIA container images |
+| **Memory** | Minimum 8GB RAM | For OCI CLI, kubectl, and local operations |
+| **Storage** | 10GB free space | For container images and temporary files |
 
-### Tools
+### Required Tools
 
-- OCI CLI ([install](https://docs.oracle.com/en-us/iaas/Content/API/SDKDocs/cliinstall.htm))
-- kubectl ([install](https://kubernetes.io/docs/tasks/tools/))
-- Helm 3+ ([install](https://helm.sh/docs/intro/install/))
-- jq ([install](https://stedolan.github.io/jq/download/))
-- bc (pre-installed on macOS/Linux)
+| Tool | Version | Install Command | Purpose |
+|------|---------|-----------------|---------|
+| **OCI CLI** | Latest | [Install guide](https://docs.oracle.com/en-us/iaas/Content/API/SDKDocs/cliinstall.htm) | OCI resource management |
+| **kubectl** | 1.28+ | [Install guide](https://kubernetes.io/docs/tasks/tools/) | Kubernetes cluster interaction |
+| **Helm** | 3.12+ | [Install guide](https://helm.sh/docs/intro/install/) | Kubernetes package management |
+| **jq** | 1.6+ | `brew install jq` (macOS) / `apt install jq` (Ubuntu) | JSON processing |
+| **bc** | Any | Pre-installed on macOS/Linux | Mathematical calculations |
 
 ## Cost Breakdown
 
 ### Smoke Test Run (5 hours)
 
-| Component | Rate | Duration | Total |
-|-----------|------|----------|-------|
-| VM.GPU.A10.1 (1 GPU) | $1.75/hr | 5 hours | $8.75 |
-| OKE Control Plane | $0.10/hr | 5 hours | $0.50 |
-| ENHANCED Cluster | $0.10/hr | 5 hours | $0.50 |
-| Block Storage (50GB) | ~$0.03/GB | 50GB | $1.50 |
-| Load Balancer | ~$1.25/hr | 5 hours | $6.25 |
-| **Total** | | | **~$17.50** |
+| Component | Rate | Duration | Total | Notes |
+|-----------|------|----------|-------|-------|
+| VM.GPU.A10.1 (1 GPU) | $1.75/hr | 5 hours | $8.75 | Primary compute cost |
+| OKE Control Plane | $0.10/hr | 5 hours | $0.50 | Kubernetes management |
+| ENHANCED Cluster | $0.10/hr | 5 hours | $0.50 | Additional cluster features |
+| Block Storage (50GB) | ~$0.03/GB | 50GB | $1.50 | Model storage and cache |
+| Load Balancer | ~$1.25/hr | 5 hours | $6.25 | External access |
+| **Total** | | | **~$17.50** | **Simulated estimate** |
 
-### Cost Optimization
+### Cost Optimization Strategies
 
-- **Time-boxed testing** - provision only when validating
-- **Automatic cleanup** - `make cleanup` removes billable resources
-- **Model caching** - PVC preserves models between tests (KEEP_CACHE=yes)
-- **Cost guards** - prevent accidental production deployments
+| Strategy | Impact | Implementation |
+|----------|--------|----------------|
+| **Time-boxed testing** | 80% cost reduction | Provision only when validating |
+| **Automatic cleanup** | Prevents surprise bills | `make cleanup` removes billable resources |
+| **Model caching** | Preserves expensive downloads | PVC preserves models (KEEP_CACHE=yes) |
+| **Cost guards** | Prevents accidental deployments | Confirmation prompts for >$5 operations |
 
-**WARNING:** 24/7 operation costs ~$1,250-1,500/month. Always run `make cleanup` after testing.
+**⚠️ WARNING:** 24/7 operation costs ~$1,250-1,500/month. Always run `make cleanup` after testing.
 
 ## Runbook Architecture
 
@@ -274,46 +282,41 @@ nimble-oke/
 
 ## Makefile Targets
 
-### Cluster Lifecycle
+### Primary Operations
 
-```bash
-make provision     # Provision OKE cluster with GPU nodes
-make teardown      # Teardown entire OKE cluster
-```
+| Command | Purpose | Cost Guard | Duration |
+|---------|---------|------------|----------|
+| `make provision` | Provision OKE cluster with GPU nodes | ✅ Yes | ~15min |
+| `make teardown` | Teardown entire OKE cluster | ✅ Yes | ~10min |
+| `make discover` | Discover cluster state and costs | ❌ No | ~30sec |
+| `make prereqs` | Validate prerequisites | ❌ No | ~1min |
+| `make install` | Deploy NIM (discover → prereqs → deploy) | ✅ Yes | ~12-48min |
+| `make verify` | Verify deployment health | ❌ No | ~2min |
+| `make operate` | Show operational commands | ❌ No | ~30sec |
+| `make troubleshoot` | Run diagnostics | ❌ No | ~3min |
+| `make cleanup` | Remove NIM deployment | ❌ No | ~2min |
 
-### NIM Deployment Runbook
+### Shortcuts & Utilities
 
-```bash
-make discover      # Discover cluster state and costs
-make prereqs       # Validate prerequisites
-make install       # Deploy NIM (discover → prereqs → deploy)
-make verify        # Verify deployment health
-make operate       # Show operational commands
-make troubleshoot  # Run diagnostics
-make cleanup       # Remove NIM deployment
-```
-
-### Shortcuts
-
-```bash
-make all           # Complete workflow (discover → install → verify)
-make clean         # Alias for cleanup
-make help          # Show all targets
-make status        # Quick deployment status
-make logs          # Fetch recent logs
-```
+| Command | Purpose | Includes |
+|---------|---------|----------|
+| `make all` | Complete workflow | discover → install → verify |
+| `make clean` | Alias for cleanup | Same as make cleanup |
+| `make help` | Show all targets | Complete command reference |
+| `make status` | Quick deployment status | Pod health, costs, GPU usage |
+| `make logs` | Fetch recent logs | Last 100 lines from all pods |
 
 ### Environment Variables
 
-```bash
-ENVIRONMENT=dev|production     # Triggers cost guards (default: dev)
-CONFIRM_COST=yes              # Bypass cost guard prompt
-COST_THRESHOLD_USD=5          # Cost threshold for guards (default: 5)
-NGC_API_KEY=nvapi-...         # NVIDIA NGC API key (required)
-OCI_COMPARTMENT_ID=ocid1...   # OCI compartment (required)
-KEEP_CACHE=yes                # Preserve PVCs during cleanup
-FORCE=yes                     # Skip cleanup confirmation
-```
+| Variable | Values | Default | Purpose |
+|----------|--------|---------|---------|
+| `ENVIRONMENT` | `dev` \| `production` | `dev` | Triggers cost guards |
+| `CONFIRM_COST` | `yes` \| `no` | `no` | Bypass cost guard prompt |
+| `COST_THRESHOLD_USD` | Number | `5` | Cost threshold for guards |
+| `NGC_API_KEY` | `nvapi-...` | **Required** | NVIDIA NGC API key |
+| `OCI_COMPARTMENT_ID` | `ocid1...` | **Required** | OCI compartment |
+| `KEEP_CACHE` | `yes` \| `no` | `no` | Preserve PVCs during cleanup |
+| `FORCE` | `yes` \| `no` | `no` | Skip cleanup confirmation |
 
 ### Examples
 
@@ -347,56 +350,48 @@ make troubleshoot
 
 ### Security Hardening (NIM-Optimized)
 
-- **Non-root execution** - all containers run as UID 1000
-- **Dropped capabilities** - ALL capabilities dropped by default
-- **Privilege escalation prevention** - allowPrivilegeEscalation: false
-- **Writable root filesystem** - required for NIM temp files and cache
-- **seccompProfile disabled** - disabled for GPU syscall compatibility
-- **Security optimization** - balanced for deployment success vs maximum security
+| Feature | Implementation | NIM Compatibility |
+|---------|----------------|-------------------|
+| **Non-root execution** | UID 1000 | ✅ Compatible |
+| **Dropped capabilities** | ALL capabilities dropped | ✅ Compatible |
+| **Privilege escalation prevention** | `allowPrivilegeEscalation: false` | ✅ Compatible |
+| **Writable root filesystem** | `readOnlyRootFilesystem: false` | ✅ Required for NIM temp files |
+| **seccompProfile** | Disabled for GPU syscall compatibility | ⚠️ Trade-off for GPU access |
+| **Security optimization** | Balanced for deployment success | 🎯 Practical security |
 
 ### High Availability (Development-Optimized)
 
-- **Topology Spread Constraints** - disabled for single-zone development/testing
-- **Node affinity** - required GPU node placement (NVIDIA A10)
-- **Tolerations** - GPU taint toleration
-- **Multi-replica support** - horizontal scaling with GPU scheduling
-- **Optimized health probes** - faster deployment detection (15s readiness, 45s liveness)
+| Feature | Status | Purpose |
+|---------|--------|---------|
+| **Topology Spread Constraints** | Disabled | Single-zone development/testing |
+| **Node affinity** | GPU node placement required | NVIDIA A10 scheduling |
+| **Tolerations** | GPU taint toleration | GPU node access |
+| **Multi-replica support** | Enabled | Horizontal scaling with GPU scheduling |
+| **Health probes** | Optimized timing | Faster deployment detection (15s readiness, 45s liveness) |
 
 ### Configuration Management
 
-- **Config checksums** - automatic pod restarts on config changes
-- **External secrets** - OCI Vault integration ready
-- **Environment-based values** - different settings for dev/staging/prod
+| Feature | Implementation | Benefit |
+|---------|----------------|---------|
+| **Config checksums** | Automatic pod restarts | Config change detection |
+| **External secrets** | OCI Vault integration ready | Production secret management |
+| **Environment-based values** | Dev/staging/prod settings | Environment-specific configuration |
 
 ## Troubleshooting
 
-### Common Issues
+### Common Issues & Solutions
 
-**Cost guard triggered:**
-```bash
-[NIM-OKE][ERROR] Cost guard: Estimated $12.00 exceeds threshold
-[NIM-OKE][INFO] Set CONFIRM_COST=yes to proceed
-```
-Solution: `CONFIRM_COST=yes make install`
+| Issue | Error Message | Solution | Prevention |
+|-------|---------------|----------|------------|
+| **Cost guard triggered** | `[NIM-OKE][ERROR] Cost guard: Estimated $12.00 exceeds threshold` | `CONFIRM_COST=yes make install` | Set higher `COST_THRESHOLD_USD` |
+| **No GPU nodes found** | `[NIM-OKE][ERROR] No GPU nodes available` | `make provision` first | Always provision cluster before install |
+| **NGC credentials invalid** | `[NIM-OKE][ERROR] NGC_API_KEY not set` | `export NGC_API_KEY=nvapi-your-key-here` | Run `make prereqs` to validate |
+| **Pods stuck pending** | Pods in `Pending` state | `make troubleshoot` for diagnostics | Check GPU quota and node capacity |
+| **Image pull failures** | `Failed to pull image` | Verify NGC API key and network access | Run `make prereqs` to validate NGC access |
 
-**No GPU nodes found:**
-```bash
-[NIM-OKE][ERROR] No GPU nodes available
-```
-Solution: Provision OKE cluster with GPU node pool first
+**🔍 Comprehensive Diagnostics:** Run `make troubleshoot` for systematic issue detection and resolution guidance.
 
-**NGC credentials invalid:**
-```bash
-[NIM-OKE][ERROR] NGC_API_KEY not set
-```
-Solution: `export NGC_API_KEY=nvapi-your-key-here`
-
-**Pods stuck pending:**
-```bash
-make troubleshoot  # runs comprehensive diagnostics
-```
-
-See [docs/RUNBOOK.md](docs/RUNBOOK.md) for complete troubleshooting guide.
+**📚 Complete Guide:** See [docs/RUNBOOK.md](docs/RUNBOOK.md) for detailed troubleshooting procedures.
 
 ## 💡 Nimble OKE vs. OCI Marketplace NIM
 
