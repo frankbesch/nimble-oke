@@ -1,6 +1,6 @@
 # Project Summary - Nimble OKE
 
-**Status:** First Version - Under Active Development (v0.1.0-dev)  
+**Status:** First Version - Under Active Development (v0.1.0-20251013-dev)  
 **Created:** October 9, 2025  
 **Purpose:** Rapid smoke testing platform for NVIDIA NIM on OCI OKE with cost guards and idempotent operations
 

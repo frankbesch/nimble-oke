@@ -1,6 +1,6 @@
 # Nimble OKE - Rapid Smoke Testing for NVIDIA NIM on OCI
 
-> **⚠️ Development Status:** First version (v0.1.0-dev) - Under active development  
+> **⚠️ Development Status:** First version (v0.1.0-20251013-dev) - Under active development  
 > **🚧 Testing Required:** All configurations need validation with actual GPU quota
 
 GPU-accelerated, cost-efficient smoke testing platform for validating AI inference microservices on Oracle Cloud Infrastructure.
@@ -9,7 +9,7 @@ GPU-accelerated, cost-efficient smoke testing platform for validating AI inferen
 
 ## 🚧 Development Status
 
-**Current Version:** v0.1.0-dev (First version under active development)
+**Current Version:** v0.1.0-20251013-dev (First version under active development)
 
 ### What's Ready:
 - ✅ **Complete testing framework** - All simulation and optimization scripts

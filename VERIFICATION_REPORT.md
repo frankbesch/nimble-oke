@@ -270,6 +270,6 @@ kubectl get nodes \
 
 ---
 
-**Verification Complete:** Platform engineering framework is ready for initial testing (v0.1.0-dev) - requires GPU quota validation.
+**Verification Complete:** Platform engineering framework is ready for initial testing (v0.1.0-20251013-dev) - requires GPU quota validation.
 
 **Recommendation:** Deploy to OKE and validate all features end-to-end.
