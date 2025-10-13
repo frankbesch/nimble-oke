@@ -209,7 +209,7 @@ calculate_costs() {
 Total_Cost = (GPU_Rate × GPU_Count × Duration) + (OKE_Rate × Duration) + Storage_Fixed + (LB_Rate × Duration)
 
 Where:
-- GPU_Rate = $1.75/hour (VM.GPU.A10.1)
+- GPU_Rate = $2.62/hour (VM.GPU.A10.1)
 - OKE_Rate = $0.10/hour (ENHANCED cluster)
 - Storage_Fixed = $1.50 (50GB PVC)
 - LB_Rate = $1.25/hour (flexible shape)

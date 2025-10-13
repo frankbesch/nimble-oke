@@ -136,7 +136,7 @@ make dry-run
 - Hard fail at 125% of budget
 
 ### Cost Scenarios
-- Quick smoke test (5h, 1 GPU): ~$17.50
+- Quick smoke test (5h, 1 GPU): ~$21.85
 - Extended testing (10h, 1 GPU): ~$33.50
 - Full day testing (24h, 1 GPU): ~$78.30
 - Multi-GPU smoke test (5h, 3 GPU): ~$35.00

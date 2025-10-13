@@ -302,11 +302,11 @@ annotations:
 
 | Component | Validated Cost |
 |-----------|----------------|
-| VM.GPU.A10.1 | $8.75 |
+| VM.GPU.A10.1 | $13.10 |
 | OKE Control | $0.50 |
 | Storage | $1.50 |
 | LoadBalancer | $1.00 |
-| **Total** | **~$11.75** |
+| **Total** | **~$21.85** |
 
 **Result:** Cost estimates accurate
 

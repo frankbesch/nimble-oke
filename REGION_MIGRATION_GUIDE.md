@@ -173,8 +173,8 @@ make validate
 
 **No cost difference:**
 - OCI charges same rates across US regions
-- us-chicago-1: $1.75/hour for VM.GPU.A10.1
-- us-phoenix-1: $1.75/hour for VM.GPU.A10.1
+- us-chicago-1: $2.62/hour for VM.GPU.A10.1
+- us-phoenix-1: $2.62/hour for VM.GPU.A10.1
 
 **Benefits of Phoenix:**
 - Better GPU availability
@@ -297,7 +297,7 @@ oci iam region-subscription list
 | **GPU Availability** | Limited | Excellent |
 | **Availability Domains** | 1 | 3 |
 | **GPU Shapes Available** | A10.1, GPU3.x | A10.1, GPU3.x, H100 |
-| **Pricing (A10.1)** | $1.75/hour | $1.75/hour |
+| **Pricing (A10.1)** | $2.62/hour | $2.62/hour |
 | **Network Performance** | Good | Excellent |
 | **Recommended for Austin** | ❌ No | ✅ Yes |
 

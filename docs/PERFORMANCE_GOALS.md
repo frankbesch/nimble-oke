@@ -208,7 +208,7 @@ make install ULTRA_FAST=true
 
 | Performance Level | Cost | Description | Optimization |
 |------------------|------|-------------|--------------|
-| **Slow** | $17.50 | Baseline, no optimizations | None |
+| **Slow** | $21.85 | Baseline, no optimizations | None |
 | **Typical** | $12.00 | Basic caching, some reuse | $5.50 saved |
 | **Fast** | $8.50 | Advanced caching + reuse | $9.00 saved |
 | **Ultra-Fast** | $6.00 | Maximum optimization | $11.50 saved |
@@ -217,7 +217,7 @@ make install ULTRA_FAST=true
 
 | Performance Level | Cost | Description | Use Case |
 |------------------|------|-------------|----------|
-| **Slow** | $17.50 | Full deployment each time | Learning |
+| **Slow** | $21.85 | Full deployment each time | Learning |
 | **Typical** | $8.00 | Partial reuse, some caching | Regular testing |
 | **Fast** | $3.50 | Smart reuse, full caching | Rapid iteration |
 | **Ultra-Fast** | $1.50 | Hot swap, minimal resources | Production testing |
@@ -230,7 +230,7 @@ make install ULTRA_FAST=true
 - **Target:** Slow/Typical performance
 - **Focus:** Understanding, reliability
 - **Acceptable:** 25-48 minutes deployment
-- **Cost:** $12-17.50 per test
+- **Cost:** $15-21.85 per test
 
 ### **Regular Development**
 - **Target:** Typical/Fast performance

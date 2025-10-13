@@ -50,7 +50,7 @@
 **OCI GPU Pricing (Uniform Across Regions):**
 
 VM.GPU.A10.1 pricing is **identical across all OCI regions**:
-- Standard rate: $1.75/hour
+- Standard rate: $2.62/hour
 - No regional price variations (unlike AWS/GCP)
 
 **Other Components (Also Uniform):**
@@ -126,10 +126,10 @@ make provision
 ```
 Region: us-phoenix-1 OR us-ashburn-1
 ENHANCED cluster: $0.50
-GPU (VM.GPU.A10.1): $8.75
-Storage + LB: $1.75
+GPU (VM.GPU.A10.1): $13.10
+Storage + LB: $7.75
 ────────────────────────
-Total: $11.00 (identical)
+Total: $21.35 (identical)
 ```
 
 **No cost difference between regions.**
