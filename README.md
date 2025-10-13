@@ -4,12 +4,32 @@ GPU-accelerated, cost-efficient smoke testing platform for validating AI inferen
 
 **Based on:** [NVIDIA nim-deploy Oracle OKE Reference](https://github.com/NVIDIA/nim-deploy/tree/main/cloud-service-providers/oracle/oke)
 
+## 💡 Nimble OKE vs. OCI Marketplace NIM
+
+While Oracle Cloud Infrastructure offers a managed NVIDIA NIM solution via its Marketplace, the `nimble-oke` project focuses on a **custom, optimized deployment on OCI Container Engine for Kubernetes (OKE)**. This approach provides:
+
+- **Granular Control**: Full control over Kubernetes cluster configuration, networking, and resource allocation
+- **Deep Technical Insight**: Demonstrates proficiency in Kubernetes, Helm, OCI CLI, and GPU-accelerated AI inference deployment
+- **Optimization Validation**: Allows for direct measurement and refinement of performance and cost optimizations at the infrastructure level
+- **Region Flexibility**: Our solution targets `us-chicago-1`, whereas the Marketplace offering is currently restricted to `us-ashburn-1`
+- **Learning & Competence**: Showcases advanced technical competence in building and optimizing AI inference platforms
+
+**Key Differences:**
+| Aspect | Nimble OKE | Marketplace NIM |
+|--------|------------|-----------------|
+| Platform | OKE (Kubernetes) | OCI Data Science |
+| Deployment | Custom Helm charts | Terraform stack |
+| Region | us-chicago-1 | us-ashburn-1 only |
+| Control | Full infrastructure control | Managed service |
+| Cost | $3.50-$17.50 (simulated) | $1/hr per GPU |
+| Purpose | Technical competence demonstration | Quick deployment |
+
 ## Purpose
 
-Validates NVIDIA NIM deployments in minutes. Purpose-built for rapid smoke testing:
+Validates NVIDIA NIM deployments with comprehensive testing framework. Purpose-built for rapid smoke testing:
 
-- **5-minute deployment** with runbook automation
-- **$11 complete smoke test** (provision to teardown)
+- **12-48 minute deployment** (simulated, depending on optimization level)
+- **$3.50-$17.50 complete smoke test** (simulated, depending on duration and optimization)
 - **Idempotent operations** - safe to re-run
 - **Cost guards** - prevent surprise bills
 - **Automatic cleanup** on failure
@@ -52,7 +72,7 @@ make cleanup
 make teardown
 ```
 
-**Time:** 5 hours | **Cost:** ~$11
+**Time:** 5 hours | **Cost:** ~$17.50 (simulated)
 
 ### Option 2: Use Existing Cluster
 
@@ -70,7 +90,7 @@ make verify
 make cleanup
 ```
 
-**Time:** 1-2 hours | **Cost:** ~$3-5
+**Time:** 1-2 hours | **Cost:** ~$3.50-$5.00 (simulated)
 
 ## Prerequisites
 
@@ -99,8 +119,8 @@ make cleanup
 | OKE Control Plane | $0.10/hr | 5 hours | $0.50 |
 | ENHANCED Cluster | $0.10/hr | 5 hours | $0.50 |
 | Block Storage (50GB) | ~$0.03/GB | 50GB | $1.50 |
-| Load Balancer | ~$0.25/hr | 5 hours | $1.25 |
-| **Total** | | | **~$11** |
+| Load Balancer | ~$1.25/hr | 5 hours | $6.25 |
+| **Total** | | | **~$17.50** |
 
 ### Cost Optimization
 
