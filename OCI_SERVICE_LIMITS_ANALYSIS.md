@@ -194,7 +194,7 @@ model:
 - **Potential**: Scale to 2-3 NIM instances per node
 
 ### **3. Cost Optimization**
-- **Current**: $4.02/hour total cost
+- **Current**: $3.02/hour total cost
 - **Optimization**: Preemptible instances (if available)
 - **Savings**: Up to 90% cost reduction
 - **Trade-off**: Potential interruptions

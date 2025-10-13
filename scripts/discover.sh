@@ -97,8 +97,8 @@ main() {
     else
         echo "No GPU nodes currently provisioned"
         echo "Estimated cost for 1 GPU node:"
-        echo "  Hourly: \$4.02 (VM.GPU.A10.1 + ENHANCED cluster + LB)"
-        echo "  5-hour test: ~\$20.10"
+        echo "  Hourly: \$3.02 (VM.GPU.A10.1 + ENHANCED cluster + LB + Storage)"
+        echo "  5-hour test: ~\$15.10"
     fi
     
     echo ""

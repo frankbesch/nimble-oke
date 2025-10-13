@@ -34,7 +34,7 @@ This is the **first version** of Nimble OKE. All configurations, timing estimate
 Validates NVIDIA NIM deployments with comprehensive testing framework. Purpose-built for rapid smoke testing:
 
 - **12-48 minute deployment** (simulated, depending on optimization level)
-- **$4.50-$20.10 complete smoke test** (simulated, depending on duration and optimization)
+- **$4.50-$15.10 complete smoke test** (simulated, depending on duration and optimization)
 - **Idempotent operations** - safe to re-run
 - **Cost guards** - prevent surprise bills
 - **Automatic cleanup** on failure
@@ -91,7 +91,7 @@ make cleanup
 make teardown
 ```
 
-**Time:** 5 hours | **Cost:** ~$20.10 (simulated)
+**Time:** 5 hours | **Cost:** ~$15.10 (simulated)
 
 ### Option 2: Use Existing Cluster
 
@@ -197,7 +197,7 @@ The `VM.GPU.A10.1` shape provides:
 | ENHANCED Cluster | $0.10/hr | 5 hours | $0.50 | Additional cluster features |
 | Block Storage (200GB) | ~$0.03/GB | 200GB | $0.25 | Model storage and cache |
 | Load Balancer | ~$1.25/hr | 5 hours | $6.25 | External access |
-| **Total** | | | **~$20.10** | **Simulated estimate** |
+| **Total** | | | **~$15.10** | **Simulated estimate** |
 
 ### Cost Optimization Strategies
 

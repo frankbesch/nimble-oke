@@ -15,7 +15,7 @@ Nimble OKE is a platform engineering framework for ultra-fast, cost-efficient sm
 | Principle | Implementation | Benefit |
 |-----------|----------------|---------|
 | **Speed** | Deploy and validate in minutes | Rapid iteration cycles |
-| **Cost-Conscious** | Complete smoke test for ~$20.10 (simulated) | Predictable spending |
+| **Cost-Conscious** | Complete smoke test for ~$15.10 (simulated) | Predictable spending |
 | **Idempotent** | Every operation safe to re-run | No errors on retry |
 | **Fail-Safe** | Automatic cleanup on errors | No resource leaks |
 | **Production Patterns** | Enterprise-grade from day one | Real-world readiness |
@@ -163,7 +163,7 @@ docs/api-examples.md           # API usage examples
 | ENHANCED Cluster | $0.50 |
 | Storage (200GB PVC) | $0.25 |
 | LoadBalancer | $6.25 |
-| **Total** | **~$20.10** |
+| **Total** | **~$15.10** |
 
 ### Cost Optimization Features
 
@@ -310,7 +310,7 @@ Prevents indefinite hangs.
 | **Security** | Basic | NIM-optimized (non-root, capabilities, topology disabled) |
 | **Testing Framework** | None | Complete simulation without infrastructure costs |
 | **Performance Optimization** | None | 70% deployment time reduction (48min → 12min) |
-| **Cost Engineering** | None | 78% cost reduction ($20.10 → $4.50 per iteration) |
+| **Cost Engineering** | None | 70% cost reduction ($15.10 → $4.50 per iteration) |
 
 ## Success Metrics
 
@@ -330,8 +330,8 @@ Prevents indefinite hangs.
 - cleanup: 1-2 minutes
 
 **Cost (simulated):**
-- smoke test: ~$20.10 (5 hours)
-- hourly: ~$4.02
+- smoke test: ~$15.10 (5 hours)
+- hourly: ~$3.02
 - model cache preservation saves $1.50 per re-deployment
 
 ## Next Steps

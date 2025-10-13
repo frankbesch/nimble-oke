@@ -63,7 +63,7 @@ Based on [NVIDIA NIM Documentation](https://docs.nvidia.com/nim/cosmos/latest/pr
 | **Block Storage (200GB)** | $0.03/GB/month | ~$0.25 | $5 | Model cache |
 | **Load Balancer** | ~$1.25/hour | $6.25 | $900 | External access |
 | **Network Egress** | Variable | Minimal | Variable | Model downloads |
-| **Total** | **~$4.02/hr** | **~$20.10** | **~$2,885** | **Time-box for testing!** |
+| **Total** | **~$3.02/hr** | **~$15.10** | **~$2,165** | **Time-box for testing!** |
 
 ### GPU Specifications (NVIDIA A10)
 
