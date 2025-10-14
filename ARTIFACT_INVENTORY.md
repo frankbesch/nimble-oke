@@ -72,74 +72,17 @@
 
 ### Cost Guard System
 
-**Files:** `scripts/_lib.sh`, all deployment scripts
+| Component | Details | Files |
+|-----------|---------|-------|
+| **Functions** | `cost_guard()` - Guard logic<br/>`estimate_hourly_cost()` - Hourly calculation<br/>`estimate_deployment_cost()` - Session projection<br/>`format_cost()` - Consistent formatting | `scripts/_lib.sh`, all deployment scripts |
+| **Environment Variables** | `ENVIRONMENT` (dev/production)<br/>`CONFIRM_COST` (yes/no)<br/>`COST_THRESHOLD_USD` (default: 5) | All scripts |
 
-**Functions:**
-```bash
-cost_guard()                   # Guard logic
-estimate_hourly_cost()         # Hourly cost calculation
-estimate_deployment_cost()     # Session cost projection
-format_cost()                  # Consistent formatting
-```
-
-**Environment Variables:**
-- `ENVIRONMENT` (dev/production)
-- `CONFIRM_COST` (yes/no)
-- `COST_THRESHOLD_USD` (default: 5)
-
-### Idempotency System
-
-**Pattern in all scripts:**
-```bash
-# Check before create
-if resource_exists; then
-    log_info "Already exists, skipping"
-else
-    create_resource
-fi
-```
-
-**Helm operations:**
-```bash
-helm_install_or_upgrade()  # Installs or upgrades automatically
-```
-
-### Cleanup Hook System
-
-**Pattern in deployment scripts:**
-```bash
-trap cleanup_on_failure EXIT ERR INT TERM
-# ... operations ...
-trap - EXIT ERR INT TERM  # Disable on success
-```
-
-**Implemented in:**
-- `scripts/deploy.sh`
-- `scripts/provision-cluster.sh`
-
-### Structured Logging
-
-**Functions:**
-```bash
-log_info()     → [NIM-OKE][INFO] message
-log_warn()     → [NIM-OKE][WARN] message
-log_error()    → [NIM-OKE][ERROR] message
-log_success()  → [NIM-OKE][SUCCESS] message
-```
-
-**Used in:** All 10 scripts
-
-### Smart Discovery
-
-**Functions:**
-```bash
-get_default_storage_class()  # Extracts (default) annotation
-get_gpu_nodes()              # Finds nvidia.com/gpu capacity
-get_gpu_count()              # Counts GPU nodes
-get_cluster_info()           # General cluster metadata
-```
-
-**Implemented in:** `scripts/discover.sh`, `scripts/_lib.sh`
+| System | Pattern/Function | Implementation |
+|--------|------------------|----------------|
+| **Idempotency** | `if resource_exists; then skip; else create; fi`<br/>`helm_install_or_upgrade()` - Auto install/upgrade | All scripts |
+| **Cleanup Hooks** | `trap cleanup_on_failure EXIT ERR INT TERM`<br/>Automatic cleanup on failure | `scripts/deploy.sh`, `scripts/provision-cluster.sh` |
+| **Structured Logging** | `log_info()` → [NIM-OKE][INFO]<br/>`log_warn()` → [NIM-OKE][WARN]<br/>`log_error()` → [NIM-OKE][ERROR]<br/>`log_success()` → [NIM-OKE][SUCCESS] | All 10 scripts |
+| **Smart Discovery** | `get_default_storage_class()` - Extract (default)<br/>`get_gpu_nodes()` - Find GPU capacity<br/>`get_gpu_count()` - Count GPU nodes<br/>`get_cluster_info()` - General metadata | `scripts/discover.sh`, `scripts/_lib.sh` |
 
 ### Session Cost Tracking
 

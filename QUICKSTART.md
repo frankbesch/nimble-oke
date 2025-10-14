@@ -23,12 +23,12 @@ Get NVIDIA NIM running in 12-48 minutes with runbook automation.
 make prereqs
 ```
 
-This validates:
-- OCI CLI configured
-- kubectl connected to OKE cluster
-- NGC API key set
-- GPU nodes available
-- NVIDIA device plugin installed
+**Validates:**
+- ✅ OCI CLI configured
+- ✅ kubectl connected to OKE cluster  
+- ✅ NGC API key set
+- ✅ GPU nodes available
+- ✅ NVIDIA device plugin installed
 
 ## Deploy NIM
 
@@ -40,11 +40,11 @@ export NGC_API_KEY=nvapi-your-key-here
 make install
 ```
 
-This executes:
-1. discovery (cluster state, costs)
-2. prerequisites check
-3. NIM deployment with cost guards
-4. automatic verification
+**Executes:**
+1. 🔍 Discovery (cluster state, costs)
+2. ✅ Prerequisites check
+3. 🚀 NIM deployment with cost guards
+4. ✅ Automatic verification
 
 ## Verify Deployment
 
@@ -52,11 +52,11 @@ This executes:
 make verify
 ```
 
-Checks:
-- pods running and ready
-- GPU allocated correctly
-- service endpoints active
-- API health responding
+**Checks:**
+- ✅ Pods running and ready
+- ✅ GPU allocated correctly
+- ✅ Service endpoints active
+- ✅ API health responding
 
 ## Test Inference
 
@@ -64,11 +64,11 @@ Checks:
 make operate
 ```
 
-Shows operational commands including:
-- API endpoints
-- curl test commands
-- log viewing
-- resource monitoring
+**Shows operational commands:**
+- 🌐 API endpoints
+- 🔗 curl test commands
+- 📋 Log viewing
+- 📊 Resource monitoring
 
 Copy and run the curl commands to test inference.
 

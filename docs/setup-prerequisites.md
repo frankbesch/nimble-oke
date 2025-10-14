@@ -42,25 +42,12 @@ The recommended OCI shape for this deployment:
 
 ## 1. Oracle Cloud Infrastructure (OCI) Account
 
-### Create OCI Account
+### OCI Account Setup
 
-1. Visit: https://www.oracle.com/cloud/free/
-2. Sign up for an account (free tier available)
-3. Complete verification process
-4. Note your **Tenancy OCID** and **Home Region**
-
-### Request GPU Quota
-
-By default, new accounts may not have GPU quota. Request increase:
-
-1. Navigate to: **Governance → Limits, Quotas and Usage**
-2. Select your home region
-3. Filter for "GPU"
-4. Find: **VM.Standard.GPU.A10.1 count**
-5. Click **Request Service Limit Increase**
-6. Request at least **1 GPU**
-
-**Processing time:** Usually 24-48 hours
+| Step | Action | Details |
+|------|--------|---------|
+| **1. Create Account** | Visit: https://www.oracle.com/cloud/free/<br/>Sign up (free tier available)<br/>Complete verification process | Note **Tenancy OCID** and **Home Region** |
+| **2. Request GPU Quota** | Navigate to: **Governance → Limits, Quotas and Usage**<br/>Select home region → Filter "GPU"<br/>Find: **VM.Standard.GPU.A10.1 count**<br/>Click **Request Service Limit Increase**<br/>Request at least **1 GPU** | **Processing time:** 24-48 hours |
 
 ### Get Compartment ID
 

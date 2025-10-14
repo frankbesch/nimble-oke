@@ -46,25 +46,29 @@ Validates NVIDIA NIM deployments with comprehensive testing framework. Purpose-b
 
 **Beyond the [NVIDIA nim-deploy Oracle OKE reference](https://github.com/NVIDIA/nim-deploy/tree/main/cloud-service-providers/oracle/oke), Nimble OKE adds:**
 
-- **Mathematical Performance Modeling** - 48min baseline → 12min optimized deployment (70% improvement)
-- **Comprehensive Testing Framework** - Complete simulation without infrastructure costs
-- **Cost Engineering** - $14.42 → $3.50 per iteration optimization (76% cost reduction)
-- **Failure Pattern Detection** - Proactive troubleshooting for common NIM issues
-- **Rapid Iteration Optimization** - Caching strategies and performance tuning
-- **Security Optimization** - NIM-compatible security settings (seccompProfile disabled for GPU compatibility)
-- **Cost Guards & Budget Controls** - $50 daily limit with automatic validation
-- **Session Cost Tracking** - Real-time deployment cost monitoring
+| Enhancement | Description | Impact |
+|-------------|-------------|---------|
+| **Mathematical Performance Modeling** | 48min baseline → 12min optimized deployment | 70% improvement |
+| **Comprehensive Testing Framework** | Complete simulation without infrastructure costs | Risk-free validation |
+| **Cost Engineering** | $14.42 → $3.50 per iteration optimization | 76% cost reduction |
+| **Failure Pattern Detection** | Proactive troubleshooting for common NIM issues | Faster problem resolution |
+| **Rapid Iteration Optimization** | Caching strategies and performance tuning | Reduced iteration time |
+| **Security Optimization** | NIM-compatible security settings | GPU compatibility maintained |
+| **Cost Guards & Budget Controls** | $50 daily limit with automatic validation | Prevents surprise bills |
+| **Session Cost Tracking** | Real-time deployment cost monitoring | Budget awareness |
 
 ### Core Platform Features
 
-- **Runbook-Driven Workflow** - discover → prereqs → deploy → verify → operate → troubleshoot → cleanup
-- **Cost Guards** - ENVIRONMENT and CONFIRM_COST checks before expensive operations
-- **Idempotent Operations** - every script safe to re-run
-- **Cleanup Hooks** - automatic resource cleanup on failure
-- **Structured Logging** - consistent [NIM-OKE][LEVEL] output
-- **Smart Discovery** - automatic StorageClass and GPU node detection
-- **Enhanced Security** - NIM-optimized security (non-root, capability dropping, topology constraints disabled for development)
-- **Comprehensive Diagnostics** - systematic troubleshooting runbook with failure pattern recognition
+| Feature | Description | Benefit |
+|---------|-------------|---------|
+| **Runbook-Driven Workflow** | discover → prereqs → deploy → verify → operate → troubleshoot → cleanup | Systematic operations |
+| **Cost Guards** | ENVIRONMENT and CONFIRM_COST checks before expensive operations | Budget protection |
+| **Idempotent Operations** | Every script safe to re-run | Error-free retries |
+| **Cleanup Hooks** | Automatic resource cleanup on failure | No resource leaks |
+| **Structured Logging** | Consistent [NIM-OKE][LEVEL] output | Parseable logs |
+| **Smart Discovery** | Automatic StorageClass and GPU node detection | Zero-config setup |
+| **Enhanced Security** | NIM-optimized security (non-root, capability dropping) | Production-ready defaults |
+| **Comprehensive Diagnostics** | Systematic troubleshooting runbook | Faster issue resolution |
 
 ## Quick Start
 
@@ -77,39 +81,10 @@ export OCI_COMPARTMENT_ID=ocid1.compartment.oc1...
 export OCI_REGION=us-phoenix-1
 ```
 
-### Option 1: Complete Smoke Test (Cluster + NIM)
-
-```bash
-# Provision OKE cluster with GPU nodes
-make provision CONFIRM_COST=yes
-
-# Deploy, verify, test NIM
-make all
-
-# Cleanup everything
-make cleanup
-make teardown
-```
-
-**Time:** 5 hours | **Cost:** ~$14.42 (simulated)
-
-### Option 2: Use Existing Cluster
-
-```bash
-# Discover existing cluster
-make discover
-
-# Deploy NIM
-make install CONFIRM_COST=yes
-
-# Verify and test
-make verify
-
-# Cleanup
-make cleanup
-```
-
-**Time:** 1-2 hours | **Cost:** ~$4.50-$6.25 (simulated)
+| Option | Commands | Time | Cost |
+|--------|----------|------|------|
+| **Complete Smoke Test** | `make provision CONFIRM_COST=yes`<br/>`make all`<br/>`make cleanup`<br/>`make teardown` | 5 hours | ~$14.42 |
+| **Use Existing Cluster** | `make discover`<br/>`make install CONFIRM_COST=yes`<br/>`make verify`<br/>`make cleanup` | 1-2 hours | ~$4.50-$6.25 |
 
 ## Prerequisites
 
@@ -334,29 +309,22 @@ nimble-oke/
 
 ## Makefile Targets
 
-### Primary Operations
-
-| Command | Purpose | Cost Guard | Duration |
-|---------|---------|------------|----------|
-| `make provision` | Provision OKE cluster with GPU nodes | ✅ Yes | ~15min |
-| `make teardown` | Teardown entire OKE cluster | ✅ Yes | ~10min |
-| `make discover` | Discover cluster state and costs | ❌ No | ~30sec |
-| `make prereqs` | Validate prerequisites | ❌ No | ~1min |
-| `make install` | Deploy NIM (discover → prereqs → deploy) | ✅ Yes | ~12-48min |
-| `make verify` | Verify deployment health | ❌ No | ~2min |
-| `make operate` | Show operational commands | ❌ No | ~30sec |
-| `make troubleshoot` | Run diagnostics | ❌ No | ~3min |
-| `make cleanup` | Remove NIM deployment | ❌ No | ~2min |
-
-### Shortcuts & Utilities
-
-| Command | Purpose | Includes |
-|---------|---------|----------|
-| `make all` | Complete workflow | discover → install → verify |
-| `make clean` | Alias for cleanup | Same as make cleanup |
-| `make help` | Show all targets | Complete command reference |
-| `make status` | Quick deployment status | Pod health, costs, GPU usage |
-| `make logs` | Fetch recent logs | Last 100 lines from all pods |
+| Category | Command | Purpose | Cost Guard | Duration |
+|----------|---------|---------|------------|----------|
+| **Primary Operations** | `make provision` | Provision OKE cluster with GPU nodes | ✅ Yes | ~15min |
+| | `make teardown` | Teardown entire OKE cluster | ✅ Yes | ~10min |
+| | `make discover` | Discover cluster state and costs | ❌ No | ~30sec |
+| | `make prereqs` | Validate prerequisites | ❌ No | ~1min |
+| | `make install` | Deploy NIM (discover → prereqs → deploy) | ✅ Yes | ~12-48min |
+| | `make verify` | Verify deployment health | ❌ No | ~2min |
+| | `make operate` | Show operational commands | ❌ No | ~30sec |
+| | `make troubleshoot` | Run diagnostics | ❌ No | ~3min |
+| | `make cleanup` | Remove NIM deployment | ❌ No | ~2min |
+| **Shortcuts & Utilities** | `make all` | Complete workflow | discover → install → verify | Varies |
+| | `make clean` | Alias for cleanup | Same as make cleanup | ❌ No |
+| | `make help` | Show all targets | Complete command reference | ❌ No |
+| | `make status` | Quick deployment status | Pod health, costs, GPU usage | ❌ No |
+| | `make logs` | Fetch recent logs | Last 100 lines from all pods | ❌ No |
 
 ### Environment Variables
 

@@ -109,48 +109,20 @@ docs/api-examples.md           # API usage examples
 
 ### Shared Library (_lib.sh)
 
-**Logging:**
-- `log_info()`, `log_warn()`, `log_error()`, `log_success()`
-- Consistent [NIM-OKE][LEVEL] format
-
-**Cost Functions:**
-- `cost_guard()` - Checks threshold and environment
-- `estimate_hourly_cost()` - GPU node cost calculation
-- `estimate_deployment_cost()` - Session cost projection
-- `format_cost()` - Consistent cost formatting
-
-**Kubernetes Helpers:**
-- `get_default_storage_class()` - Extracts (default) StorageClass
-- `get_gpu_nodes()` - Finds nodes with nvidia.com/gpu
-- `get_gpu_count()` - Counts available GPUs
-- `wait_for_pod_ready()` - Smart pod readiness wait
-- `helm_install_or_upgrade()` - Idempotent Helm operations
-
-**Guards and Checks:**
-- `check_command()` - Tool availability
-- `check_env_var()` - Required variables
-- `check_oci_credentials()` - OCI auth validation
-- `check_kubectl_context()` - Cluster connectivity
+| Category | Functions | Purpose |
+|----------|-----------|---------|
+| **Logging** | `log_info()`, `log_warn()`, `log_error()`, `log_success()` | Consistent [NIM-OKE][LEVEL] format |
+| **Cost Functions** | `cost_guard()` - Threshold/environment checks<br/>`estimate_hourly_cost()` - GPU node calculation<br/>`estimate_deployment_cost()` - Session projection<br/>`format_cost()` - Consistent formatting | Cost management and guards |
+| **Kubernetes Helpers** | `get_default_storage_class()` - Extract StorageClass<br/>`get_gpu_nodes()` - Find GPU nodes<br/>`get_gpu_count()` - Count GPUs<br/>`wait_for_pod_ready()` - Pod readiness wait<br/>`helm_install_or_upgrade()` - Idempotent operations | K8s resource management |
+| **Guards and Checks** | `check_command()` - Tool availability<br/>`check_env_var()` - Required variables<br/>`check_oci_credentials()` - OCI auth validation<br/>`check_kubectl_context()` - Cluster connectivity | Validation and prerequisites |
 
 ### Helm Chart Enhancements
 
-**Security (NIM-Optimized):**
-- `runAsNonRoot: true` - Non-root execution (UID 1000)
-- `allowPrivilegeEscalation: false` - No privilege escalation
-- `capabilities.drop: ALL` - Minimal capabilities
-- `readOnlyRootFilesystem: false` - Required for NIM temp files and cache
-- `seccompProfile: disabled` - Disabled for GPU syscall compatibility
-
-**High Availability (Development-Optimized):**
-- `topologySpreadConstraints: disabled` - Disabled for single-zone development
-- `nodeAffinity` - Required GPU node placement (NVIDIA A10)
-- `tolerations` - GPU taint toleration
-- Optimized health probes - faster deployment detection
-
-**Operations:**
-- `checksum/config` annotation - Auto-restart on secret changes
-- Optimized health probes (15s readiness, 45s liveness)
-- Resource limits (CPU, memory, GPU)
+| Category | Setting | Purpose |
+|----------|---------|---------|
+| **Security (NIM-Optimized)** | `runAsNonRoot: true` - Non-root execution (UID 1000)<br/>`allowPrivilegeEscalation: false` - No privilege escalation<br/>`capabilities.drop: ALL` - Minimal capabilities<br/>`readOnlyRootFilesystem: false` - Required for NIM temp files<br/>`seccompProfile: disabled` - GPU syscall compatibility | Production-ready security |
+| **High Availability** | `topologySpreadConstraints: disabled` - Single-zone dev<br/>`nodeAffinity` - Required GPU node placement<br/>`tolerations` - GPU taint toleration<br/>Optimized health probes - faster detection | Development-optimized HA |
+| **Operations** | `checksum/config` annotation - Auto-restart on changes<br/>Optimized health probes (15s readiness, 45s liveness)<br/>Resource limits (CPU, memory, GPU) | Operational efficiency |
 
 ## Cost Analysis
 
