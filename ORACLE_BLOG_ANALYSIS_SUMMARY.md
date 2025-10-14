@@ -61,37 +61,11 @@
 
 ## Key Insights
 
-### Oracle Blog Strengths
-1. **Centralized model management** via Object Storage
-   - Single source of truth across dev/stage/prod
-   - Version control and access policies
-   - Lower long-term storage costs
-
-2. **Production-grade observability**
-   - Prometheus metrics, Grafana dashboards
-   - GPU utilization tracking
-   - Request latency monitoring
-
-3. **Performance optimization**
-   - TensorRT-LLM integration
-   - Model quantization (int8, fp16)
-   - 2-4× inference speedup
-
-### Nimble OKE Strengths
-1. **Cost control unmatched**
-   - Proactive cost guards prevent surprise bills
-   - Session tracking shows real-time spending
-   - Time-boxed testing: $14.42 for 5-hour smoke test
-
-2. **Developer productivity**
-   - 70% faster deployments (PVC caching)
-   - 100% idempotent operations (safe re-runs)
-   - Automatic cleanup on failures
-
-3. **Operational clarity**
-   - Makefile-driven runbooks
-   - Structured logging ([NIM-OKE] prefix)
-   - Comprehensive diagnostics
+| Category | Oracle Blog Strengths | Nimble OKE Strengths |
+|----------|----------------------|---------------------|
+| **Model Management** | • Centralized via Object Storage<br/>• Single source across dev/stage/prod<br/>• Version control & access policies<br/>• Lower long-term storage costs | • Cost control unmatched<br/>• Proactive guards prevent surprise bills<br/>• Session tracking shows real-time spending<br/>• Time-boxed: $14.42 for 5-hour test |
+| **Performance** | • Production-grade observability<br/>• Prometheus metrics, Grafana dashboards<br/>• GPU utilization tracking<br/>• Request latency monitoring | • Developer productivity<br/>• 70% faster deployments (PVC caching)<br/>• 100% idempotent operations (safe re-runs)<br/>• Automatic cleanup on failures |
+| **Optimization** | • TensorRT-LLM integration<br/>• Model quantization (int8, fp16)<br/>• 2-4× inference speedup | • Operational clarity<br/>• Makefile-driven runbooks<br/>• Structured logging ([NIM-OKE] prefix)<br/>• Comprehensive diagnostics |
 
 ---
 
@@ -148,17 +122,10 @@
 
 ## Strategic Positioning
 
-### When to Use Nimble OKE
-- ✅ Rapid smoke testing (validate NIM in <1 hour)
-- ✅ Cost-sensitive development ($14.42 for 5-hour test)
-- ✅ Learning and experimentation (idempotent operations prevent mistakes)
-- ✅ Single-cluster workflows (no cross-environment model sharing needed)
-
-### When to Use Oracle Blog Approach
-- ✅ Production inference services (24/7 uptime)
-- ✅ Multi-environment pipelines (dev/stage/prod with shared models)
-- ✅ Enterprise requirements (compliance, security, observability)
-- ✅ Variable workloads (autoscaling based on demand)
+| Use Case | Nimble OKE | Oracle Blog Approach |
+|----------|------------|---------------------|
+| **Testing** | ✅ Rapid smoke testing (<1 hour)<br/>✅ Cost-sensitive development ($14.42/5hr)<br/>✅ Learning & experimentation | ✅ Production inference (24/7)<br/>✅ Multi-environment pipelines |
+| **Workflow** | ✅ Single-cluster workflows<br/>✅ Idempotent operations prevent mistakes | ✅ Enterprise requirements<br/>✅ Variable workloads (autoscaling) |
 
 ### Recommended Hybrid Path
 1. **Develop with Nimble OKE** - Fast iteration, cost guards, local caching

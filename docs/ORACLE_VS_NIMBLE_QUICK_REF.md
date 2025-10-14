@@ -40,6 +40,8 @@
 | **Cleanup** | Manual | Automatic | 🏆 Nimble |
 | **Optimization** | TensorRT-LLM | Stock NIM | 🏆 Oracle |
 
+**Summary:** Oracle wins on production features (monitoring, scalability, optimization). Nimble wins on developer experience (speed, automation, cost control).
+
 ---
 
 ## 💰 Cost Comparison
@@ -74,20 +76,11 @@ Additional:
 
 ## 🔑 Key Differentiators
 
-### Oracle Blog Wins
-- ✅ Centralized model repository (Object Storage)
-- ✅ Production observability (metrics, dashboards)
-- ✅ Autoscaling (HPA-based)
-- ✅ Performance optimization (TensorRT-LLM)
-- ✅ Multi-environment model sharing
-
-### Nimble OKE Wins
-- ✅ 70% faster deployments (PVC caching)
-- ✅ Proactive cost guards (prevent surprise bills)
-- ✅ 100% idempotent (safe re-runs)
-- ✅ Automatic cleanup (fail-safe)
-- ✅ Session cost tracking
-- ✅ Runbook automation (Makefile)
+| Category | Oracle Blog Wins | Nimble OKE Wins |
+|----------|------------------|-----------------|
+| **Storage** | ✅ Centralized model repository (Object Storage)<br/>✅ Multi-environment model sharing | ✅ 70% faster deployments (PVC caching)<br/>✅ Session cost tracking |
+| **Operations** | ✅ Production observability (metrics, dashboards)<br/>✅ Autoscaling (HPA-based) | ✅ 100% idempotent (safe re-runs)<br/>✅ Automatic cleanup (fail-safe)<br/>✅ Runbook automation (Makefile) |
+| **Performance** | ✅ Performance optimization (TensorRT-LLM) | ✅ Proactive cost guards (prevent surprise bills) |
 
 ---
 
@@ -161,29 +154,14 @@ helm upgrade --set model.optimization.tensorrt=true
 
 ## 🎓 Recommendations by Scenario
 
-### Scenario: First-time NIM evaluation
-**Use:** Nimble OKE  
-**Why:** Fast setup, cost guards prevent mistakes, idempotent operations safe to retry
-
-### Scenario: Multi-environment CI/CD (dev/stage/prod)
-**Use:** Oracle Blog pattern  
-**Why:** Centralized model repository, Object Storage versioning, autoscaling
-
-### Scenario: Production 24/7 inference service
-**Use:** Oracle Blog pattern + Nimble OKE automation  
-**Why:** Need monitoring, autoscaling, but want Nimble's cleanup/idempotency
-
-### Scenario: Cost-sensitive POC (<$50 budget)
-**Use:** Nimble OKE  
-**Why:** Time-boxed testing, cost guards, automatic cleanup prevents overspend
-
-### Scenario: Performance-critical production (low latency)
-**Use:** Oracle Blog pattern  
-**Why:** TensorRT-LLM, quantization, optimization pipeline
-
-### Scenario: Rapid iteration during development
-**Use:** Nimble OKE  
-**Why:** 70% faster re-deployments via PVC caching, idempotent operations
+| Scenario | Recommendation | Rationale |
+|----------|---------------|-----------|
+| **First-time NIM evaluation** | Nimble OKE | Fast setup, cost guards prevent mistakes, idempotent operations safe to retry |
+| **Multi-environment CI/CD (dev/stage/prod)** | Oracle Blog pattern | Centralized model repository, Object Storage versioning, autoscaling |
+| **Production 24/7 inference service** | Oracle Blog + Nimble automation | Need monitoring, autoscaling, but want Nimble's cleanup/idempotency |
+| **Cost-sensitive POC (<$50 budget)** | Nimble OKE | Time-boxed testing, cost guards, automatic cleanup prevents overspend |
+| **Performance-critical production (low latency)** | Oracle Blog pattern | TensorRT-LLM, quantization, optimization pipeline |
+| **Rapid iteration during development** | Nimble OKE | 70% faster re-deployments via PVC caching, idempotent operations |
 
 ---
 
@@ -235,17 +213,12 @@ helm install nim ./helm -f values.prod.yaml
 
 ## 📊 Performance Expectations
 
-### Oracle Blog Pattern
-- **First deployment:** ~60min (download from Object Storage)
-- **Subsequent deployments:** ~60min (no persistent cache)
-- **Inference latency:** Lower (with TensorRT-LLM)
-- **Throughput:** Higher (with optimization)
-
-### Nimble OKE Pattern
-- **First deployment:** ~48min (download + cache to PVC)
-- **Subsequent deployments:** ~12min (cached models)
-- **Inference latency:** Standard (stock NIM)
-- **Throughput:** Standard (stock NIM)
+| Metric | Oracle Blog Pattern | Nimble OKE Pattern |
+|--------|-------------------|-------------------|
+| **First deployment** | ~60min (download from Object Storage) | ~48min (download + cache to PVC) |
+| **Subsequent deployments** | ~60min (no persistent cache) | ~12min (cached models) |
+| **Inference latency** | Lower (with TensorRT-LLM) | Standard (stock NIM) |
+| **Throughput** | Higher (with optimization) | Standard (stock NIM) |
 
 ---
 
@@ -274,22 +247,11 @@ make cleanup                      # Remove deployment
 
 ## 💡 When to Switch Approaches
 
-### Switch from Nimble OKE to Oracle Blog When:
-- ✅ Moving to production (need monitoring, autoscaling)
-- ✅ Multi-environment deployments (need centralized models)
-- ✅ Cost becomes less important than performance
-- ✅ Regulatory compliance requires network policies
-
-### Switch from Oracle Blog to Nimble OKE When:
-- ✅ Rapid iteration more important than optimization
-- ✅ Budget-constrained development
-- ✅ Single-cluster workflow sufficient
-- ✅ Need fail-safe automation (cleanup hooks)
-
-### Use Both When:
-- ✅ Dev/test with Nimble, deploy with Oracle patterns
-- ✅ Nimble automation + Oracle observability
-- ✅ Gradual migration to production (hybrid config)
+| Migration Direction | When to Switch | Use Cases |
+|---------------------|---------------|-----------|
+| **Nimble → Oracle** | ✅ Moving to production<br/>✅ Multi-environment deployments<br/>✅ Cost less important than performance<br/>✅ Regulatory compliance requires network policies | Production inference services<br/>Enterprise deployments<br/>Compliance requirements |
+| **Oracle → Nimble** | ✅ Rapid iteration more important<br/>✅ Budget-constrained development<br/>✅ Single-cluster workflow sufficient<br/>✅ Need fail-safe automation | Development/testing<br/>Cost-sensitive POCs<br/>Rapid prototyping |
+| **Use Both** | ✅ Dev/test with Nimble, deploy with Oracle<br/>✅ Nimble automation + Oracle observability<br/>✅ Gradual migration to production | Hybrid workflows<br/>Gradual production migration<br/>Best of both worlds |
 
 ---
 

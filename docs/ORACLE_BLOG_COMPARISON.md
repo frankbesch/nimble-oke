@@ -116,96 +116,11 @@
 
 ### High-Priority Improvements
 
-#### 1. **Hybrid Storage Strategy** (Recommended for production path)
-
-**Implementation:**
-```yaml
-# New values.yaml section
-model:
-  source: "object-storage"  # or "pvc" for current behavior
-  objectStorage:
-    enabled: false
-    bucketName: "nimble-oke-models"
-    namespace: "nim-models"
-    region: "us-chicago-1"
-    preAuthenticatedRequest: ""  # PAR URL for model download
-  cache:
-    enabled: true
-    storageClass: "oci-bv"
-    size: "200Gi"
-```
-
-**Benefit:** Supports both rapid testing (PVC) and production patterns (Object Storage) without architectural rewrites.
-
-**Effort:** Medium (8-12 hours) - requires init container for model download, OCI Object Storage SDK integration.
-
----
-
-#### 2. **Performance Benchmarking Integration**
-
-**Add GenAI-Perf benchmarking script:**
-```bash
-#!/usr/bin/env bash
-# scripts/benchmark-nim.sh
-
-# Uses NVIDIA GenAI-Perf to measure:
-# - Tokens per second (throughput)
-# - Time to first token (latency)
-# - Request latency p50/p90/p99
-# - GPU utilization during inference
-
-ENDPOINT="${NIM_ENDPOINT:-http://localhost:8000}"
-
-log_info "Running GenAI-Perf benchmark against $ENDPOINT..."
-
-docker run --rm -it \
-  --network host \
-  nvcr.io/nvidia/genai-perf:latest \
-  --model meta/llama-3.1-8b-instruct \
-  --endpoint "$ENDPOINT/v1/completions" \
-  --concurrency 10 \
-  --num-prompts 100 \
-  --output-file ./benchmark-results.json
-
-log_success "Benchmark complete: ./benchmark-results.json"
-```
-
-**Benefit:** Data-driven optimization; validates 12-48min deployment claims; identifies bottlenecks.
-
-**Effort:** Low (2-4 hours) - wrapper script + documentation.
-
----
-
-#### 3. **Enhanced Monitoring and Observability**
-
-**Problem:** Current approach has structured logging but no metrics aggregation or visualization.
-
-**Solution:**
-```yaml
-# helm/values.yaml additions
-monitoring:
-  enabled: false  # Optional for production path
-  prometheus:
-    enabled: true
-    serviceMonitor: true
-  grafana:
-    enabled: true
-    dashboards:
-      - nvidia-nim-inference
-      - gpu-utilization
-```
-
-**Metrics to Capture:**
-- GPU utilization (nvidia-smi metrics)
-- Inference requests/sec
-- Token throughput
-- Model load time
-- Cache hit rate
-- Pod restart count
-
-**Benefit:** Visibility into performance degradation; aligns with production best practices.
-
-**Effort:** Medium (6-10 hours) - Prometheus operator, ServiceMonitor, Grafana dashboards.
+| Enhancement | Implementation | Benefit | Effort |
+|-------------|---------------|---------|---------|
+| **Hybrid Storage Strategy** | `model.source: "object-storage"` or `"pvc"`<br/>OCI Object Storage integration<br/>Init container for model download | Supports both rapid testing (PVC) and production patterns (Object Storage) without architectural rewrites | Medium (8-12 hours) |
+| **Performance Benchmarking** | GenAI-Perf script integration<br/>Measure tokens/sec, latency p50/p90/p99<br/>GPU utilization tracking | Data-driven optimization; validates 12-48min deployment claims; identifies bottlenecks | Low (2-4 hours) |
+| **Enhanced Monitoring** | Prometheus + Grafana integration<br/>GPU utilization, inference metrics<br/>ServiceMonitor + dashboards | Visibility into performance degradation; aligns with production best practices | Medium (6-10 hours) |
 
 ---
 
@@ -274,134 +189,20 @@ autoscaling:
 
 ### Medium-Priority Improvements
 
-#### 6. **Multi-Region Model Replication**
-
-**Oracle Blog Pattern:** Centralized Object Storage with cross-region replication.
-
-**Nimble OKE Gap:** Models stored per-cluster (no cross-region sharing).
-
-**Solution:**
-- Use OCI Object Storage replication policies
-- Update deployment to support multi-region model buckets
-- Add region-aware model source configuration
-
-**Benefit:** Disaster recovery; lower latency for multi-region deployments.
-
-**Effort:** Medium (8-12 hours) - OCI Object Storage integration required.
-
----
-
-#### 7. **Security Enhancements**
-
-**Current Security Posture:**
-```yaml
-podSecurityContext:
-  runAsNonRoot: true
-  runAsUser: 1000
-  fsGroup: 1000
-  seccompProfile: disabled  # For GPU syscall compatibility
-
-securityContext:
-  allowPrivilegeEscalation: false
-  capabilities:
-    drop: [ALL]
-  readOnlyRootFilesystem: false  # NIM needs writable cache
-```
-
-**Oracle Blog Recommendations:**
-- Network policies to restrict pod-to-pod communication
-- RBAC with least privilege
-- Pod Security Standards (restricted profile)
-
-**Improvements:**
-```yaml
-# Add network policies
-networkPolicy:
-  enabled: false  # Optional for production
-  policyTypes:
-    - Ingress
-    - Egress
-  ingress:
-    - from:
-      - namespaceSelector:
-          matchLabels:
-            name: ingress-nginx
-  egress:
-    - to:
-      - namespaceSelector: {}
-      ports:
-        - protocol: TCP
-          port: 443  # HTTPS for NGC registry
-```
-
-**Custom seccomp profile** (instead of disabling):
-```json
-{
-  "defaultAction": "SCMP_ACT_ERRNO",
-  "architectures": ["SCMP_ARCH_X86_64"],
-  "syscalls": [
-    {"names": ["ioctl", "mmap", "munmap"], "action": "SCMP_ACT_ALLOW"},
-    {"names": ["open", "read", "write", "close"], "action": "SCMP_ACT_ALLOW"}
-  ]
-}
-```
-
-**Benefit:** Meets enterprise security standards; enables production deployment.
-
-**Effort:** Medium (6-10 hours) - NetworkPolicy testing, custom seccomp profile validation with GPU workloads.
-
----
-
-#### 8. **Cost Optimization: Spot Instances**
-
-**Current:** Uses on-demand GPU nodes.
-
-**Improvement:** Support OCI preemptible instances (spot pricing) for non-critical testing.
-
-**Implementation:**
-```bash
-# scripts/provision-cluster.sh addition
-readonly GPU_SHAPE="VM.GPU.A10.1"
-readonly PREEMPTIBLE="${PREEMPTIBLE:-false}"  # New flag
-
-if [[ "$PREEMPTIBLE" == "true" ]]; then
-    log_warn "Using preemptible instances (may be reclaimed)"
-    node_pool_args+=(--is-preemptible true)
-    estimated_cost=$(echo "$estimated_cost * 0.5" | bc -l)  # ~50% discount
-fi
-```
-
-**Benefit:** 50-70% cost reduction for fault-tolerant workloads.
-
-**Trade-off:** Nodes can be reclaimed; not suitable for long-running tests.
-
-**Effort:** Low (2-4 hours) - OCI CLI parameter addition, cost calculation update.
+| Enhancement | Implementation | Benefit | Effort |
+|-------------|---------------|---------|---------|
+| **Multi-Region Model Replication** | OCI Object Storage replication policies<br/>Region-aware model source config | Disaster recovery; lower latency for multi-region deployments | Medium (8-12 hours) |
+| **Security Enhancements** | Network policies, RBAC, custom seccomp profile<br/>Pod Security Standards compliance | Meets enterprise security standards; enables production deployment | Medium (6-10 hours) |
+| **Cost Optimization: Spot Instances** | OCI preemptible instances support<br/>`PREEMPTIBLE=true` flag | 50-70% cost reduction for fault-tolerant workloads | Low (2-4 hours) |
 
 ---
 
 ### Low-Priority Enhancements
 
-#### 9. **Advanced Troubleshooting: Distributed Tracing**
-
-**Oracle Blog Implication:** Production systems need request tracing across services.
-
-**Enhancement:** OpenTelemetry integration for distributed tracing.
-
-**Benefit:** Debug latency issues, track requests across replicas.
-
-**Effort:** High (16-24 hours) - OpenTelemetry operator, Jaeger deployment, instrumentation.
-
----
-
-#### 10. **GitOps Integration**
-
-**Current:** Makefile-driven manual deployments.
-
-**Future Path:** ArgoCD for GitOps continuous delivery.
-
-**Benefit:** Aligns with `.cursorrules` preference for ArgoCD; enables CD pipelines.
-
-**Effort:** Medium (8-12 hours) - ArgoCD Application manifests, sync policies, CI/CD integration.
+| Enhancement | Implementation | Benefit | Effort |
+|-------------|---------------|---------|---------|
+| **Distributed Tracing** | OpenTelemetry integration<br/>Jaeger deployment | Debug latency issues, track requests across replicas | High (16-24 hours) |
+| **GitOps Integration** | ArgoCD for continuous delivery<br/>Application manifests, sync policies | Aligns with `.cursorrules` preference; enables CD pipelines | Medium (8-12 hours) |
 
 ---
 
