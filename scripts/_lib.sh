@@ -395,11 +395,12 @@ get_cluster_info() {
 
 estimate_hourly_cost() {
     local gpu_count="${1:-1}"
-    local gpu_hourly="2.62"
-    local control_plane="0.10"
-    local lb_cost="0.25"
-    local storage_cost="0.05"  # 200GB at $0.03/GB/month = ~$0.05/hour
-    echo "($gpu_hourly * $gpu_count) + $control_plane + $lb_cost + $storage_cost" | bc -l
+    local gpu_hourly="2.62"        # VM.GPU.A10.1
+    local control_plane="0.10"     # OKE control plane
+    local enhanced="0.10"          # ENHANCED cluster type
+    local lb_cost="0.0144"         # 10 Mbps flexible LB (corrected from $0.25)
+    local storage_cost="0.05"      # 200GB at ~$0.03/GB/month
+    echo "($gpu_hourly * $gpu_count) + $control_plane + $enhanced + $lb_cost + $storage_cost" | bc -l
 }
 
 estimate_deployment_cost() {

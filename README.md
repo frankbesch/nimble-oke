@@ -34,7 +34,7 @@ This is the **first version** of Nimble OKE. All configurations, timing estimate
 Validates NVIDIA NIM deployments with comprehensive testing framework. Purpose-built for rapid smoke testing:
 
 - **12-48 minute deployment** (simulated, depending on optimization level)
-- **$4.50-$15.10 complete smoke test** (simulated, depending on duration and optimization)
+- **$4.50-$14.42 complete smoke test** (simulated, depending on duration and optimization)
 - **Idempotent operations** - safe to re-run
 - **Cost guards** - prevent surprise bills
 - **Automatic cleanup** on failure
@@ -48,7 +48,7 @@ Validates NVIDIA NIM deployments with comprehensive testing framework. Purpose-b
 
 - **Mathematical Performance Modeling** - 48min baseline → 12min optimized deployment (70% improvement)
 - **Comprehensive Testing Framework** - Complete simulation without infrastructure costs
-- **Cost Engineering** - $15.10 → $3.50 per iteration optimization (77% cost reduction)
+- **Cost Engineering** - $14.42 → $3.50 per iteration optimization (76% cost reduction)
 - **Failure Pattern Detection** - Proactive troubleshooting for common NIM issues
 - **Rapid Iteration Optimization** - Caching strategies and performance tuning
 - **Security Optimization** - NIM-compatible security settings (seccompProfile disabled for GPU compatibility)
@@ -91,7 +91,7 @@ make cleanup
 make teardown
 ```
 
-**Time:** 5 hours | **Cost:** ~$15.10 (simulated)
+**Time:** 5 hours | **Cost:** ~$14.42 (simulated)
 
 ### Option 2: Use Existing Cluster
 
@@ -195,9 +195,9 @@ The `VM.GPU.A10.1` shape provides:
 | VM.GPU.A10.1 (1 GPU) | $2.62/hr | 5 hours | $13.10 | Primary compute cost |
 | OKE Control Plane | $0.10/hr | 5 hours | $0.50 | Kubernetes management |
 | ENHANCED Cluster | $0.10/hr | 5 hours | $0.50 | Additional cluster features |
-| Block Storage (200GB) | ~$0.03/GB | 200GB | $0.25 | Model storage and cache |
-| Load Balancer | ~$1.25/hr | 5 hours | $6.25 | External access |
-| **Total** | | | **~$15.10** | **Simulated estimate** |
+| Block Storage (200GB) | ~$0.05/hr | 5 hours | $0.25 | Model storage and cache |
+| Load Balancer (10 Mbps) | $0.0144/hr | 5 hours | $0.07 | External access |
+| **Total** | | | **~$14.42** | **Simulated estimate** |
 
 ### Cost Optimization Strategies
 

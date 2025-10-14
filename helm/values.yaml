@@ -19,10 +19,6 @@ ngc:
 
 model:
   name: "meta/llama-3.1-8b-instruct"
-  cache:
-    enabled: true
-    storageClass: "oci-bv"
-    size: "200Gi"  # Recommended for model caching and avoiding resource constraints
 
 resources:
   # NVIDIA NIM Requirements: 40GB RAM minimum, 90GB recommended
@@ -62,7 +58,7 @@ persistence:
   enabled: true
   storageClass: "oci-bv"
   accessMode: ReadWriteOnce
-  size: 50Gi
+  size: 200Gi  # Increased from 50Gi for model caching
   mountPath: /model-cache
 
 podSecurityContext:
@@ -81,7 +77,7 @@ securityContext:
   readOnlyRootFilesystem: false  # NIM requires writable filesystem for temp files and cache
 
 nodeSelector:
-  nvidia.com/gpu.product: NVIDIA-A10
+  nvidia.com/gpu.present: "true"  # Flexible GPU selection (any NVIDIA GPU)
 
 tolerations:
   - key: nvidia.com/gpu

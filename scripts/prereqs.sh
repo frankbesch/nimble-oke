@@ -75,6 +75,40 @@ check_ngc_credentials() {
     return 0
 }
 
+check_ngc_model_access() {
+    local model="${NIM_MODEL:-meta/llama-3.1-8b-instruct}"
+    
+    log_info "Verifying NGC model access: $model"
+    
+    if [[ -z "${NGC_API_KEY:-}" ]]; then
+        log_warn "NGC_API_KEY not set, skipping model access check"
+        return 1
+    fi
+    
+    # Test NGC API authentication and model access
+    local ngc_response
+    ngc_response=$(curl -s -w "%{http_code}" -o /dev/null \
+        -H "Authorization: Bearer $NGC_API_KEY" \
+        "https://api.ngc.nvidia.com/v2/models/nvidia/$model" 2>/dev/null || echo "000")
+    
+    if [[ "$ngc_response" == "200" ]]; then
+        log_success "NGC model access verified: $model"
+        return 0
+    elif [[ "$ngc_response" == "401" ]]; then
+        log_error "NGC API key authentication failed"
+        log_info "Verify your key at: https://ngc.nvidia.com/setup/api-key"
+        return 1
+    elif [[ "$ngc_response" == "403" ]]; then
+        log_error "NGC API key lacks access to model: $model"
+        log_info "Request access at: https://catalog.ngc.nvidia.com/"
+        return 1
+    else
+        log_warn "NGC API connectivity test inconclusive (HTTP $ngc_response)"
+        log_info "Proceeding anyway - will fail at deployment if access denied"
+        return 0
+    fi
+}
+
 check_oci_compartment() {
     if [[ -z "${OCI_COMPARTMENT_ID:-}" ]]; then
         log_error "OCI_COMPARTMENT_ID environment variable not set"
@@ -203,6 +237,7 @@ main() {
     check_kubectl_config || ((failed++))
     check_oci_compartment || ((failed++))
     check_ngc_credentials || ((failed++))
+    check_ngc_model_access || log_warn "NGC model access check inconclusive (non-fatal)"
     
     echo ""
     echo "=== Optional Checks ==="
