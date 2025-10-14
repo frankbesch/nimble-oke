@@ -3,7 +3,7 @@
 > **⚠️ Development Status:** First version (v0.1.0-20251013-dev) - Under active development  
 > **🚧 Testing Required:** All configurations need validation with actual GPU quota
 
-GPU-accelerated, cost-efficient smoke testing platform for validating AI inference microservices on Oracle Cloud Infrastructure.
+GPU-accelerated, cost-efficient smoke-testing platform for validating NVIDIA Inference Microservices (NIM) on Oracle Cloud Infrastructure (OCI) via Oracle Kubernetes Engine (OKE).
 
 **Based on:** [NVIDIA nim-deploy Oracle OKE Reference](https://github.com/NVIDIA/nim-deploy/tree/main/cloud-service-providers/oracle/oke)
 
