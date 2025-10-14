@@ -15,7 +15,7 @@ A **GPU-accelerated**, **cost-efficient** smoke-testing platform for validating 
 - ✅ **Complete testing framework** - All simulation and optimization scripts
 - ✅ **Environment configuration** - Chicago region, compartment, budget controls  
 - ✅ **NGC API key validation** - Set and validated
-- ✅ **Cost simulation** - $15.10 deployment within $50 budget
+- ✅ **Cost simulation** - $14.42 deployment within $50 budget
 - ✅ **Security optimization** - NIM-compatible security settings
 - ✅ **Documentation** - Comprehensive technical analysis and guides
 
@@ -34,7 +34,7 @@ This is the **first version** of Nimble OKE. All configurations, timing estimate
 Validates NVIDIA NIM deployments with comprehensive testing framework. Purpose-built for rapid smoke testing:
 
 - **12-48 minute deployment** (simulated, depending on optimization level)
-- **$4.50-$14.42 complete smoke test** (simulated, depending on duration and optimization)
+- **$4.33-$14.42 complete smoke test** (simulated, depending on duration and optimization)
 - **Idempotent operations** - safe to re-run
 - **Cost guards** - prevent surprise bills
 - **Automatic cleanup** on failure
@@ -50,7 +50,7 @@ Validates NVIDIA NIM deployments with comprehensive testing framework. Purpose-b
 |-------------|-------------|---------|
 | **Mathematical Performance Modeling** | 48min baseline → 12min optimized deployment | 70% improvement |
 | **Comprehensive Testing Framework** | Complete simulation without infrastructure costs | Risk-free validation |
-| **Cost Engineering** | $14.42 → $3.50 per iteration optimization | 76% cost reduction |
+| **Cost Engineering** | $14.42 → $4.33 per iteration optimization | 69% cost reduction |
 | **Failure Pattern Detection** | Proactive troubleshooting for common NIM issues | Faster problem resolution |
 | **Rapid Iteration Optimization** | Caching strategies and performance tuning | Reduced iteration time |
 | **Security Optimization** | NIM-compatible security settings | GPU compatibility maintained |
@@ -84,7 +84,7 @@ export OCI_REGION=us-phoenix-1
 | Option | Commands | Time | Cost |
 |--------|----------|------|------|
 | **Complete Smoke Test** | `make provision CONFIRM_COST=yes`<br/>`make all`<br/>`make cleanup`<br/>`make teardown` | 5 hours | ~$14.42 |
-| **Use Existing Cluster** | `make discover`<br/>`make install CONFIRM_COST=yes`<br/>`make verify`<br/>`make cleanup` | 1-2 hours | ~$4.50-$6.25 |
+| **Use Existing Cluster** | `make discover`<br/>`make install CONFIRM_COST=yes`<br/>`make verify`<br/>`make cleanup` | 1-2 hours | ~$4.33-$5.77 |
 
 ## Prerequisites
 
@@ -183,7 +183,7 @@ The `VM.GPU.A10.1` shape provides:
 | **Model caching** | Preserves expensive downloads | PVC preserves models (KEEP_CACHE=yes) |
 | **Cost guards** | Prevents accidental deployments | Confirmation prompts for >$5 operations |
 
-**⚠️ WARNING:** 24/7 operation costs ~$1,880-2,250/month. Always run `make cleanup` after testing.
+**⚠️ WARNING:** 24/7 operation costs ~$2,077/month. Always run `make cleanup` after testing.
 
 ## Runbook Architecture
 
@@ -430,7 +430,7 @@ While Oracle Cloud Infrastructure offers a managed NVIDIA NIM solution via its M
 | Deployment | Custom Helm charts | Terraform stack |
 | Region | Dealer's choice (flexible) | us-ashburn-1 only |
 | Control | Full infrastructure control | Managed service |
-| Cost | $3.50-$15.10 (simulated) | $1/hr per GPU |
+| Cost | $4.33-$14.42 (simulated) | $1/hr per GPU |
 | Purpose | Optimizing & practicing NIM on OKE deployment | Quick deployment |
 
 ## Additional Resources

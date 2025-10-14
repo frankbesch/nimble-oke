@@ -382,7 +382,7 @@ check_ngc_model_access() {
 
 ### When to Use Nimble OKE
 - **Rapid smoke testing** - validate NIM deployment in <1 hour
-- **Cost-sensitive development** - $15 smoke test vs $50+ for manual setup
+- **Cost-sensitive development** - $14.42 smoke test vs $50+ for manual setup
 - **Single-cluster workflows** - no need for cross-environment model sharing
 - **Learning and experimentation** - idempotent operations prevent costly mistakes
 

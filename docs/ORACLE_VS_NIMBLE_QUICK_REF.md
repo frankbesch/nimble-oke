@@ -48,9 +48,9 @@
 
 ### Nimble OKE (Current)
 ```
-Hourly: $2.87
+Hourly: $2.88
 5-hour test: $14.42
-24/7 month: $2,066
+24/7 month: $2,077
 
 Components:
 • GPU (A10): $2.62/hr

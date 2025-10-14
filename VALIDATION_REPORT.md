@@ -306,7 +306,7 @@ annotations:
 | OKE Control | $0.50 |
 | Storage | $0.25 |
 | LoadBalancer | $6.25 |
-| **Total** | **~$15.10** |
+| **Total** | **~$14.42** |
 
 **Result:** Cost estimates accurate
 
