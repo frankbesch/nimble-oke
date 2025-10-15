@@ -29,6 +29,74 @@ log_success() {
     echo "${LOG_PREFIX}[SUCCESS] $*" >&2
 }
 
+# Smart retry logic with exponential backoff and circuit breaker pattern
+smart_retry() {
+    local max_attempts="${1:-3}"
+    local base_delay="${2:-5}"
+    local command="${@:3}"
+    local attempt=1
+    local circuit_breaker_threshold=5
+    local circuit_breaker_reset_time=300  # 5 minutes
+    
+    # Check circuit breaker
+    local circuit_breaker_file="/tmp/nim-circuit-breaker-$(echo "$command" | md5sum | cut -d' ' -f1)"
+    local current_time=$(date +%s)
+    
+    if [[ -f "$circuit_breaker_file" ]]; then
+        local last_failure_time=$(cat "$circuit_breaker_file")
+        local time_since_failure=$((current_time - last_failure_time))
+        
+        if [[ $time_since_failure -lt $circuit_breaker_reset_time ]]; then
+            log_warn "Circuit breaker active - command failed recently, skipping retry"
+            return 1
+        else
+            # Reset circuit breaker
+            rm -f "$circuit_breaker_file"
+        fi
+    fi
+    
+    while [[ $attempt -le $max_attempts ]]; do
+        log_info "Attempt $attempt/$max_attempts: $command"
+        
+        if eval "$command"; then
+            log_success "Command succeeded on attempt $attempt"
+            # Clear circuit breaker on success
+            rm -f "$circuit_breaker_file"
+            return 0
+        fi
+        
+        local exit_code=$?
+        log_warn "Attempt $attempt failed with exit code $exit_code"
+        
+        # Exponential backoff with jitter
+        if [[ $attempt -lt $max_attempts ]]; then
+            local delay=$((base_delay * (2 ** (attempt - 1)) + RANDOM % 5))
+            log_info "Retrying in ${delay} seconds..."
+            sleep $delay
+        fi
+        
+        ((attempt++))
+    done
+    
+    # Record failure for circuit breaker
+    echo "$current_time" > "$circuit_breaker_file"
+    
+    log_error "Command failed after $max_attempts attempts"
+    return 1
+}
+
+# Enhanced timeout protection with smart retry
+timeout_with_retry() {
+    local timeout_seconds="${1:-300}"
+    local max_retries="${2:-2}"
+    local command="${@:3}"
+    
+    log_info "Running command with timeout protection and smart retry"
+    log_info "Timeout: ${timeout_seconds}s, Max retries: $max_retries"
+    
+    smart_retry "$max_retries" 10 "timeout $timeout_seconds $command"
+}
+
 debug() {
     if [[ "$DEBUG" == "true" ]]; then
         echo "${LOG_PREFIX}[DEBUG] $*" >&2

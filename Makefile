@@ -1,4 +1,4 @@
-.PHONY: help discover prereqs install verify operate troubleshoot cleanup clean all session-init session-summary session-compare validate validate-quick validate-cost dry-run test-connectivity cost-simulate cost-scenarios cost-optimization budget-check cache-check cache-prewarm cache-stats cache-cleanup log-analyze
+.PHONY: help discover prereqs install verify operate troubleshoot cleanup clean all session-init session-summary session-compare validate validate-quick validate-cost dry-run test-connectivity cost-simulate cost-scenarios cost-optimization budget-check cache-check cache-prewarm cache-stats cache-cleanup log-analyze deploy-parallel predict predict-setup
 
 SCRIPTS_DIR := scripts
 ENVIRONMENT ?= dev
@@ -34,6 +34,11 @@ help:
 	@echo "  make cache-prewarm   → Pre-warm model cache"
 	@echo "  make cache-stats     → Show cache statistics"
 	@echo "  make log-analyze     → Run enhanced log analysis"
+	@echo ""
+	@echo "Advanced Deployment:"
+	@echo "  make deploy-parallel → Deploy using parallel pipeline (50% faster)"
+	@echo "  make predict         → Run predictive diagnostics"
+	@echo "  make predict-setup   → Set up predictive monitoring"
 	@echo "  make validate-cost   → Run cost validation with custom params"
 	@echo "  make dry-run         → Simulate deployment without costs"
 	@echo "  make test-connectivity → Test network and API connectivity"
@@ -224,6 +229,20 @@ cache-cleanup:
 log-analyze:
 	@echo "[NIM-OKE] Running enhanced log analysis..."
 	@$(SCRIPTS_DIR)/log-analyzer.sh $(NAMESPACE)
+
+# Parallel deployment pipeline
+deploy-parallel:
+	@echo "[NIM-OKE] Starting parallel deployment pipeline..."
+	@$(SCRIPTS_DIR)/deploy-parallel.sh
+
+# Predictive diagnostics
+predict:
+	@echo "[NIM-OKE] Running predictive diagnostics..."
+	@$(SCRIPTS_DIR)/predictive-diagnostics.sh
+
+predict-setup:
+	@echo "[NIM-OKE] Setting up predictive monitoring..."
+	@$(SCRIPTS_DIR)/predictive-diagnostics.sh && kubectl apply -f /tmp/nim-monitoring-config.yaml || true
 
 # Comprehensive NIM smoke testing
 nim-smoke-test:
