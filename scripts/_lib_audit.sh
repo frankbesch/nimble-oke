@@ -247,7 +247,7 @@ get_ocir_namespace() {
 }
 
 check_ocir_access() {
-    local region="${OCI_REGION:-us-chicago-1}"
+    local region="${OCI_REGION:-us-phoenix-1}"
     local namespace
     namespace=$(get_ocir_namespace)
     local endpoint="${region}.ocir.io"
@@ -265,7 +265,7 @@ check_ocir_access() {
 
 list_gpu_shapes_in_region() {
     local compartment_id="${OCI_COMPARTMENT_ID:-}"
-    local region="${OCI_REGION:-us-chicago-1}"
+    local region="${OCI_REGION:-us-phoenix-1}"
     
     if [[ -z "$compartment_id" ]]; then
         echo ""

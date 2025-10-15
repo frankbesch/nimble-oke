@@ -1,4 +1,4 @@
-.PHONY: help discover prereqs install verify operate troubleshoot cleanup clean all session-init session-summary session-compare validate validate-quick validate-cost dry-run test-connectivity cost-simulate cost-scenarios cost-optimization budget-check cache-check cache-prewarm cache-stats cache-cleanup log-analyze deploy-parallel predict predict-setup provision-preemptible monitor-preemptible auto-recovery recovery-check recovery-stop recovery-stats
+.PHONY: help discover prereqs install verify operate troubleshoot cleanup clean all session-init session-summary session-compare validate validate-quick validate-cost dry-run test-connectivity cost-simulate cost-scenarios cost-optimization budget-check cache-check cache-prewarm cache-stats cache-cleanup log-analyze deploy-parallel predict predict-setup provision-preemptible monitor-preemptible auto-recovery recovery-check recovery-stop recovery-stats region-show region-set region-current region-recommend
 
 SCRIPTS_DIR := scripts
 ENVIRONMENT ?= dev
@@ -24,6 +24,12 @@ help:
 	@echo "Shortcuts:"
 	@echo "  make all             → Run complete workflow (discover→install→verify)"
 	@echo "  make clean           → Alias for cleanup"
+	@echo ""
+	@echo "Region Configuration:"
+	@echo "  make region-show     → Show available regions"
+	@echo "  make region-set      → Set OCI region"
+	@echo "  make region-current  → Show current region"
+	@echo "  make region-recommend → Recommend best region for Austin, TX"
 	@echo ""
 	@echo "Pre-execution Validation:"
 	@echo "  make validate        → Run comprehensive validation"
@@ -239,6 +245,23 @@ cache-cleanup:
 log-analyze:
 	@echo "[NIM-OKE] Running enhanced log analysis..."
 	@$(SCRIPTS_DIR)/log-analyzer.sh $(NAMESPACE)
+
+# Region configuration
+region-show:
+	@echo "[NIM-OKE] Showing available regions..."
+	@$(SCRIPTS_DIR)/configure-region.sh show
+
+region-set:
+	@echo "[NIM-OKE] Setting OCI region..."
+	@$(SCRIPTS_DIR)/configure-region.sh set $(REGION)
+
+region-current:
+	@echo "[NIM-OKE] Current region status..."
+	@$(SCRIPTS_DIR)/configure-region.sh current
+
+region-recommend:
+	@echo "[NIM-OKE] Recommending best region for Austin, TX..."
+	@$(SCRIPTS_DIR)/configure-region.sh recommend
 
 # Parallel deployment pipeline
 deploy-parallel:

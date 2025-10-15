@@ -39,7 +39,7 @@ check_gpu_quota_for_shape() {
 
 check_gpu_quota_across_regions() {
     local shape="$1"
-    local regions=("us-chicago-1" "us-phoenix-1" "us-ashburn-1" "us-sanjose-1")
+    local regions=("us-phoenix-1" "us-ashburn-1" "us-sanjose-1" "us-chicago-1")
     
     echo ""
     echo "GPU Quota Check: $shape"

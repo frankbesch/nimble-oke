@@ -63,7 +63,11 @@ Validates NVIDIA NIM deployments with comprehensive testing framework. Purpose-b
 # Set credentials
 export NGC_API_KEY=nvapi-your-key-here
 export OCI_COMPARTMENT_ID=ocid1.compartment.oc1...
-export OCI_REGION=us-phoenix-1
+
+# Set region (closest to Austin, TX)
+export OCI_REGION=us-phoenix-1  # Phoenix, AZ (recommended)
+# export OCI_REGION=us-ashburn-1  # Ashburn, VA
+# export OCI_REGION=us-sanjose-1  # San Jose, CA
 ```
 
 | Option | Commands | Time | Cost |
@@ -74,6 +78,8 @@ export OCI_REGION=us-phoenix-1
 ## Prerequisites
 
 **Quick requirements:** OCI paid account, GPU quota (VM.GPU.A10.1), NGC API key, OCI CLI, kubectl, Helm.
+
+**Region configuration:** `make region-show` - View available regions | `make region-set REGION=us-phoenix-1` - Set region
 
 **📖 Complete setup guide:** [docs/setup-prerequisites.md](docs/setup-prerequisites.md) - Detailed prerequisites, tool installation, and configuration steps.
 

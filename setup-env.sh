@@ -55,9 +55,28 @@ else
     echo ""
 fi
 
-# Set region to us-chicago-1 (where GPU quota was requested)
-export OCI_REGION="us-chicago-1"
-echo "✅ Set OCI_REGION to us-chicago-1 (where GPU quota was requested)"
+# Set region dynamically (user can override with OCI_REGION environment variable)
+export OCI_REGION="${OCI_REGION:-us-phoenix-1}"
+echo "✅ Set OCI_REGION to $OCI_REGION"
+
+# Display region-specific information
+case "$OCI_REGION" in
+    "us-phoenix-1")
+        echo "📍 Phoenix, AZ - Closest to Austin, TX"
+        ;;
+    "us-ashburn-1")
+        echo "📍 Ashburn, VA - East Coast"
+        ;;
+    "us-sanjose-1")
+        echo "📍 San Jose, CA - West Coast"
+        ;;
+    "us-chicago-1")
+        echo "📍 Chicago, IL - Central US (Note: No GPU availability)"
+        ;;
+    *)
+        echo "📍 Custom region: $OCI_REGION"
+        ;;
+esac
 echo ""
 
 # Set daily budget

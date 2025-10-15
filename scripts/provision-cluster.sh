@@ -39,7 +39,7 @@ main() {
     check_command jq
     
     local compartment_id="${OCI_COMPARTMENT_ID}"
-    local region="${OCI_REGION:-us-chicago-1}"
+    local region="${OCI_REGION:-us-phoenix-1}"
     
     log_info "Estimating provisioning cost..."
     local hourly_cost

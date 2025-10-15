@@ -24,7 +24,7 @@ init_session() {
   "start_time": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "start_timestamp": $(date +%s),
   "environment": "${ENVIRONMENT:-dev}",
-  "region": "${OCI_REGION:-us-chicago-1}",
+  "region": "${OCI_REGION:-us-phoenix-1}",
   "phases": {},
   "obstacles": [],
   "costs": {

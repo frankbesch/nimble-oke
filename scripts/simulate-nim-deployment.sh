@@ -25,8 +25,14 @@ simulate_nim_image_pull() {
         "us-phoenix-1")
             latency_ms=30  # Austin to Phoenix
             ;;
+        "us-ashburn-1")
+            latency_ms=45  # Austin to Ashburn
+            ;;
+        "us-sanjose-1")
+            latency_ms=35  # Austin to San Jose
+            ;;
         "us-chicago-1")
-            latency_ms=40  # Austin to Chicago
+            latency_ms=25  # Austin to Chicago
             ;;
         *)
             latency_ms=50  # Default
