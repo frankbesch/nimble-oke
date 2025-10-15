@@ -10,25 +10,9 @@ A **GPU-accelerated**, **cost-efficient** smoke-testing platform for validating 
 
 ## 🚧 Development Status
 
-**Current Version:** v0.1.0-20251013-dev (First version under active development)
+**Current Version:** v0.1.0-20251013-dev
 
-### What's Ready:
-- ✅ **Complete testing framework** - All simulation and optimization scripts
-- ✅ **Environment configuration** - Chicago region, compartment, budget controls  
-- ✅ **NGC API key validation** - Set and validated
-- ✅ **Cost simulation** - $14.42 deployment within $50 budget
-- ✅ **Security optimization** - NIM-compatible security settings
-- ✅ **Documentation** - Comprehensive technical analysis and guides
-
-### What Needs Testing:
-- ⏳ **GPU quota approval** - CAM-247648 (Oracle reviewing)
-- ⏳ **Cluster provisioning** - Cannot provision without GPU quota
-- ⏳ **NIM deployment** - 48min baseline, 12min optimized (simulated)
-- ⏳ **Performance validation** - All timing estimates are simulated
-- ⏳ **Cost validation** - All cost estimates are simulated
-
-### Development Philosophy:
-This is the **first version** of Nimble OKE. All configurations, timing estimates, and cost projections are based on mathematical modeling and simulation. Real-world performance will be validated after GPU quota approval and actual deployment testing.
+⏳ **Awaiting GPU quota approval** - All features ready, pending OCI GPU quota (CAM-247648). All timing/cost estimates are simulated pending validation.
 
 ## Purpose
 
@@ -89,157 +73,32 @@ export OCI_REGION=us-phoenix-1
 
 ## Prerequisites
 
-### OCI Requirements
+**Quick requirements:** OCI paid account, GPU quota (VM.GPU.A10.1), NGC API key, OCI CLI, kubectl, Helm.
 
-| Component | Requirement | Notes |
-|-----------|-------------|-------|
-| **OCI Account** | [Sign up](https://www.oracle.com/cloud/free/) | **Does NOT work on OCI Free tier** - requires paid account |
-| **GPU Quota** | VM.GPU.A10.1 (minimum 1 GPU) | Request via OCI Console → Service Limits → Compute |
-| **OCI Compartment** | OCID required | For resource organization and IAM policies |
-| **Region Support** | Any region with A10 availability | Chicago, Phoenix, Ashburn recommended |
-
-### NVIDIA NIM Requirements (Official)
-
-| Component | Minimum Requirement | Recommended | Notes |
-|-----------|---------------------|-------------|-------|
-| **GPU** | NVIDIA A10 (24GB VRAM) | A100 (40GB/80GB) | Ampere architecture or later required |
-| **GPU Memory** | 24GB VRAM | 40GB+ VRAM | For Llama 3.1 8B model |
-| **CPU Architecture** | x86_64 | x86_64 | ARM not supported |
-| **System Memory (RAM)** | 40GB | 90GB+ | **Critical**: NVIDIA recommends 90GB; minimum 40GB for small models |
-| **Disk Space** | 100GB | 200GB+ | For container images and model cache |
-| **GPU Driver** | NVIDIA 535+ | Latest | Required for CUDA support |
-| **NVIDIA Container Toolkit** | 1.16.2+ | Latest | For GPU access in containers |
-
-### OCI VM.GPU.A10.1 Shape Specifications
-
-The `VM.GPU.A10.1` shape provides:
-
-| Resource | Specification | NIM Compliance |
-|----------|---------------|----------------|
-| **GPU** | 1× NVIDIA A10 (24GB VRAM) | ✅ Meets minimum for Llama 3.1 8B |
-| **vCPUs** | 15 OCPUs | ✅ Exceeds requirements |
-| **Memory** | 240GB RAM | ✅ **Exceeds NVIDIA's 90GB recommendation** |
-| **Network** | 24.6 Gbps | ✅ High-bandwidth for model downloads |
-| **Storage** | 100GB+ block volumes | ✅ Configurable, 100GB+ recommended |
-| **Architecture** | x86_64 (AMD EPYC) | ✅ Compatible |
-| **Hourly Cost** | $2.62/hour | Cost-effective for testing |
-
-### NVIDIA NGC Account
-
-| Component | Requirement | Notes |
-|-----------|-------------|-------|
-| **NGC Account** | [Register](https://catalog.ngc.nvidia.com/) | Free account required for NIM container access |
-| **NGC API Key** | [Generate key](https://ngc.nvidia.com/setup/api-key) | Required for pulling NVIDIA container images |
-| **Model Access** | NGC authentication | Access to `meta/llama-3.1-8b-instruct` model |
-
-### Local Workstation Requirements
-
-| Component | Minimum | Notes |
-|-----------|---------|-------|
-| **Memory** | 8GB RAM | For OCI CLI, kubectl, and local operations |
-| **Storage** | 10GB free space | For container images and temporary files |
-| **Operating System** | macOS/Linux | Windows with WSL2 may work but untested |
-
-### Required Tools
-
-| Tool | Version | Install Command | Purpose |
-|------|---------|-----------------|---------|
-| **OCI CLI** | Latest | [Install guide](https://docs.oracle.com/en-us/iaas/Content/API/SDKDocs/cliinstall.htm) | OCI resource management |
-| **kubectl** | 1.28+ | [Install guide](https://kubernetes.io/docs/tasks/tools/) | Kubernetes cluster interaction |
-| **Helm** | 3.12+ | [Install guide](https://helm.sh/docs/intro/install/) | Kubernetes package management |
-| **jq** | 1.6+ | `brew install jq` (macOS) / `apt install jq` (Ubuntu) | JSON processing |
-| **bc** | Any | Pre-installed on macOS/Linux | Mathematical calculations |
-
-### ⚠️ Critical Requirements
-
-**System Memory**: NVIDIA officially recommends **90GB of RAM** for NIM deployments. The VM.GPU.A10.1 shape on OCI includes **240GB RAM** (15 OCPUs), which exceeds this requirement. Smaller models like Llama 3.1 8B may work with 40GB minimum, but 90GB+ is strongly recommended for production deployments.
-
-**GPU Memory**: The A10 GPU (24GB VRAM) is the minimum for Llama 3.1 8B model. Larger models (70B+) require A100 GPUs with 40GB+ VRAM.
-
-**Disk Space**: The NIM container and model cache require **at least 100GB**. The initial model download can be 50-100GB depending on the model. Plan for 200GB+ for optimal performance with multiple models or caching.
-
-**Software Stack**: OKE automatically provisions nodes with compatible Linux (Oracle Linux 8), NVIDIA drivers (535+), and NVIDIA Container Toolkit (1.16.2+). No manual driver installation required.
+**📖 Complete setup guide:** [docs/setup-prerequisites.md](docs/setup-prerequisites.md) - Detailed prerequisites, tool installation, and configuration steps.
 
 ## Cost Breakdown
 
-### Smoke Test Run (5 hours)
+| Scenario | Duration | Cost | Notes |
+|----------|----------|------|-------|
+| **Smoke test** | 5 hours | ~$14.42 | Full deployment + testing |
+| **Existing cluster test** | 1-2 hours | ~$4.33-$5.77 | Using provisioned cluster |
+| **24/7 operation** | Monthly | ~$2,077/month | ⚠️ Not recommended |
 
-> **Pricing Note:** Rates are as of December 2024 and subject to change. Volume discounts available for Oracle Universal Credits. See [Oracle IaaS and PaaS Services](https://www.oracle.com/cloud/iaas-paas/) for current pricing.
+**Hourly rate:** $2.88 (GPU $2.62 + control plane $0.20 + storage $0.05 + LB $0.01)
 
-| Component | Rate | Duration | Total | Notes |
-|-----------|------|----------|-------|-------|
-| VM.GPU.A10.1 (1 GPU) | $2.62/hr | 5 hours | $13.10 | Primary compute cost |
-| OKE Control Plane | $0.10/hr | 5 hours | $0.50 | Kubernetes management |
-| ENHANCED Cluster | $0.10/hr | 5 hours | $0.50 | Additional cluster features |
-| Block Storage (200GB) | ~$0.05/hr | 5 hours | $0.25 | Model storage and cache |
-| Load Balancer (10 Mbps) | $0.0144/hr | 5 hours | $0.07 | External access |
-| **Total** | | | **~$14.42** | **Simulated estimate** |
-
-### Cost Optimization Strategies
-
-| Strategy | Impact | Implementation |
-|----------|--------|----------------|
-| **Time-boxed testing** | 77% cost reduction | Provision only when validating |
-| **Automatic cleanup** | Prevents surprise bills | `make cleanup` removes billable resources |
-| **Model caching** | Preserves expensive downloads | PVC preserves models (KEEP_CACHE=yes) |
-| **Cost guards** | Prevents accidental deployments | Confirmation prompts for >$5 operations |
-
-**⚠️ WARNING:** 24/7 operation costs ~$2,077/month. Always run `make cleanup` after testing.
+**📊 Detailed cost breakdown:** [PROJECT_SUMMARY.md - Cost Analysis](PROJECT_SUMMARY.md#cost-analysis)
 
 ## Runbook Architecture
 
-### Workflow Phases
+**Workflow:** `discover → prereqs → deploy → verify → operate → troubleshoot → cleanup`
 
-```
-discover → prereqs → deploy → verify → operate → troubleshoot → cleanup
-```
+**Key patterns:**  
+- Cost guards (CONFIRM_COST for >$5 ops)  
+- Idempotent operations (safe to re-run)  
+- Automatic cleanup on failure  
 
-**discover** - cluster state, GPU availability, costs
-**prereqs** - validate tools, credentials, GPU quota, NGC access
-**deploy** - install NIM with cost guards and cleanup hooks
-**verify** - deployment health, pod status, GPU allocation, API endpoints
-**operate** - operational commands and current costs
-**troubleshoot** - systematic diagnostics for common issues
-**cleanup** - idempotent resource deletion with cost summary
-
-### Cost Guards
-
-Expensive operations require confirmation:
-
-```bash
-# Dev environment - prompts if cost > $5
-make install
-
-# Production environment - requires explicit confirmation
-ENVIRONMENT=production CONFIRM_COST=yes make install
-
-# Override threshold
-COST_THRESHOLD_USD=10 make install
-```
-
-### Idempotency
-
-Operations are safe to re-run:
-
-```bash
-make install  # First run: creates resources
-make install  # Second run: upgrades existing resources (no errors)
-make cleanup  # First run: deletes resources
-make cleanup  # Second run: no-op (already clean)
-```
-
-### Cleanup Hooks
-
-Automatic cleanup on failures:
-
-```bash
-# If deployment fails at any point
-make install
-# → Cleanup hook triggered
-# → Helm release uninstalled
-# → PVCs deleted (unless KEEP_CACHE=yes)
-# → Cost summary displayed
-```
+**📚 Complete operational guide:** [docs/RUNBOOK.md](docs/RUNBOOK.md)
 
 ## Architecture
 
@@ -282,31 +141,13 @@ make install
 ## Project Structure
 
 ```
-nimble-oke/
-├── Makefile                    # Primary interface (all operations)
-├── scripts/
-│   ├── _lib.sh                # Shared functions (logging, costs, guards)
-│   ├── discover.sh            # Cluster state discovery
-│   ├── prereqs.sh             # Prerequisites validation
-│   ├── deploy.sh              # NIM deployment with guards
-│   ├── verify.sh              # Health verification
-│   ├── operate.sh             # Operational commands
-│   ├── troubleshoot.sh        # Diagnostic runbook
-│   └── cleanup-nim.sh         # Resource cleanup
-├── helm/                       # Kubernetes manifests
-│   ├── Chart.yaml
-│   ├── values.yaml            # Configuration
-│   └── templates/
-│       ├── deployment.yaml    # Enhanced with checksums, topology spread
-│       ├── service.yaml
-│       ├── secret.yaml
-│       ├── pvc.yaml
-│       └── ...
-└── docs/
-    ├── RUNBOOK.md             # Complete operational guide
-    ├── setup-prerequisites.md
-    └── api-examples.md
+Makefile           # Primary interface
+scripts/           # Runbook automation (discover, prereqs, deploy, verify, cleanup)
+helm/              # Kubernetes manifests and configuration
+docs/              # Operational guides and API examples
 ```
+
+**📦 Complete inventory:** [ARTIFACT_INVENTORY.md](ARTIFACT_INVENTORY.md)
 
 ## Makefile Targets
 
@@ -369,70 +210,29 @@ make troubleshoot
 
 ## Helm Chart Features
 
-### Security Hardening (NIM-Optimized)
+**Security:** Non-root execution, dropped capabilities, NIM-optimized (seccomp disabled for GPU compatibility)  
+**HA:** GPU node affinity, optimized health probes (15s readiness, 45s liveness)  
+**Operations:** Config checksums for auto-restart, resource limits  
 
-| Feature | Implementation | NIM Compatibility |
-|---------|----------------|-------------------|
-| **Non-root execution** | UID 1000 | ✅ Compatible |
-| **Dropped capabilities** | ALL capabilities dropped | ✅ Compatible |
-| **Privilege escalation prevention** | `allowPrivilegeEscalation: false` | ✅ Compatible |
-| **Writable root filesystem** | `readOnlyRootFilesystem: false` | ✅ Required for NIM temp files |
-| **seccompProfile** | Disabled for GPU syscall compatibility | ⚠️ Trade-off for GPU access |
-| **Security optimization** | Balanced for deployment success | 🎯 Practical security |
-
-### High Availability (Development-Optimized)
-
-| Feature | Status | Purpose |
-|---------|--------|---------|
-| **Topology Spread Constraints** | Disabled | Single-zone development/testing |
-| **Node affinity** | GPU node placement required | NVIDIA A10 scheduling |
-| **Tolerations** | GPU taint toleration | GPU node access |
-| **Multi-replica support** | Enabled | Horizontal scaling with GPU scheduling |
-| **Health probes** | Optimized timing | Faster deployment detection (15s readiness, 45s liveness) |
-
-### Configuration Management
-
-| Feature | Implementation | Benefit |
-|---------|----------------|---------|
-| **Config checksums** | Automatic pod restarts | Config change detection |
-| **External secrets** | OCI Vault integration ready | Production secret management |
-| **Environment-based values** | Dev/staging/prod settings | Environment-specific configuration |
+**📋 Complete Helm details:** [PROJECT_SUMMARY.md - Helm Chart Enhancements](PROJECT_SUMMARY.md#helm-chart-enhancements)
 
 ## Troubleshooting
 
-### Common Issues & Solutions
+**Quick fixes:** Run `make troubleshoot` for systematic diagnostics.
 
-| Issue | Error Message | Solution | Prevention |
-|-------|---------------|----------|------------|
-| **Cost guard triggered** | `[NIM-OKE][ERROR] Cost guard: Estimated $12.00 exceeds threshold` | `CONFIRM_COST=yes make install` | Set higher `COST_THRESHOLD_USD` |
-| **No GPU nodes found** | `[NIM-OKE][ERROR] No GPU nodes available` | `make provision` first | Always provision cluster before install |
-| **NGC credentials invalid** | `[NIM-OKE][ERROR] NGC_API_KEY not set` | `export NGC_API_KEY=nvapi-your-key-here` | Run `make prereqs` to validate |
-| **Pods stuck pending** | Pods in `Pending` state | `make troubleshoot` for diagnostics | Check GPU quota and node capacity |
-| **Image pull failures** | `Failed to pull image` | Verify NGC API key and network access | Run `make prereqs` to validate NGC access |
+**Common issues:** Cost guard triggered (`CONFIRM_COST=yes`), NGC credentials (`export NGC_API_KEY`), pods pending (`make troubleshoot`).
 
-**🔍 Comprehensive Diagnostics:** Run `make troubleshoot` for systematic issue detection and resolution guidance.
-
-**📚 Complete Guide:** See [docs/RUNBOOK.md](docs/RUNBOOK.md) for detailed troubleshooting procedures.
+**📚 Complete troubleshooting:** [docs/RUNBOOK.md - Phase 6: Troubleshoot](docs/RUNBOOK.md#phase-6-troubleshoot)
 
 ## 💡 Nimble OKE vs. OCI Marketplace NIM
 
-While Oracle Cloud Infrastructure offers a managed NVIDIA NIM solution via its Marketplace, the `nimble-oke` project focuses on a **custom, optimized deployment on OCI Container Engine for Kubernetes (OKE)**. This approach provides:
-
-- **Granular Control**: Full control over Kubernetes cluster configuration, networking, and resource allocation
-- **Deep Technical Insight**: Demonstrates proficiency in Kubernetes, Helm, OCI CLI, and GPU-accelerated AI inference deployment
-- **Optimization Validation**: Allows for direct measurement and refinement of performance and cost optimizations at the infrastructure level
-- **Region Flexibility**: Our solution supports multiple regions (user's choice), whereas the Marketplace offering is currently restricted to `us-ashburn-1`
-- **Learning & Competence**: Showcases advanced technical competence in building and optimizing AI inference platforms
-
-**Key Differences:**
-| Aspect | Nimble OKE | Marketplace NIM |
-|--------|------------|-----------------|
-| Platform | OKE (Kubernetes) | OCI Data Science |
-| Deployment | Custom Helm charts | Terraform stack |
-| Region | Dealer's choice (flexible) | us-ashburn-1 only |
-| Control | Full infrastructure control | Managed service |
-| Cost | $4.33-$14.42 (simulated) | $1/hr per GPU |
-| Purpose | Optimizing & practicing NIM on OKE deployment | Quick deployment |
+| Aspect | Nimble OKE (This project) | OCI Marketplace NIM |
+|--------|--------------------------|---------------------|
+| **Platform** | OKE (Kubernetes) | OCI Data Science |
+| **Control** | Full infrastructure control | Managed service |
+| **Region** | Any A10-supported region | us-ashburn-1 only |
+| **Cost** | $4.33-$14.42 (simulated) | $1/hr per GPU |
+| **Purpose** | Learning, optimization, custom deployment | Quick managed deployment |
 
 ## Additional Resources
 

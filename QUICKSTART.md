@@ -109,47 +109,22 @@ make all  # discover → install → verify
 
 ## Environment Variables
 
-```bash
-NGC_API_KEY=nvapi-...          # Required: NVIDIA NGC API key
-OCI_COMPARTMENT_ID=ocid1...    # Required: OCI compartment
-ENVIRONMENT=dev                # Optional: dev or production
-CONFIRM_COST=yes               # Optional: bypass cost guard
-KEEP_CACHE=yes                 # Optional: preserve PVCs
-FORCE=yes                      # Optional: skip confirmations
-```
+| Variable | Purpose | Example |
+|----------|---------|---------|
+| `NGC_API_KEY` | NVIDIA NGC API key (required) | `nvapi-...` |
+| `OCI_COMPARTMENT_ID` | OCI compartment (required) | `ocid1...` |
+| `CONFIRM_COST` | Bypass cost guard | `yes` |
+| `KEEP_CACHE` | Preserve PVCs during cleanup | `yes` |
 
-## Cost Examples
-
-```bash
-# Dev deployment (prompts if cost > $5)
-make install
-
-# Production deployment (requires confirmation)
-ENVIRONMENT=production CONFIRM_COST=yes make install
-
-# Higher cost threshold
-COST_THRESHOLD_USD=20 make install
-```
+**📖 Complete reference:** [README.md - Environment Variables](README.md#environment-variables)
 
 ## Troubleshooting
 
-**Cost guard blocks deployment:**
-```bash
-CONFIRM_COST=yes make install
-```
+`make troubleshoot` - Run diagnostics  
+`CONFIRM_COST=yes make install` - Bypass cost guard  
+`export NGC_API_KEY=nvapi-xxx` - Set NGC credentials
 
-**Prerequisites fail:**
-```bash
-make prereqs  # see what's missing
-export NGC_API_KEY=nvapi-xxx
-make prereqs  # check again
-```
-
-**Deployment hangs:**
-```bash
-make troubleshoot  # run diagnostics
-make logs          # check pod logs
-```
+**📚 Full guide:** [docs/RUNBOOK.md - Phase 6: Troubleshoot](docs/RUNBOOK.md#phase-6-troubleshoot)
 
 ## Next Steps
 
@@ -157,23 +132,4 @@ make logs          # check pod logs
 - **API examples:** [docs/api-examples.md](docs/api-examples.md)
 - **Prerequisites guide:** [docs/setup-prerequisites.md](docs/setup-prerequisites.md)
 
-## All Makefile Targets
-
-```bash
-make help          # show this help
-make discover      # discover cluster state
-make prereqs       # check prerequisites
-make install       # deploy NIM
-make verify        # verify deployment
-make operate       # show operations
-make troubleshoot  # run diagnostics
-make cleanup       # cleanup NIM
-make all           # complete workflow
-make status        # quick status
-make logs          # view logs
-make validate      # prereqs + verify
-```
-
----
-
-**Let's go!** Run `make help` to start.
+**📖 All Makefile targets:** [README.md - Makefile Targets](README.md#makefile-targets)

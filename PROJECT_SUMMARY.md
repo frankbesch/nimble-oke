@@ -157,117 +157,22 @@ docs/api-examples.md           # API usage examples
 
 ## System Requirements
 
-### NVIDIA NIM Requirements (Official)
+**VM.GPU.A10.1 shape:** 1× A10 GPU (24GB), 15 OCPUs, 240GB RAM, $2.62/hr - exceeds all NVIDIA NIM requirements.
 
-| Component | Minimum | Recommended | OCI VM.GPU.A10.1 |
-|-----------|---------|-------------|------------------|
-| **GPU** | A10 (24GB VRAM) | A100 (40GB/80GB) | ✅ 1× A10 (24GB) |
-| **System Memory** | 40GB RAM | 90GB+ RAM | ✅ 240GB RAM |
-| **Disk Space** | 100GB | 200GB+ | ✅ 100GB+ (configurable) |
-| **GPU Driver** | NVIDIA 535+ | Latest | ✅ Auto-provisioned |
-| **Container Toolkit** | 1.16.2+ | Latest | ✅ Auto-provisioned |
-
-**The VM.GPU.A10.1 shape exceeds all NVIDIA NIM requirements with 240GB RAM (2.6× the 90GB recommendation).**
+**📖 Full requirements:** [docs/setup-prerequisites.md](docs/setup-prerequisites.md)
 
 ## Key Features
 
-### 1. Runbook-Driven Operations
+| Feature | Implementation | Benefit |
+|---------|----------------|---------|
+| **Runbook-Driven** | discover → prereqs → deploy → verify → operate → troubleshoot → cleanup | Structured workflow |
+| **Idempotent** | All operations safe to re-run | No duplicate resources |
+| **Cost Guards** | CONFIRM_COST for >$5 ops | Prevents surprise bills |
+| **Automatic Cleanup** | trap cleanup_on_failure on errors | No resource leaks |
+| **Structured Logging** | [NIM-OKE][LEVEL] format | Parseable output |
+| **Comprehensive Diagnostics** | make troubleshoot | Systematic resolution |
 
-Every operation follows structured pattern:
-- prerequisites checked
-- costs estimated and guarded
-- progress logged
-- cleanup on failure
-- success verified
-
-### 2. Idempotency Everywhere
-
-```bash
-make install   # Run 1: creates
-make install   # Run 2: upgrades
-make cleanup   # Run 1: deletes
-make cleanup   # Run 2: no-op
-```
-
-No errors, no duplicate resources, predictable behavior.
-
-### 3. Cost Safety
-
-```bash
-# Automatically blocked if cost > $5
-make install
-
-# Explicit confirmation required
-CONFIRM_COST=yes make install
-
-# Production requires env + confirmation
-ENVIRONMENT=production CONFIRM_COST=yes make install
-```
-
-### 4. Automatic Cleanup
-
-```bash
-make install
-  → Step 5 fails
-  → trap cleanup_on_failure
-  → Helm uninstall
-  → PVCs deleted
-  → Cost summary
-  → Exit 1
-```
-
-Resources never leak, even on failures.
-
-### 5. Comprehensive Diagnostics
-
-```bash
-make troubleshoot
-  → Pod status + events
-  → GPU resource check
-  → Image pull verification
-  → Service connectivity
-  → Storage binding
-  → Resource allocation
-  → Network tests
-  → Recent events
-```
-
-Systematic troubleshooting, not guesswork.
-
-## Platform Engineering Standards
-
-### Structured Logging
-
-All output follows [NIM-OKE][LEVEL] format:
-- parseable by log aggregators
-- clear severity levels
-- consistent across all scripts
-
-### Error Handling
-
-```bash
-set -euo pipefail  # Fail fast
-trap cleanup EXIT  # Always cleanup
-die() { log_error "$*"; exit 1; }
-```
-
-### Input Validation
-
-Every script validates:
-- required environment variables
-- tool availability
-- cluster connectivity
-- credential validity
-
-### Timeout Protection
-
-Long operations wrapped:
-
-```bash
-timeout 300 kubectl wait ... || { cleanup; exit 1; }
-```
-
-Prevents indefinite hangs.
+**📚 Complete details:** [README.md - Platform Features](README.md#platform-features)
 
 ## Comparison to Original
 
@@ -310,46 +215,13 @@ Prevents indefinite hangs.
 
 ## Next Steps
 
-### To Deploy
-
-1. Review prerequisites: `docs/setup-prerequisites.md`
-2. Follow quick start: `QUICKSTART.md`
-3. Consult runbook: `docs/RUNBOOK.md`
-
-### To Understand
-
-- study Makefile targets
-- review `scripts/_lib.sh` for shared patterns
-- explore Helm chart structure
-
-### To Extend
-
-- add custom Makefile targets
-- extend `_lib.sh` with new helpers
-- customize Helm values for your models
-- integrate with CI/CD pipelines
+**Deploy:** `QUICKSTART.md` → `docs/setup-prerequisites.md` → `docs/RUNBOOK.md`  
+**Understand:** Explore `scripts/_lib.sh` and Helm templates  
+**Extend:** Customize `values.yaml`, add Makefile targets, integrate CI/CD  
 
 ## References
 
 - **NVIDIA NIM:** https://docs.nvidia.com/nim/
-- **NVIDIA NGC:** https://catalog.ngc.nvidia.com/
 - **Oracle OKE:** https://docs.oracle.com/en-us/iaas/Content/ContEng/home.htm
 - **Original Implementation:** https://github.com/NVIDIA/nim-deploy/tree/main/cloud-service-providers/oracle/oke
-- **Meta Llama:** https://llama.meta.com/
 
-## License & Attribution
-
-Based on NVIDIA nim-deploy Oracle OKE reference implementation.
-
-This project references:
-- NVIDIA NIM deployment examples
-- Oracle Cloud Infrastructure documentation
-- Meta Llama model specifications
-
-Please refer to respective licenses for NVIDIA NIM, Oracle Cloud services, and Meta Llama models.
-
----
-
-**Ready for smoke testing?** Run `make help` to start.
-
-**Remember:** Always run `make cleanup` after testing.
