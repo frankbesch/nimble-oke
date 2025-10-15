@@ -13,11 +13,13 @@ source "${SCRIPT_DIR}/_lib.sh"
 DEFAULT_REGION="us-phoenix-1"
 
 # Supported regions with GPU availability
-declare -A REGION_INFO
-REGION_INFO["us-phoenix-1"]="Phoenix, AZ - Closest to Austin, TX"
-REGION_INFO["us-ashburn-1"]="Ashburn, VA - East Coast"
-REGION_INFO["us-sanjose-1"]="San Jose, CA - West Coast"
-REGION_INFO["us-chicago-1"]="Chicago, IL - Central US (No GPU availability)"
+REGIONS=("us-phoenix-1" "us-ashburn-1" "us-sanjose-1" "us-chicago-1")
+REGION_DESCRIPTIONS=(
+    "Phoenix, AZ - Closest to Austin, TX"
+    "Ashburn, VA - East Coast"
+    "San Jose, CA - West Coast"
+    "Chicago, IL - Central US (No GPU availability)"
+)
 
 log_info "Nimble OKE Region Configuration"
 
@@ -28,8 +30,9 @@ show_available_regions() {
     printf "%-20s %-50s\n" "Region" "Description"
     echo "────────────────────────────────────────────────────────────────"
     
-    for region in "${!REGION_INFO[@]}"; do
-        local description="${REGION_INFO[$region]}"
+    for i in "${!REGIONS[@]}"; do
+        local region="${REGIONS[$i]}"
+        local description="${REGION_DESCRIPTIONS[$i]}"
         if [[ "$region" == "$DEFAULT_REGION" ]]; then
             printf "%-20s %-50s (RECOMMENDED)\n" "$region" "$description"
         else
@@ -43,13 +46,15 @@ show_available_regions() {
 validate_region() {
     local region="$1"
     
-    if [[ -n "${REGION_INFO[$region]:-}" ]]; then
-        return 0
-    else
-        log_error "Unsupported region: $region"
-        log_info "Supported regions: ${!REGION_INFO[*]}"
-        return 1
-    fi
+    for supported_region in "${REGIONS[@]}"; do
+        if [[ "$region" == "$supported_region" ]]; then
+            return 0
+        fi
+    done
+    
+    log_error "Unsupported region: $region"
+    log_info "Supported regions: ${REGIONS[*]}"
+    return 1
 }
 
 # Function to check GPU availability in region
@@ -84,7 +89,14 @@ set_region() {
     export OCI_REGION="$region"
     
     # Display region information
-    local description="${REGION_INFO[$region]}"
+    local description=""
+    for i in "${!REGIONS[@]}"; do
+        if [[ "${REGIONS[$i]}" == "$region" ]]; then
+            description="${REGION_DESCRIPTIONS[$i]}"
+            break
+        fi
+    done
+    
     log_success "Region configured: $region"
     log_info "Description: $description"
     
@@ -106,7 +118,15 @@ set_region() {
 # Function to get current region
 get_current_region() {
     local current_region="${OCI_REGION:-$DEFAULT_REGION}"
-    local description="${REGION_INFO[$current_region]:-Unknown region}"
+    local description="Unknown region"
+    
+    # Find description for current region
+    for i in "${!REGIONS[@]}"; do
+        if [[ "${REGIONS[$i]}" == "$current_region" ]]; then
+            description="${REGION_DESCRIPTIONS[$i]}"
+            break
+        fi
+    done
     
     log_info "Current region: $current_region"
     log_info "Description: $description"
