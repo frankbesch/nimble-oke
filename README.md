@@ -1,6 +1,6 @@
 # Nimble OKE — Rapid Smoke Testing for NVIDIA NIM on Oracle Cloud
 
-> **📖 Reading time:** 15 minutes  
+> **📖 Reading time:** 8 minutes  
 > **⚠️ Development Status:** v0.1.0-20251013-dev — First version under active development  
 > **🚧 GPU Validation:** Requires GPU resource limit increase (default is 0). Submit a request via the OCI Console → Service Limits → Compute. 
 

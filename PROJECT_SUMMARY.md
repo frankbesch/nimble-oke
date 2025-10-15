@@ -1,6 +1,6 @@
 # Project Summary - Nimble OKE
 
-> **📖 Reading time:** 8 minutes
+> **📖 Reading time:** 6 minutes
 
 **Status:** First Version - Under Active Development (v0.1.0-20251013-dev)  
 **Created:** October 9, 2025  
