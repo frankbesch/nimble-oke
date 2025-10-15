@@ -214,6 +214,14 @@ troubleshoot_network() {
 main() {
     log_info "Running troubleshooting diagnostics..."
     
+    # Run enhanced log analysis first
+    log_info "Running enhanced log analysis..."
+    if "${SCRIPT_DIR}/log-analyzer.sh" "$NAMESPACE"; then
+        log_success "Log analysis completed - check /tmp/nim-logs/troubleshooting-report.md"
+    else
+        log_warn "Log analysis encountered issues, continuing with manual troubleshooting"
+    fi
+    
     # Quick diagnostic first
     quick_diagnostic
     

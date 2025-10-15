@@ -26,6 +26,14 @@ main() {
         die "Prerequisites not met, aborting deployment"
     fi
     
+    # Check model cache for cost optimization
+    log_info "Checking model cache for cost optimization..."
+    if "${SCRIPT_DIR}/model-cache-manager.sh" check; then
+        log_success "Model cache hit - saving \$1.50 in download costs"
+    else
+        log_info "Model cache miss - download required (\$1.50 cost)"
+    fi
+    
     log_info "Estimating deployment cost..."
     local estimated_cost
     estimated_cost=$(estimate_deployment_cost 5)

@@ -1,4 +1,4 @@
-.PHONY: help discover prereqs install verify operate troubleshoot cleanup clean all session-init session-summary session-compare validate validate-quick validate-cost dry-run test-connectivity cost-simulate cost-scenarios cost-optimization budget-check
+.PHONY: help discover prereqs install verify operate troubleshoot cleanup clean all session-init session-summary session-compare validate validate-quick validate-cost dry-run test-connectivity cost-simulate cost-scenarios cost-optimization budget-check cache-check cache-prewarm cache-stats cache-cleanup log-analyze
 
 SCRIPTS_DIR := scripts
 ENVIRONMENT ?= dev
@@ -28,6 +28,12 @@ help:
 	@echo "Pre-execution Validation:"
 	@echo "  make validate        → Run comprehensive validation"
 	@echo "  make validate-quick  → Run quick validation (dry-run mode)"
+	@echo ""
+	@echo "Optimization Tools:"
+	@echo "  make cache-check     → Check model cache status"
+	@echo "  make cache-prewarm   → Pre-warm model cache"
+	@echo "  make cache-stats     → Show cache statistics"
+	@echo "  make log-analyze     → Run enhanced log analysis"
 	@echo "  make validate-cost   → Run cost validation with custom params"
 	@echo "  make dry-run         → Simulate deployment without costs"
 	@echo "  make test-connectivity → Test network and API connectivity"
@@ -196,6 +202,28 @@ detect-nim-failures:
 optimize-rapid-iteration:
 	@echo "[NIM-OKE] Analyzing rapid iteration optimization..."
 	@$(SCRIPTS_DIR)/optimize-rapid-iteration.sh
+
+# Model cache management
+cache-check:
+	@echo "[NIM-OKE] Checking model cache status..."
+	@$(SCRIPTS_DIR)/model-cache-manager.sh check
+
+cache-prewarm:
+	@echo "[NIM-OKE] Pre-warming model cache..."
+	@PREWARM_CACHE=yes $(SCRIPTS_DIR)/model-cache-manager.sh prewarm
+
+cache-stats:
+	@echo "[NIM-OKE] Model cache statistics..."
+	@$(SCRIPTS_DIR)/model-cache-manager.sh stats
+
+cache-cleanup:
+	@echo "[NIM-OKE] Cleaning up expired model cache..."
+	@$(SCRIPTS_DIR)/model-cache-manager.sh cleanup
+
+# Enhanced log analysis
+log-analyze:
+	@echo "[NIM-OKE] Running enhanced log analysis..."
+	@$(SCRIPTS_DIR)/log-analyzer.sh $(NAMESPACE)
 
 # Comprehensive NIM smoke testing
 nim-smoke-test:
