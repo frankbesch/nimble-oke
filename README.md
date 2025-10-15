@@ -210,7 +210,7 @@ make troubleshoot
 
 ## Helm Chart Features
 
-**Security:** Non-root execution, dropped capabilities, NIM-optimized (seccomp disabled for GPU compatibility)  
+**Security:** Non-root execution, dropped capabilities, NIM-optimized (**seccomp disabled** for GPU compatibility)  
 **HA:** GPU node affinity, optimized health probes (15s readiness, 45s liveness)  
 **Operations:** Config checksums for auto-restart, resource limits  
 

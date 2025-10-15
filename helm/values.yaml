@@ -65,9 +65,9 @@ podSecurityContext:
   runAsNonRoot: true
   runAsUser: 1000
   fsGroup: 1000
-  # seccompProfile: RuntimeDefault - DISABLED for NIM compatibility
-  # NIM requires GPU syscalls that may be blocked by RuntimeDefault
-  # TODO: Test with custom seccomp profile after initial deployment
+  # seccompProfile: disabled - REQUIRED for NIM GPU compatibility
+  # NIM requires GPU syscalls that are blocked by RuntimeDefault seccomp profile
+  # Custom seccomp profiles would need to allow GPU-specific syscalls
 
 securityContext:
   allowPrivilegeEscalation: false

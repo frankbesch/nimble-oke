@@ -122,7 +122,7 @@ docs/api-examples.md           # API usage examples
 
 | Category | Setting | Purpose |
 |----------|---------|---------|
-| **Security (NIM-Optimized)** | `runAsNonRoot: true` - Non-root execution (UID 1000)<br/>`allowPrivilegeEscalation: false` - No privilege escalation<br/>`capabilities.drop: ALL` - Minimal capabilities<br/>`readOnlyRootFilesystem: false` - Required for NIM temp files<br/>`seccompProfile: disabled` - GPU syscall compatibility | Production-ready security |
+| **Security (NIM-Optimized)** | `runAsNonRoot: true` - Non-root execution (UID 1000)<br/>`allowPrivilegeEscalation: false` - No privilege escalation<br/>`capabilities.drop: ALL` - Minimal capabilities<br/>`readOnlyRootFilesystem: false` - Required for NIM temp files<br/>`seccompProfile: disabled` - **Required** for NIM GPU syscall compatibility | Production-ready security |
 | **High Availability** | `topologySpreadConstraints: disabled` - Single-zone dev<br/>`nodeAffinity` - Required GPU node placement<br/>`tolerations` - GPU taint toleration<br/>Optimized health probes - faster detection | Development-optimized HA |
 | **Operations** | `checksum/config` annotation - Auto-restart on changes<br/>Optimized health probes (15s readiness, 45s liveness)<br/>Resource limits (CPU, memory, GPU) | Operational efficiency |
 

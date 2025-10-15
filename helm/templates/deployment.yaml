@@ -31,10 +31,8 @@ spec:
         runAsNonRoot: {{ .Values.podSecurityContext.runAsNonRoot }}
         runAsUser: {{ .Values.podSecurityContext.runAsUser }}
         fsGroup: {{ .Values.podSecurityContext.fsGroup }}
-        {{- if .Values.podSecurityContext.seccompProfile }}
-        seccompProfile:
-          {{- toYaml .Values.podSecurityContext.seccompProfile | nindent 10 }}
-        {{- end }}
+        # seccompProfile disabled for NIM GPU compatibility
+        # NIM requires GPU syscalls that may be blocked by seccomp profiles
       {{- if .Values.topologySpreadConstraints.enabled }}
       topologySpreadConstraints:
         - maxSkew: {{ .Values.topologySpreadConstraints.maxSkew }}
