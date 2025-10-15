@@ -1,4 +1,4 @@
-.PHONY: help discover prereqs install verify operate troubleshoot cleanup clean all session-init session-summary session-compare validate validate-quick validate-cost dry-run test-connectivity cost-simulate cost-scenarios cost-optimization budget-check cache-check cache-prewarm cache-stats cache-cleanup log-analyze deploy-parallel predict predict-setup
+.PHONY: help discover prereqs install verify operate troubleshoot cleanup clean all session-init session-summary session-compare validate validate-quick validate-cost dry-run test-connectivity cost-simulate cost-scenarios cost-optimization budget-check cache-check cache-prewarm cache-stats cache-cleanup log-analyze deploy-parallel predict predict-setup provision-preemptible monitor-preemptible auto-recovery recovery-check recovery-stop recovery-stats
 
 SCRIPTS_DIR := scripts
 ENVIRONMENT ?= dev
@@ -39,6 +39,16 @@ help:
 	@echo "  make deploy-parallel → Deploy using parallel pipeline (50% faster)"
 	@echo "  make predict         → Run predictive diagnostics"
 	@echo "  make predict-setup   → Set up predictive monitoring"
+	@echo ""
+	@echo "Cost Optimization:"
+	@echo "  make provision-preemptible → Provision with preemptible instances (50% cost savings)"
+	@echo "  make monitor-preemptible   → Monitor preemptible instance status"
+	@echo ""
+	@echo "Auto-Recovery:"
+	@echo "  make auto-recovery   → Start auto-recovery monitoring"
+	@echo "  make recovery-check  → Check system health"
+	@echo "  make recovery-stop   → Stop auto-recovery monitoring"
+	@echo "  make recovery-stats  → Show recovery statistics"
 	@echo "  make validate-cost   → Run cost validation with custom params"
 	@echo "  make dry-run         → Simulate deployment without costs"
 	@echo "  make test-connectivity → Test network and API connectivity"
@@ -243,6 +253,32 @@ predict:
 predict-setup:
 	@echo "[NIM-OKE] Setting up predictive monitoring..."
 	@$(SCRIPTS_DIR)/predictive-diagnostics.sh && kubectl apply -f /tmp/nim-monitoring-config.yaml || true
+
+# Preemptible instance provisioning
+provision-preemptible:
+	@echo "[NIM-OKE] Provisioning with preemptible instances..."
+	@$(SCRIPTS_DIR)/provision-preemptible.sh $(GPU_NODE_COUNT) $(GPU_SHAPE) $(OCI_REGION)
+
+monitor-preemptible:
+	@echo "[NIM-OKE] Monitoring preemptible instance status..."
+	@$(SCRIPTS_DIR)/provision-preemptible.sh monitor
+
+# Auto-recovery system
+auto-recovery:
+	@echo "[NIM-OKE] Starting auto-recovery monitoring..."
+	@$(SCRIPTS_DIR)/auto-recovery.sh $(NAMESPACE) $(RELEASE_NAME) monitor
+
+recovery-check:
+	@echo "[NIM-OKE] Checking system health..."
+	@$(SCRIPTS_DIR)/auto-recovery.sh $(NAMESPACE) $(RELEASE_NAME) check
+
+recovery-stop:
+	@echo "[NIM-OKE] Stopping auto-recovery monitoring..."
+	@$(SCRIPTS_DIR)/auto-recovery.sh $(NAMESPACE) $(RELEASE_NAME) stop
+
+recovery-stats:
+	@echo "[NIM-OKE] Showing recovery statistics..."
+	@$(SCRIPTS_DIR)/auto-recovery.sh $(NAMESPACE) $(RELEASE_NAME) stats
 
 # Comprehensive NIM smoke testing
 nim-smoke-test:
