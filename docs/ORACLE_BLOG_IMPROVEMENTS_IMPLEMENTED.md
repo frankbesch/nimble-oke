@@ -1,5 +1,8 @@
 # Oracle Blog Comparison - Improvements Implemented
 
+> **📖 Reading time:** 7 minutes  
+> **✅ Implementation log** - Phase 1 corrections completed
+
 **Date:** October 14, 2025  
 **Version:** v0.1.0-20251013-dev  
 **Reference:** [Oracle Blog: Running NIM on OKE for LLM Inference](https://blogs.oracle.com/ai-and-datascience/post/running-nim-on-oke-for-llm-inference)

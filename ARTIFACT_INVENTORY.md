@@ -1,5 +1,8 @@
 # Nimble OKE - Complete Artifact Inventory
 
+> **📖 Reading time:** 5 minutes  
+> **📦 Technical inventory** - File structure and feature coverage
+
 **Status:** All artifacts ready for initial testing (v0.1.0-20251013-dev) - under active development
 
 ## Project Files (24 total)

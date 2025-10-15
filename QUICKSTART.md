@@ -1,5 +1,7 @@
 # Quick Start - Nimble OKE
 
+> **📖 Reading time:** 3 minutes
+
 Get NVIDIA NIM running in 12-48 minutes with runbook automation.
 
 ## System Requirements

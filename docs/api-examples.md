@@ -1,5 +1,8 @@
 # NVIDIA NIM API Examples
 
+> **📖 Reading time:** 9 minutes  
+> **🔗 API reference** - Copy/paste examples for testing
+
 Comprehensive API examples for testing and using NVIDIA NIM with Meta Llama 3.1 8B model.
 
 ## Setup

@@ -1,5 +1,8 @@
 # Oracle Blog Analysis - Executive Summary
 
+> **📖 Reading time:** 7 minutes  
+> **📊 Analysis report** - Oracle blog vs Nimble OKE comparison
+
 **Analysis Date:** October 14, 2025  
 **Oracle Blog:** [Running NIM on OKE for LLM Inference](https://blogs.oracle.com/ai-and-datascience/post/running-nim-on-oke-for-llm-inference)  
 **Status:** Phase 1 corrections implemented ✅

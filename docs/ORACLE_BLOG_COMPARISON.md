@@ -1,5 +1,8 @@
 # Oracle Blog vs Nimble OKE: Architectural Comparison
 
+> **📖 Reading time:** 11 minutes  
+> **🔬 Technical deep-dive** - Architecture, storage, and recommendations
+
 **Oracle Blog:** [Running NIM on OKE for LLM Inference](https://blogs.oracle.com/ai-and-datascience/post/running-nim-on-oke-for-llm-inference)  
 **Nimble OKE Version:** v0.1.0-20251013-dev  
 **Analysis Date:** October 14, 2025

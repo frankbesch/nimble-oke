@@ -1,5 +1,8 @@
 # Setup Prerequisites for NVIDIA NIM on OKE
 
+> **📖 Reading time:** 8 minutes  
+> **🔧 Setup guide** - Complete before deployment
+
 This guide covers all prerequisites needed before deploying NVIDIA NIM on Oracle Kubernetes Engine.
 
 ## System Requirements

@@ -1,5 +1,8 @@
 # Oracle Blog vs Nimble OKE - Quick Reference
 
+> **📖 Reading time:** 6 minutes  
+> **⚡ Quick reference** - 1-page decision guide
+
 **1-page decision guide for choosing the right approach**
 
 ---

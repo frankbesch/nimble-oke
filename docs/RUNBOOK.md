@@ -1,5 +1,8 @@
 # Nimble OKE Platform Engineering Runbook
 
+> **📖 Reading time:** 15 minutes  
+> **📚 Reference guide** - Bookmark for operational tasks
+
 Complete operational guide for NVIDIA NIM smoke testing on OCI OKE.
 
 ## Runbook Philosophy
