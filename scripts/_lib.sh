@@ -463,7 +463,7 @@ get_cluster_info() {
 
 estimate_hourly_cost() {
     local gpu_count="${1:-1}"
-    local gpu_hourly="2.62"        # VM.GPU.A10.1
+    local gpu_hourly="12.24"       # VM.GPU.A10.4 (4x NVIDIA A10 GPUs)
     local control_plane="0.10"     # OKE control plane
     local enhanced="0.10"          # ENHANCED cluster type
     local lb_cost="0.0144"         # 10 Mbps flexible LB (corrected from $0.25)
@@ -634,12 +634,18 @@ validate_oci_service_limits() {
 }
 
 get_gpu_hourly_rate() {
-    local shape="${1:-VM.GPU.A10.1}"
+    local shape="${1:-VM.GPU.A10.4}"
     
     # GPU hourly rates (USD per hour)
     case "$shape" in
         VM.GPU.A10.1|BM.GPU.A10.1)
-            echo "2.62"
+            echo "3.06"
+            ;;
+        VM.GPU.A10.2|BM.GPU.A10.2)
+            echo "6.12"
+            ;;
+        VM.GPU.A10.4|BM.GPU.A10.4)
+            echo "12.24"
             ;;
         VM.GPU3.1|BM.GPU3.1)
             echo "3.06"
@@ -657,7 +663,7 @@ get_gpu_hourly_rate() {
             echo "21.33"
             ;;
         *)
-            echo "2.62"  # Default to A10.1 rate
+            echo "12.24"  # Default to A10.4 rate
             ;;
     esac
 }

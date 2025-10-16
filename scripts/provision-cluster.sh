@@ -4,15 +4,22 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/_lib.sh"
+source "${SCRIPT_DIR}/oke-optimized-config.sh"
 
 readonly CLUSTER_NAME="${CLUSTER_NAME:-nimble-oke-cluster}"
 readonly NODE_POOL_NAME="gpu-node-pool"
-readonly GPU_SHAPE="VM.GPU.A10.1"
+readonly GPU_SHAPE="VM.GPU.A10.4"
 readonly NODE_COUNT="${NODE_COUNT:-1}"
-readonly K8S_VERSION="${K8S_VERSION:-v1.28.2}"
+readonly K8S_VERSION="${K8S_VERSION:-v1.34.1}"
 readonly VCN_NAME="nimble-oke-vcn"
 readonly SUBNET_NAME="nimble-oke-subnet"
 readonly PROVISION_TIMEOUT=1800
+
+# Budget Configuration (VM.GPU.A10.4 pricing: ~$12.44/hour)
+readonly BUDGET_FAST="${BUDGET_FAST:-15}"      # 1 hour test
+readonly BUDGET_SHORT="${BUDGET_SHORT:-25}"     # 2 hour test  
+readonly BUDGET_EXTENDED="${BUDGET_EXTENDED:-50}" # 4 hour test
+readonly BUDGET_FULL_DAY="${BUDGET_FULL_DAY:-300}" # 24 hour test
 
 cleanup_on_failure() {
     log_warn "Provisioning failed, cleanup initiated..."
@@ -41,21 +48,29 @@ main() {
     local compartment_id="${OCI_COMPARTMENT_ID}"
     local region="${OCI_REGION:-us-phoenix-1}"
     
-    log_info "Estimating provisioning cost..."
+    log_info "Estimating provisioning cost with OKE-optimized configuration..."
     local hourly_cost
-    hourly_cost=$(estimate_hourly_cost "$NODE_COUNT")
+    hourly_cost=$(estimate_oke_cost 1 "$NODE_COUNT")
     local test_cost
-    test_cost=$(echo "$hourly_cost * 5" | bc -l)
+    test_cost=$(estimate_oke_cost 5 "$NODE_COUNT")
     
     log_info "Configuration:"
     log_info "  Cluster: $CLUSTER_NAME"
     log_info "  Region: $region"
-    log_info "  GPU Shape: $GPU_SHAPE"
+    log_info "  GPU Shape: $GPU_SHAPE (4x NVIDIA A10 GPUs)"
     log_info "  Node Count: $NODE_COUNT"
     log_info "  Estimated cost: \$$(format_cost "$hourly_cost")/hour"
     log_info "  5-hour test cost: \$$(format_cost "$test_cost")"
+    log_info ""
+    log_info "Budget Options:"
+    log_info "  Fast Test (1 hour): \$$(format_cost "$hourly_cost")"
+    log_info "  Short Test (2 hours): \$$(format_cost "$(echo "$hourly_cost * 2" | bc -l)")"
+    log_info "  Extended Test (4 hours): \$$(format_cost "$(echo "$hourly_cost * 4" | bc -l)")"
+    log_info "  Full Day (24 hours): \$$(format_cost "$(echo "$hourly_cost * 24" | bc -l)")"
     
-    cost_guard "$(format_cost "$test_cost")" "OKE cluster provisioning"
+    # Use appropriate budget based on test duration
+    local budget_threshold="$BUDGET_EXTENDED"  # Default to 4-hour test budget
+    cost_guard "$(format_cost "$test_cost")" "OKE cluster provisioning (VM.GPU.A10.4)"
     
     log_info "Creating VCN..."
     local vcn_id
@@ -179,10 +194,12 @@ main() {
             --vcn-id "$vcn_id" \
             --kubernetes-version "$K8S_VERSION" \
             --cluster-type ENHANCED \
-            --endpoint-config "{\"subnetId\":\"$api_subnet_id\",\"isPublicIpEnabled\":true}" \
+            --endpoint-subnet-id "$api_subnet_id" \
+            --endpoint-public-ip-enabled true \
             --service-lb-subnet-ids "[\"$subnet_id\"]" \
-            --wait-for-state ACTIVE \
-            --max-wait-seconds 900 \
+            --wait-for-state SUCCEEDED \
+            --wait-for-state FAILED \
+            --max-wait-seconds 1800 \
             --query 'data.id' \
             --raw-output)
         log_success "OKE cluster created (ENHANCED): $cluster_id"
@@ -199,15 +216,32 @@ main() {
         --raw-output 2>/dev/null || echo "")
     
     if [[ -z "$node_pool_id" ]]; then
+        # Validate OKE-optimized configuration
+        validate_oke_gpu_quota "$NODE_COUNT" "$GPU_SHAPE" || die "GPU quota validation failed"
+        validate_oke_image "$OKE_GPU_IMAGE_ID" || die "OKE-optimized image validation failed"
+        
+        # Get availability domain for placement
+        local availability_domain
+        availability_domain=$(get_oke_availability_domain "$compartment_id" "$region") || die "Failed to get availability domain"
+        
+        log_info "Creating GPU node pool with OKE-optimized configuration..."
+        log_info "  Shape: $GPU_SHAPE"
+        log_info "  Image: $OKE_GPU_IMAGE_NAME"
+        log_info "  Boot Volume: ${OKE_BOOT_VOLUME_SIZE_GB}GB"
+        log_info "  Availability Domain: $availability_domain"
+        
         node_pool_id=$(oci ce node-pool create \
             --cluster-id "$cluster_id" \
             --compartment-id "$compartment_id" \
             --name "$NODE_POOL_NAME" \
             --node-shape "$GPU_SHAPE" \
             --size "$NODE_COUNT" \
-            --subnet-ids "[\"$subnet_id\"]" \
-            --wait-for-state ACTIVE \
-            --max-wait-seconds 1200 \
+            --kubernetes-version "$K8S_VERSION" \
+            --placement-configs "[{\"availabilityDomain\": \"$availability_domain\", \"subnetId\": \"$subnet_id\"}]" \
+            --node-source-details "{\"sourceType\": \"IMAGE\", \"imageId\": \"$OKE_GPU_IMAGE_ID\", \"bootVolumeSizeInGBs\": $OKE_BOOT_VOLUME_SIZE_GB}" \
+            --wait-for-state SUCCEEDED \
+            --wait-for-state FAILED \
+            --max-wait-seconds 1800 \
             --query 'data.id' \
             --raw-output 2>/dev/null) || die "Failed to create GPU node pool - check GPU quota and capacity in region"
         log_success "GPU node pool created: $node_pool_id"
@@ -252,8 +286,14 @@ EOF
     echo ""
     log_info "Cluster details:"
     log_info "  Cluster ID: $cluster_id"
-    log_info "  GPU Nodes: $NODE_COUNT × $GPU_SHAPE"
+    log_info "  GPU Nodes: $NODE_COUNT × $GPU_SHAPE (4x NVIDIA A10 GPUs)"
     log_info "  Hourly cost: \$$(format_cost "$hourly_cost")"
+    echo ""
+    log_info "Budget tracking:"
+    log_info "  Current rate: \$$(format_cost "$hourly_cost")/hour"
+    log_info "  Fast test (1h): \$$(format_cost "$hourly_cost")"
+    log_info "  Short test (2h): \$$(format_cost "$(echo "$hourly_cost * 2" | bc -l)")"
+    log_info "  Extended test (4h): \$$(format_cost "$(echo "$hourly_cost * 4" | bc -l)")"
     echo ""
     log_info "Next steps:"
     log_info "  1. Run: make discover"
