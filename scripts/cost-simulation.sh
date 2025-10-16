@@ -10,7 +10,7 @@ source "${SCRIPT_DIR}/_lib.sh"
 
 readonly DEFAULT_DURATION=5
 readonly DEFAULT_GPU_COUNT=1
-readonly DEFAULT_GPU_SHAPE="VM.GPU.A10.1"
+readonly DEFAULT_GPU_SHAPE="VM.GPU.A10.4"
 
 show_cost_breakdown() {
     local duration="${1:-$DEFAULT_DURATION}"
@@ -115,7 +115,7 @@ show_cost_scenarios() {
         IFS=':' read -r duration gpu_count description <<< "$scenario"
         
         local gpu_cost
-        gpu_cost=$(echo "scale=2; 2.62 * $gpu_count * $duration" | bc -l)
+        gpu_cost=$(echo "scale=2; 12.24 * $gpu_count * $duration" | bc -l)
         local other_costs
         other_costs=$(echo "scale=2; 0.20 * $duration + 1.50 + 1.25 * $duration" | bc -l)
         local total_cost
@@ -242,7 +242,7 @@ main() {
             echo "  all          - Show all information"
             echo ""
             echo "Examples:"
-            echo "  $0 5 1 VM.GPU.A10.1 breakdown"
+            echo "  $0 5 1 VM.GPU.A10.4 breakdown"
             echo "  $0 0 0 0 scenarios"
             echo "  $0 0 0 0 optimization"
             echo "  $0 10 2 VM.GPU3.1 validate"

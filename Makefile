@@ -208,8 +208,8 @@ pre-deploy-test:
 smoke-test-validate:
 	@echo "[NIM-OKE] Validating smoke test readiness..."
 	@DRY_RUN=true $(SCRIPTS_DIR)/pre-execution-validation.sh 5 1
-	@$(SCRIPTS_DIR)/check-gpu-quota.sh VM.GPU.A10.1 $(OCI_REGION)
-	@$(SCRIPTS_DIR)/cost-simulation.sh 5 1 VM.GPU.A10.1 validate
+	@$(SCRIPTS_DIR)/check-gpu-quota.sh VM.GPU.A10.4 $(OCI_REGION)
+	@$(SCRIPTS_DIR)/cost-simulation.sh 5 1 VM.GPU.A10.4 validate
 
 # NIM-specific testing and optimization
 simulate-nim-deployment:
@@ -312,7 +312,7 @@ nim-smoke-test:
 	@echo ""
 	@$(SCRIPTS_DIR)/optimize-rapid-iteration.sh
 	@echo ""
-	@$(SCRIPTS_DIR)/cost-simulation.sh 5 1 VM.GPU.A10.1 validate
+	@$(SCRIPTS_DIR)/cost-simulation.sh 5 1 VM.GPU.A10.4 validate
 
 test-inference:
 	@echo "[NIM-OKE] Testing inference API..."
