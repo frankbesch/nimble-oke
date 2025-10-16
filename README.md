@@ -4,7 +4,7 @@
 > **⚠️ Development Status:** v0.1.0-20251013-dev — First version under active development  
 > **🚧 GPU Validation:** Requires GPU resource limit increase (default is 0). Submit a request via the OCI Console → Service Limits → Compute. 
 
-A **GPU-accelerated**, **cost-efficient** smoke-testing platform for validating **NVIDIA Inference Microservices (NIM)** on **Oracle Cloud Infrastructure (OCI)** via **Oracle Kubernetes Engine (OKE)**. Built to automate the full lifecycle — **zero → smoke test → cleanup** — in under an hour for less than $16.
+A **GPU-accelerated**, **cost-efficient** smoke-testing platform for validating **NVIDIA Inference Microservices (NIM)** on **Oracle Cloud Infrastructure (OCI)** via **Oracle Kubernetes Engine (OKE)**. Built to automate the full lifecycle — **zero → smoke test → cleanup** — in under an hour for less than $50.
 
 **Based on:** [NVIDIA nim-deploy Oracle OKE Reference](https://github.com/NVIDIA/nim-deploy/tree/main/cloud-service-providers/oracle/oke)
 
@@ -19,7 +19,7 @@ A **GPU-accelerated**, **cost-efficient** smoke-testing platform for validating 
 Validates NVIDIA NIM deployments with comprehensive testing framework. Purpose-built for rapid smoke testing:
 
 - **12-48 minute deployment** (simulated, depending on optimization level)
-- **$4.33-$14.42 complete smoke test** (simulated, depending on duration and optimization)
+- **$12.44-$49.76 complete smoke test** (simulated, depending on duration and optimization)
 - **Idempotent operations** - safe to re-run
 - **Cost guards** - prevent surprise bills
 - **Automatic cleanup** on failure
@@ -35,7 +35,7 @@ Validates NVIDIA NIM deployments with comprehensive testing framework. Purpose-b
 |-------------|-------------|---------|
 | **Mathematical Performance Modeling** | 48min baseline → 12min optimized deployment | 70% improvement |
 | **Comprehensive Testing Framework** | Complete simulation without infrastructure costs | Risk-free validation |
-| **Cost Engineering** | $14.42 → $4.33 per iteration optimization | 69% cost reduction |
+| **Cost Engineering** | $49.76 → $12.44 per iteration optimization | 75% cost reduction |
 | **Failure Pattern Detection** | Proactive troubleshooting for common NIM issues | Faster problem resolution |
 | **Rapid Iteration Optimization** | Caching strategies and performance tuning | Reduced iteration time |
 | **Security Optimization** | NIM-compatible security settings | GPU compatibility maintained |
@@ -72,12 +72,12 @@ export OCI_REGION=us-phoenix-1  # Phoenix, AZ (recommended)
 
 | Option | Commands | Time | Cost |
 |--------|----------|------|------|
-| **Complete Smoke Test** | `make provision CONFIRM_COST=yes`<br/>`make all`<br/>`make cleanup`<br/>`make teardown` | 5 hours | ~$14.42 |
-| **Use Existing Cluster** | `make discover`<br/>`make install CONFIRM_COST=yes`<br/>`make verify`<br/>`make cleanup` | 1-2 hours | ~$4.33-$5.77 |
+| **Complete Smoke Test** | `make provision CONFIRM_COST=yes`<br/>`make all`<br/>`make cleanup`<br/>`make teardown` | 5 hours | ~$62.20 |
+| **Use Existing Cluster** | `make discover`<br/>`make install CONFIRM_COST=yes`<br/>`make verify`<br/>`make cleanup` | 1-2 hours | ~$12.44-$24.88 |
 
 ## Prerequisites
 
-**Quick requirements:** OCI paid account, GPU quota (VM.GPU.A10.1), NGC API key, OCI CLI, kubectl, Helm.
+**Quick requirements:** OCI paid account, GPU quota (VM.GPU.A10.4), NGC API key, OCI CLI, kubectl, Helm.
 
 **Region configuration:** `make region-show` - View available regions | `make region-set REGION=us-phoenix-1` - Set region
 
@@ -87,11 +87,11 @@ export OCI_REGION=us-phoenix-1  # Phoenix, AZ (recommended)
 
 | Scenario | Duration | Cost | Notes |
 |----------|----------|------|-------|
-| **Smoke test** | 5 hours | ~$14.42 | Full deployment + testing |
-| **Existing cluster test** | 1-2 hours | ~$4.33-$5.77 | Using provisioned cluster |
-| **24/7 operation** | Monthly | ~$2,077/month | ⚠️ Not recommended |
+| **Smoke test** | 5 hours | ~$62.20 | Full deployment + testing |
+| **Existing cluster test** | 1-2 hours | ~$12.44-$24.88 | Using provisioned cluster |
+| **24/7 operation** | Monthly | ~$8,976/month | ⚠️ Not recommended |
 
-**Hourly rate:** $2.88 (GPU $2.62 + control plane $0.20 + storage $0.05 + LB $0.01)
+**Hourly rate:** $12.44 (GPU $12.24 + control plane $0.10 + enhanced $0.10 + storage $0.05 + LB $0.01)
 
 **📊 Detailed cost breakdown:** [PROJECT_SUMMARY.md - Cost Analysis](PROJECT_SUMMARY.md#cost-analysis)
 
@@ -131,12 +131,12 @@ export OCI_REGION=us-phoenix-1  # Phoenix, AZ (recommended)
        │    OCI OKE Cluster            │
        │  ┌─────────────────────────┐  │
        │  │  GPU Node Pool          │  │
-       │  │  (VM.GPU.A10.1 × 1)     │  │
+       │  │  (VM.GPU.A10.4 × 1)     │  │
        │  │                         │  │
        │  │  ┌───────────────────┐  │  │
        │  │  │  NIM Pod          │  │  │
        │  │  │  Llama 3.1 8B     │  │  │
-       │  │  │  GPU: NVIDIA A10  │  │  │
+       │  │  │  GPU: 4x A10      │  │  │
        │  │  └───────────────────┘  │  │
        │  └─────────────────────────┘  │
        │                               │
@@ -237,7 +237,7 @@ make troubleshoot
 | **Platform** | OKE (Kubernetes) | OCI Data Science |
 | **Control** | Full infrastructure control | Managed service |
 | **Region** | Any A10-supported region | us-ashburn-1 only |
-| **Cost** | $4.33-$14.42 (simulated) | $1/hr per GPU |
+| **Cost** | $12.44-$62.20 (simulated) | $1/hr per GPU |
 | **Purpose** | Learning, optimization, custom deployment | Quick managed deployment |
 
 ## Additional Resources

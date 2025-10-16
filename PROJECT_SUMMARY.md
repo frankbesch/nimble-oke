@@ -17,7 +17,7 @@ Nimble OKE is a platform engineering framework for ultra-fast, cost-efficient sm
 | Principle | Implementation | Benefit |
 |-----------|----------------|---------|
 | **Speed** | Deploy and validate in minutes | Rapid iteration cycles |
-| **Cost-Conscious** | Complete smoke test for ~$14.42 (simulated) | Predictable spending |
+| **Cost-Conscious** | Complete smoke test for ~$62.20 (simulated) | Predictable spending |
 | **Idempotent** | Every operation safe to re-run | No errors on retry |
 | **Fail-Safe** | Automatic cleanup on errors | No resource leaks |
 | **Production Patterns** | Enterprise-grade from day one | Real-world readiness |
@@ -132,12 +132,12 @@ docs/api-examples.md           # API usage examples
 
 | Component | Cost |
 |-----------|------|
-| GPU Node (VM.GPU.A10.1) | $13.10 |
+| GPU Node (VM.GPU.A10.4) | $61.20 |
 | OKE Control Plane | $0.50 |
 | ENHANCED Cluster | $0.50 |
 | Storage (200GB PVC) | $0.25 |
 | LoadBalancer | $0.07 |
-| **Total** | **~$14.42** |
+| **Total** | **~$62.52** |
 
 ### Cost Optimization Features
 
@@ -157,7 +157,7 @@ docs/api-examples.md           # API usage examples
 
 ## System Requirements
 
-**VM.GPU.A10.1 shape:** 1× A10 GPU (24GB), 15 OCPUs, 240GB RAM, $2.62/hr - exceeds all NVIDIA NIM requirements.
+**VM.GPU.A10.4 shape:** 4× A10 GPU (96GB), 64 OCPUs, 960GB RAM, $12.24/hr - exceeds all NVIDIA NIM requirements.
 
 **📖 Full requirements:** [docs/setup-prerequisites.md](docs/setup-prerequisites.md)
 
@@ -189,7 +189,7 @@ docs/api-examples.md           # API usage examples
 | **Security** | Basic | NIM-optimized (non-root, capabilities, topology disabled) |
 | **Testing Framework** | None | Complete simulation without infrastructure costs |
 | **Performance Optimization** | None | 70% deployment time reduction (48min → 12min) |
-| **Cost Engineering** | None | 69% cost reduction ($14.42 → $4.33 per iteration) |
+| **Cost Engineering** | None | 75% cost reduction ($62.52 → $12.44 per iteration) |
 
 ## Success Metrics
 
@@ -209,9 +209,9 @@ docs/api-examples.md           # API usage examples
 - cleanup: 1-2 minutes
 
 **Cost (simulated):**
-- smoke test: ~$14.42 (5 hours)
-- hourly: ~$2.88
-- model cache preservation saves $1.50 per re-deployment
+- smoke test: ~$62.20 (5 hours)
+- hourly: ~$12.44
+- model cache preservation saves $6.00 per re-deployment
 
 ## Next Steps
 

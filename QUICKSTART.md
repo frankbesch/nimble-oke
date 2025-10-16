@@ -11,12 +11,12 @@ Get NVIDIA NIM running in 12-48 minutes with runbook automation.
 | Component | Specification | Notes |
 |-----------|---------------|-------|
 | **OCI Account** | Paid account | Free tier not supported |
-| **GPU Quota** | VM.GPU.A10.1 (1 GPU) | Request via OCI Console |
-| **System Memory** | 40GB RAM minimum | VM.GPU.A10.1 has 240GB ✅ |
+| **GPU Quota** | VM.GPU.A10.4 (4 GPUs) | Request via OCI Console |
+| **System Memory** | 40GB RAM minimum | VM.GPU.A10.4 has 960GB ✅ |
 | **Disk Space** | 100GB | For model cache + containers |
 | **NGC API Key** | Required | [Generate here](https://ngc.nvidia.com/setup/api-key) |
 
-**NVIDIA recommends 90GB RAM** - VM.GPU.A10.1 provides 240GB (2.6× recommendation). **Cost: $2.62/hour.**
+**NVIDIA recommends 90GB RAM** - VM.GPU.A10.4 provides 960GB (10.7× recommendation). **Cost: $12.24/hour.**
 
 ## Prerequisites
 
