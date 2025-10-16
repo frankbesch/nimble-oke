@@ -11,29 +11,56 @@ After 4 failed deployment attempts with consistent 21-22 minute node registratio
 3. **Missing OKE-Specific Configuration**: Manual KMS instead of OKE built-in
 4. **Outdated Kubernetes Version**: v1.28.2 not compatible with current OKE
 
+## CRITICAL DISCOVERY: Minimum Requirements for NIM on OKE
+
+**VM.GPU.A10.4 is the SMALLEST compute shape that supports NIM on OKE**
+
+- **VM.GPU.A10.1**: Uses generic GPU image → **INCOMPATIBLE with NIM on OKE**
+- **VM.GPU.A10.4**: Uses OKE-optimized image → **REQUIRED for NIM on OKE**
+
+**Why VM.GPU.A10.1 fails**:
+- Restricted to generic GPU images
+- Lacks OKE-specific NVIDIA drivers
+- No Kubernetes GPU device plugin support
+- Results in persistent node registration timeouts
+
+**Why VM.GPU.A10.4 succeeds**:
+- Access to OKE-optimized images
+- Pre-configured NVIDIA drivers for Kubernetes
+- Proper GPU device plugin integration
+- Reliable node registration and NIM deployment
+
 ## Critical Fixes Applied
 
-### 1. GPU Shape Upgrade
-**Before**: `VM.GPU.A10.1` (1x NVIDIA A10 GPU)
-**After**: `VM.GPU.A10.4` (4x NVIDIA A10 GPUs)
+### 1. GPU Shape Upgrade (CRITICAL REQUIREMENT)
+**Before**: `VM.GPU.A10.1` (1x NVIDIA A10 GPU) - **INCOMPATIBLE**
+**After**: `VM.GPU.A10.4` (4x NVIDIA A10 GPUs) - **REQUIRED**
 
-**Rationale**: 
-- Higher resource allocation prevents timeout issues
-- 4x GPU power for better performance
-- Better compatibility with OKE requirements
+**Critical Discovery**: 
+- **VM.GPU.A10.1 uses generic GPU image which does NOT support NIM on OKE**
+- **VM.GPU.A10.4 is the smallest compute shape for NIM on OKE (Oracle's managed Kubernetes)**
+- You must choose VM.GPU.A10.4 to get the OKE-optimized image
+- Generic GPU images lack proper OKE integration and NVIDIA driver support
 
-**Cost Impact**: $3.06/hour → $12.24/hour (4x increase)
+**Cost Impact**: $3.06/hour → $12.24/hour (4x increase) - **NECESSARY FOR COMPATIBILITY**
 
-### 2. OKE-Optimized Image
-**Before**: Generic GPU image
+### 2. OKE-Optimized Image (SHAPE-DEPENDENT)
+**Before**: Generic GPU image - **INCOMPATIBLE WITH OKE**
 **After**: `Oracle-Linux-8.10-Gen2-GPU-2025.08.31-0-OKE-1.34.1-1191`
 
 **Image OCID**: `ocid1.image.oc1.phx.aaaaaaaa2gmabafvnqzelab5ujtlqksdkbgss5w72s3gvf4so34cdic3cwpa`
+
+**Critical Requirements**:
+- **This OKE-optimized image is ONLY available for VM.GPU.A10.4 and larger shapes**
+- **VM.GPU.A10.1 cannot use this image - it's restricted to generic GPU images**
+- **Generic GPU images lack OKE-specific drivers and Kubernetes integration**
+- **NIM requires OKE-optimized drivers for proper GPU device plugin functionality**
 
 **Rationale**:
 - Pre-configured with OKE-specific drivers
 - Optimized for Kubernetes GPU workloads
 - Proper NVIDIA driver integration
+- **MANDATORY for NIM deployment on OKE**
 
 ### 3. Kubernetes Version Update
 **Before**: `v1.28.2`
@@ -211,11 +238,13 @@ If issues persist:
 
 ## Lessons Learned
 
-1. **Image Compatibility**: Critical for OKE deployments
-2. **Resource Allocation**: Higher resources prevent timeouts
-3. **OKE-Specific Configuration**: Use OKE-native features
-4. **Validation**: Pre-deployment checks prevent failures
-5. **Cost Management**: Monitor and optimize continuously
+1. **CRITICAL: VM.GPU.A10.4 Minimum Requirement**: VM.GPU.A10.4 is the smallest shape that supports NIM on OKE
+2. **Image Compatibility**: OKE-optimized images are shape-dependent and mandatory for NIM
+3. **Resource Allocation**: Higher resources prevent timeouts, but shape compatibility is more critical
+4. **OKE-Specific Configuration**: Use OKE-native features and optimized images
+5. **Validation**: Pre-deployment checks prevent failures, especially shape-image compatibility
+6. **Cost Management**: Monitor and optimize continuously, but compatibility comes first
+7. **Generic Images**: Never use generic GPU images for NIM on OKE - they lack required drivers
 
 ## Next Steps
 
