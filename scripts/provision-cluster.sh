@@ -16,10 +16,7 @@ readonly SUBNET_NAME="nimble-oke-subnet"
 readonly PROVISION_TIMEOUT=1800
 
 # Budget Configuration (VM.GPU.A10.4 pricing: ~$12.44/hour)
-readonly BUDGET_FAST="${BUDGET_FAST:-15}"      # 1 hour test
-readonly BUDGET_SHORT="${BUDGET_SHORT:-25}"     # 2 hour test  
-readonly BUDGET_EXTENDED="${BUDGET_EXTENDED:-50}" # 4 hour test
-readonly BUDGET_FULL_DAY="${BUDGET_FULL_DAY:-300}" # 24 hour test
+# Note: Budget variables are set as readonly in oke-optimized-config.sh
 
 cleanup_on_failure() {
     log_warn "Provisioning failed, cleanup initiated..."
@@ -72,25 +69,33 @@ main() {
     local budget_threshold="$BUDGET_EXTENDED"  # Default to 4-hour test budget
     cost_guard "$(format_cost "$test_cost")" "OKE cluster provisioning (VM.GPU.A10.4)"
     
-    log_info "Creating VCN..."
+    log_info "Setting up VCN..."
     local vcn_id
-    vcn_id=$(oci network vcn list \
-        --compartment-id "$compartment_id" \
-        --display-name "$VCN_NAME" \
-        --query 'data[0].id' \
-        --raw-output 2>/dev/null || echo "")
     
-    if [[ -z "$vcn_id" ]]; then
-        vcn_id=$(oci network vcn create \
+    # Use existing VCN if VCN_OCID is provided
+    if [[ -n "${VCN_OCID:-}" ]]; then
+        vcn_id="$VCN_OCID"
+        log_info "Using existing VCN: $vcn_id"
+    else
+        # Look for existing VCN by name
+        vcn_id=$(oci network vcn list \
             --compartment-id "$compartment_id" \
             --display-name "$VCN_NAME" \
-            --cidr-block "10.0.0.0/16" \
-            --dns-label "nimbleoke" \
-            --query 'data.id' \
-            --raw-output)
-        log_success "VCN created: $vcn_id"
-    else
-        log_info "VCN already exists: $vcn_id"
+            --query 'data[0].id' \
+            --raw-output 2>/dev/null || echo "")
+        
+        if [[ -z "$vcn_id" ]]; then
+            vcn_id=$(oci network vcn create \
+                --compartment-id "$compartment_id" \
+                --display-name "$VCN_NAME" \
+                --cidr-block "10.0.0.0/16" \
+                --dns-label "nimbleoke" \
+                --query 'data.id' \
+                --raw-output)
+            log_success "VCN created: $vcn_id"
+        else
+            log_info "VCN already exists: $vcn_id"
+        fi
     fi
     
     log_info "Creating Internet Gateway..."
