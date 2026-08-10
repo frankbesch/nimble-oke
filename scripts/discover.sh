@@ -94,11 +94,36 @@ main() {
         echo "  Hourly: \$$(format_cost "$hourly_cost")"
         echo "  Daily: \$$(format_cost "$daily_cost")"
         echo "  Monthly (if running 24/7): \$$(format_cost "$monthly_cost")"
+        
+        # Cost warning based on today's learnings
+        if (( $(echo "$hourly_cost > 5" | bc -l) )); then
+            echo ""
+            echo "⚠️  COST WARNING: High hourly cost detected"
+            echo "   Consider emergency cleanup if deployment fails"
+            echo "   Previous session: 2,582+ pods created, \$20+ cost"
+        fi
     else
         echo "No GPU nodes currently provisioned"
-        echo "Estimated cost for 1 GPU node:"
-        echo "  Hourly: \$2.88 (VM.GPU.A10.1 + ENHANCED cluster + LB + Storage)"
-        echo "  5-hour test: ~\$14.42"
+        echo "Estimated cost for VM.GPU.A10.2 (2 GPUs):"
+        echo "  Hourly: \$6.62 (VM.GPU.A10.2 + 5TB boot volume)"
+        echo "  5-hour test: ~\$33.10"
+        echo ""
+        echo "⚠️  LESSONS LEARNED:"
+        echo "   - NIM requires 5TB+ boot volume for model caching"
+        echo "   - Single pod strategy prevents rolling update issues"
+        echo "   - Persistence disabled eliminates volume conflicts"
+    fi
+    
+    echo ""
+    echo "=== Pod Count Monitoring ==="
+    local pod_count
+    pod_count=$(kubectl get pods -l app.kubernetes.io/name=nvidia-nim --no-headers 2>/dev/null | wc -l || echo "0")
+    echo "Current NIM pods: $pod_count"
+    
+    if [[ "$pod_count" -gt 1 ]]; then
+        echo "⚠️  WARNING: Multiple pods detected (expected: 1)"
+        echo "   This may indicate rolling update issues"
+        echo "   Previous session: 2,582+ pods created"
     fi
     
     echo ""

@@ -322,11 +322,27 @@ get_gpu_service_limit() {
             ;;
     esac
     
-    oci limits value list \
+    # Get availability domain for quota check
+    local ad
+    ad=$(oci iam availability-domain list \
         --compartment-id "$compartment_id" \
+        --region "${OCI_REGION:-us-phoenix-1}" \
+        --query 'data[0].name' \
+        --raw-output 2>/dev/null)
+    
+    if [[ -z "$ad" ]]; then
+        echo "0"
+        return
+    fi
+    
+    # Get available quota (not limit value)
+    oci limits resource-availability get \
         --service-name compute \
-        --all \
-        --query "data[?name=='$limit_name'].value | [0]" \
+        --limit-name "$limit_name" \
+        --compartment-id "$compartment_id" \
+        --region "${OCI_REGION:-us-phoenix-1}" \
+        --availability-domain "$ad" \
+        --query 'data.available' \
         --raw-output 2>/dev/null || echo "0"
 }
 

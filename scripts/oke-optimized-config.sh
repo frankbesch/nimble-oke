@@ -6,26 +6,26 @@
 set -euo pipefail
 
 # OKE-Optimized Settings
-readonly OKE_GPU_SHAPE="VM.GPU.A10.4"
+readonly OKE_GPU_SHAPE="VM.GPU.A10.2"
 readonly OKE_K8S_VERSION="v1.34.1"
 readonly OKE_GPU_IMAGE_ID="ocid1.image.oc1.phx.aaaaaaaa2gmabafvnqzelab5ujtlqksdkbgss5w72s3gvf4so34cdic3cwpa"
 readonly OKE_GPU_IMAGE_NAME="Oracle-Linux-8.10-Gen2-GPU-2025.08.31-0-OKE-1.34.1-1191"
-readonly OKE_BOOT_VOLUME_SIZE_GB=200
+readonly OKE_BOOT_VOLUME_SIZE_GB=500
 
-# Cost Configuration (VM.GPU.A10.4 pricing)
-readonly OKE_GPU_HOURLY_RATE="12.24"  # VM.GPU.A10.4 (4x NVIDIA A10 GPUs)
+# Cost Configuration (VM.GPU.A10.2 pricing)
+readonly OKE_GPU_HOURLY_RATE="6.12"  # VM.GPU.A10.2 (2x NVIDIA A10 GPUs)
 readonly OKE_CONTROL_PLANE_RATE="0.10"
 readonly OKE_ENHANCED_RATE="0.10"
-readonly OKE_TOTAL_HOURLY_RATE="12.44"  # Total hourly cost
+readonly OKE_TOTAL_HOURLY_RATE="6.32"  # Total hourly cost
 
 # Budget Ranges for Different Test Durations
-readonly BUDGET_FAST="${BUDGET_FAST:-15}"      # 1 hour test (~$12.44)
-readonly BUDGET_SHORT="${BUDGET_SHORT:-25}"     # 2 hour test (~$24.88)
-readonly BUDGET_EXTENDED="${BUDGET_EXTENDED:-50}" # 4 hour test (~$49.76)
-readonly BUDGET_FULL_DAY="${BUDGET_FULL_DAY:-300}" # 24 hour test (~$298.56)
+readonly BUDGET_FAST="${BUDGET_FAST:-10}"      # 1 hour test (~$6.32)
+readonly BUDGET_SHORT="${BUDGET_SHORT:-15}"     # 2 hour test (~$12.64)
+readonly BUDGET_EXTENDED="${BUDGET_EXTENDED:-30}" # 4 hour test (~$25.28)
+readonly BUDGET_FULL_DAY="${BUDGET_FULL_DAY:-150}" # 24 hour test (~$151.68)
 
 # Resource Configuration
-readonly OKE_GPU_COUNT=4
+readonly OKE_GPU_COUNT=2
 readonly OKE_CPU_REQUEST="16"
 readonly OKE_CPU_LIMIT="32"
 readonly OKE_MEMORY_REQUEST="96Gi"
@@ -38,6 +38,19 @@ validate_oke_gpu_quota() {
     
     echo "[NIM-OKE][VALIDATE] Checking GPU quota for $shape (required: $required_count)"
     
+    # Get availability domain for quota check
+    local ad
+    ad=$(oci iam availability-domain list \
+        --compartment-id "${OCI_COMPARTMENT_ID}" \
+        --region "${OCI_REGION:-us-phoenix-1}" \
+        --query 'data[0].name' \
+        --raw-output 2>/dev/null)
+    
+    if [[ -z "$ad" ]]; then
+        echo "[NIM-OKE][ERROR] Failed to get availability domain"
+        return 1
+    fi
+    
     # Check if we have sufficient GPU quota
     local available_quota
     available_quota=$(oci limits resource-availability get \
@@ -45,6 +58,7 @@ validate_oke_gpu_quota() {
         --limit-name gpu-a10-count \
         --compartment-id "${OCI_COMPARTMENT_ID}" \
         --region "${OCI_REGION:-us-phoenix-1}" \
+        --availability-domain "$ad" \
         --query 'data.available' \
         --raw-output 2>/dev/null || echo "0")
     
@@ -108,19 +122,21 @@ estimate_oke_cost() {
     local total_cost
     total_cost=$(echo "$total_hourly * $duration_hours" | bc -l)
     
-    echo "[NIM-OKE][COST] VM.GPU.A10.4 Cost Estimation:"
-    echo "  GPU Cost: \$$(printf "%.2f" "$gpu_cost")/hour × $gpu_count nodes (4x NVIDIA A10)"
-    echo "  Control Plane: \$$(printf "%.2f" "$OKE_CONTROL_PLANE_RATE")/hour"
-    echo "  Enhanced: \$$(printf "%.2f" "$OKE_ENHANCED_RATE")/hour"
-    echo "  Total Hourly: \$$(printf "%.2f" "$total_hourly")/hour"
-    echo "  $duration_hours-hour cost: \$$(printf "%.2f" "$total_cost")"
-    echo ""
-    echo "Budget Ranges:"
-    echo "  Fast Test (1h): \$$(printf "%.2f" "$total_hourly")"
-    echo "  Short Test (2h): \$$(printf "%.2f" "$(echo "$total_hourly * 2" | bc -l)")"
-    echo "  Extended Test (4h): \$$(printf "%.2f" "$(echo "$total_hourly * 4" | bc -l)")"
-    echo "  Full Day (24h): \$$(printf "%.2f" "$(echo "$total_hourly * 24" | bc -l)")"
+    # Output cost estimation to stderr (for display)
+    echo "[NIM-OKE][COST] VM.GPU.A10.2 Cost Estimation:" >&2
+    echo "  GPU Cost: \$$(printf "%.2f" "$gpu_cost")/hour × $gpu_count nodes (2x NVIDIA A10)" >&2
+    echo "  Control Plane: \$$(printf "%.2f" "$OKE_CONTROL_PLANE_RATE")/hour" >&2
+    echo "  Enhanced: \$$(printf "%.2f" "$OKE_ENHANCED_RATE")/hour" >&2
+    echo "  Total Hourly: \$$(printf "%.2f" "$total_hourly")/hour" >&2
+    echo "  $duration_hours-hour cost: \$$(printf "%.2f" "$total_cost")" >&2
+    echo "" >&2
+    echo "Budget Ranges:" >&2
+    echo "  Fast Test (1h): \$$(printf "%.2f" "$total_hourly")" >&2
+    echo "  Short Test (2h): \$$(printf "%.2f" "$(echo "$total_hourly * 2" | bc -l)")" >&2
+    echo "  Extended Test (4h): \$$(printf "%.2f" "$(echo "$total_hourly * 4" | bc -l)")" >&2
+    echo "  Full Day (24h): \$$(printf "%.2f" "$(echo "$total_hourly * 24" | bc -l)")" >&2
     
+    # Return only the numeric cost value
     echo "$total_cost"
 }
 

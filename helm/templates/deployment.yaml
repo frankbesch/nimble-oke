@@ -6,6 +6,14 @@ metadata:
     {{- include "nvidia-nim.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
+  {{- if .Values.podLimiter.enabled }}
+  # Pod Limiter Configuration
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: {{ .Values.podLimiter.rollingUpdate.maxSurge }}
+      maxUnavailable: {{ .Values.podLimiter.rollingUpdate.maxUnavailable }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "nvidia-nim.selectorLabels" . | nindent 6 }}
@@ -28,9 +36,15 @@ spec:
       {{- end }}
       serviceAccountName: {{ include "nvidia-nim.serviceAccountName" . }}
       securityContext:
+        {{- if .Values.podSecurityContext.runAsNonRoot }}
         runAsNonRoot: {{ .Values.podSecurityContext.runAsNonRoot }}
+        {{- end }}
+        {{- if .Values.podSecurityContext.runAsUser }}
         runAsUser: {{ .Values.podSecurityContext.runAsUser }}
+        {{- end }}
+        {{- if .Values.podSecurityContext.fsGroup }}
         fsGroup: {{ .Values.podSecurityContext.fsGroup }}
+        {{- end }}
         # seccompProfile disabled for NIM GPU compatibility
         # NIM requires GPU syscalls that may be blocked by seccomp profiles
       {{- if .Values.topologySpreadConstraints.enabled }}

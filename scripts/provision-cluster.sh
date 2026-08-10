@@ -8,7 +8,7 @@ source "${SCRIPT_DIR}/oke-optimized-config.sh"
 
 readonly CLUSTER_NAME="${CLUSTER_NAME:-nimble-oke-cluster}"
 readonly NODE_POOL_NAME="gpu-node-pool"
-readonly GPU_SHAPE="VM.GPU.A10.4"
+readonly GPU_SHAPE="${OKE_GPU_SHAPE:-VM.GPU.A10.1}"
 readonly NODE_COUNT="${NODE_COUNT:-1}"
 readonly K8S_VERSION="${K8S_VERSION:-v1.34.1}"
 readonly VCN_NAME="nimble-oke-vcn"
@@ -67,7 +67,7 @@ main() {
     
     # Use appropriate budget based on test duration
     local budget_threshold="$BUDGET_EXTENDED"  # Default to 4-hour test budget
-    cost_guard "$(format_cost "$test_cost")" "OKE cluster provisioning (VM.GPU.A10.4)"
+    cost_guard "$(format_cost "$test_cost")" "OKE cluster provisioning ($GPU_SHAPE)"
     
     log_info "Setting up VCN..."
     local vcn_id
@@ -189,7 +189,7 @@ main() {
     cluster_id=$(oci ce cluster list \
         --compartment-id "$compartment_id" \
         --name "$CLUSTER_NAME" \
-        --query 'data[0].id' \
+        --query 'data[?lifecycle-state != `DELETED`][0].id' \
         --raw-output 2>/dev/null || echo "")
     
     if [[ -z "$cluster_id" ]]; then
@@ -198,7 +198,7 @@ main() {
             --name "$CLUSTER_NAME" \
             --vcn-id "$vcn_id" \
             --kubernetes-version "$K8S_VERSION" \
-            --cluster-type ENHANCED \
+            --type ENHANCED_CLUSTER \
             --endpoint-subnet-id "$api_subnet_id" \
             --endpoint-public-ip-enabled true \
             --service-lb-subnet-ids "[\"$subnet_id\"]" \

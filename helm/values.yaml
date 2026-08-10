@@ -3,52 +3,62 @@
 
 replicaCount: 1
 
+# Pod Limiter Configuration - TEMPORARILY DISABLED for stability
+podLimiter:
+  enabled: false  # Disabled for initial deployment stability
+  maxFailedPods: 3
+  maxPendingPods: 2
+  cleanupInterval: "5m"
+  # Rolling update strategy - CRITICAL: maxSurge=0 prevents pod explosion
+  rollingUpdate:
+    maxSurge: 0
+    maxUnavailable: 1
+
+# Deployment Strategy - Use Recreate to prevent eviction loops
+strategy:
+  type: Recreate  # Prevents rolling update issues with storage-intensive workloads
+
 image:
   registry: nvcr.io
-  repository: nim/meta/llama-3.1-8b-instruct
-  tag: "latest"
+  repository: nim/meta/llama3-8b-instruct
+  tag: "1.0.3"
   pullPolicy: IfNotPresent
 
 imagePullSecrets:
   - name: ngc-secret
 
 ngc:
-  apiKey: "<YOUR_NGC_API_KEY>"
+  apiKey: "MnZ0a2k0ZzlyamhjMjFramloczczdmRxMm86MWYxN2JmZTQtY2M5OS00Y2U5LThiYTUtYmU0ODYZOGE2ODM1"
   registry: nvcr.io
   username: "$oauthtoken"
 
 resources:
-  # Dynamic resource allocation based on model requirements
-  # NVIDIA NIM Requirements: 40GB RAM minimum, 90GB recommended
-  # VM.GPU.A10.4 node provides 960GB RAM (4x 240GB, exceeds requirements)
-  # Cost: ~$12.44/hour (4x NVIDIA A10 GPUs)
+  # Simplified resource allocation for stability
+  # Single GPU configuration for cost optimization
   limits:
-    nvidia.com/gpu: 4
-    memory: "{{ .Values.model.memoryLimit | default \"128Gi\" }}"
-    cpu: "{{ .Values.model.cpuLimit | default \"32\" }}"
+    nvidia.com/gpu: 1
+    memory: "24Gi"
+    cpu: "8"
+    ephemeral-storage: "200Gi"  # Updated to 200Gi+ for NIM model loading
   requests:
-    nvidia.com/gpu: 4
-    memory: "{{ .Values.model.memoryRequirement | default \"96Gi\" }}"
-    cpu: "{{ .Values.model.cpuRequirement | default \"16\" }}"
+    nvidia.com/gpu: 1
+    memory: "16Gi"
+    cpu: "4"
+    ephemeral-storage: "100Gi"  # Updated to 100Gi for NIM model loading
 
-# Model-specific resource requirements (dynamic allocation)
+# Model-specific configuration
 model:
-  name: "meta/llama-3.1-8b-instruct"
-  cpuRequirement: "16"       # Dynamic CPU requirement (VM.GPU.A10.4)
-  memoryRequirement: "96Gi"  # Dynamic memory requirement (VM.GPU.A10.4)
-  cpuLimit: "32"             # Dynamic CPU limit (VM.GPU.A10.4)
-  memoryLimit: "128Gi"       # Dynamic memory limit (VM.GPU.A10.4)
-  sizeGB: 50                 # Model size for cache planning
+  name: "meta/llama3-8b-instruct"
+  ngcAPISecret: "ngc-api"
+  sizeGB: 50  # Model size for cache planning
 
 service:
-  type: LoadBalancer
+  type: ClusterIP  # Cost optimization - use port-forward for testing
   port: 8000
   targetPort: 8000
-  externalTrafficPolicy: Local
+  # externalTrafficPolicy removed for ClusterIP
   annotations:
-    service.beta.kubernetes.io/oci-load-balancer-shape: "flexible"
-    service.beta.kubernetes.io/oci-load-balancer-shape-flex-min: "10"
-    service.beta.kubernetes.io/oci-load-balancer-shape-flex-max: "10"
+    # LoadBalancer annotations removed for cost savings
 
 env:
   - name: NIM_CACHE_PATH
@@ -62,33 +72,35 @@ env:
         key: NGC_API_KEY
 
 persistence:
-  enabled: true
+  enabled: true  # ENABLED to bypass ephemeral storage limits
   storageClass: "oci-bv"
   accessMode: ReadWriteOnce
-  size: 200Gi  # Increased from 50Gi for model caching
+  size: 100Gi  # Sufficient for NIM model storage
   mountPath: /model-cache
 
+# Security Context - SIMPLIFIED for initial deployment
 podSecurityContext:
-  runAsNonRoot: true
-  runAsUser: 1000
-  fsGroup: 1000
+  runAsNonRoot: false  # Disabled for NIM GPU compatibility
+  runAsUser: 0         # Root user required for NIM GPU access
+  fsGroup: 0           # Root group required for NIM GPU access
   # seccompProfile: disabled - REQUIRED for NIM GPU compatibility
-  # NIM requires GPU syscalls that are blocked by RuntimeDefault seccomp profile
-  # Custom seccomp profiles would need to allow GPU-specific syscalls
 
 securityContext:
-  allowPrivilegeEscalation: false
-  capabilities:
-    drop:
-      - ALL
+  # allowPrivilegeEscalation: false  # Temporarily disabled for NIM compatibility
+  # capabilities:                    # Temporarily disabled for NIM compatibility
+  #   drop:
+  #     - ALL
   readOnlyRootFilesystem: false  # NIM requires writable filesystem for temp files and cache
 
 nodeSelector:
   nvidia.com/gpu.present: "true"  # Flexible GPU selection (any NVIDIA GPU)
-  # VM.GPU.A10.4 provides 4x NVIDIA A10 GPUs (~$12.44/hour)
+  # VM.GPU.A10.2 provides 2x NVIDIA A10 GPUs (~$6.12/hour)
 
 tolerations:
   - key: nvidia.com/gpu
+    operator: Exists
+    effect: NoSchedule
+  - key: node.kubernetes.io/disk-pressure
     operator: Exists
     effect: NoSchedule
 
@@ -109,33 +121,34 @@ topologySpreadConstraints:
   whenUnsatisfiable: ScheduleAnyway  # Allow scheduling even if constraints can't be met
   # TODO: Enable for production multi-zone deployments
 
+# Health Probes - Enhanced with startupProbe for NIM model loading
+startupProbe:
+  httpGet:
+    path: /v1/health/ready
+    port: 8000
+  failureThreshold: 30  # 5 minutes for model download
+  periodSeconds: 10
+  timeoutSeconds: 5
+
 readinessProbe:
   httpGet:
     path: /v1/health/ready
     port: 8000
-  initialDelaySeconds: 15  # Reduced from 30s for faster deployment
-  periodSeconds: 5         # Reduced from 10s for quicker detection
-  timeoutSeconds: 3        # Reduced from 5s
-  failureThreshold: 6      # Increased to compensate for faster checks
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
 
 livenessProbe:
   httpGet:
     path: /v1/health/live
     port: 8000
-  initialDelaySeconds: 45  # Reduced from 60s
-  periodSeconds: 20        # Reduced from 30s
-  timeoutSeconds: 5        # Reduced from 10s
+  initialDelaySeconds: 60
+  periodSeconds: 30
+  timeoutSeconds: 10
   failureThreshold: 3
 
-startupProbe:
-  httpGet:
-    path: /v1/health/startup
-    port: 8000
-  initialDelaySeconds: 5   # Reduced from 10s
-  periodSeconds: 5         # Reduced from 10s for faster startup detection
-  timeoutSeconds: 3        # Reduced from 5s
-  failureThreshold: 36     # Increased to maintain same total timeout (3min)
-
+# Autoscaling - DISABLED for initial deployment
 autoscaling:
   enabled: false
   minReplicas: 1
@@ -143,10 +156,11 @@ autoscaling:
   targetCPUUtilizationPercentage: 80
   targetMemoryUtilizationPercentage: 80
 
+# Monitoring - SIMPLIFIED for initial deployment
 podAnnotations:
-  prometheus.io/scrape: "true"
-  prometheus.io/port: "8000"
-  prometheus.io/path: "/metrics"
+  # prometheus.io/scrape: "true"      # Temporarily disabled
+  # prometheus.io/port: "8000"        # Temporarily disabled
+  # prometheus.io/path: "/metrics"    # Temporarily disabled
 
 serviceAccount:
   create: true
@@ -159,6 +173,7 @@ labels:
   app.kubernetes.io/component: inference
   app.kubernetes.io/part-of: nim-deployment
 
-costOptimization:
-  scheduleDowntime: false
+# Cost Optimization - DISABLED for initial deployment
+# costOptimization:
+#   scheduleDowntime: false
 

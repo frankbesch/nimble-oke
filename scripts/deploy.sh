@@ -47,6 +47,25 @@ main() {
     fi
     validate_ngc_api_key "$NGC_API_KEY"
     
+    # CRITICAL: OCI CLI validation based on 2025-10-19 learnings
+    log_info "Validating OCI CLI configuration..."
+    if ! oci iam user get --user-id $(oci iam user list --query 'data[0].id' --raw-output) &>/dev/null; then
+        die "OCI CLI not authenticated or configured"
+    fi
+    log_success "OCI CLI authentication verified"
+    
+    # CRITICAL: Check for active OKE cluster
+    log_info "Checking for active OKE cluster..."
+    local active_clusters
+    active_clusters=$(oci ce cluster list --compartment-id $(oci iam compartment list --query 'data[0].id' --raw-output) --query 'data[?lifecycle-state==`ACTIVE`]' --raw-output 2>/dev/null || echo "[]")
+    if [[ "$active_clusters" == "[]" ]]; then
+        log_warn "⚠️  No active OKE cluster found"
+        log_warn "   Create cluster first using: scripts/provision-cluster.sh"
+        log_warn "   Or use OCI Console: Container Engine → Clusters"
+        die "No active OKE cluster available"
+    fi
+    log_success "Active OKE cluster found"
+    
     log_info "Checking GPU availability..."
     check_gpu_available || die "No GPU nodes available"
     
@@ -68,26 +87,48 @@ main() {
     trap "rm -f $temp_values" EXIT
     
     cat > "$temp_values" <<EOF
+# NIM Deployment Configuration - Updated based on 2025-10-19 learnings
 ngc:
   apiKey: "${NGC_API_KEY}"
 
 image:
   pullPolicy: IfNotPresent
 
+# CRITICAL: Single pod strategy prevents rolling update issues
+replicaCount: 1
+
+# CRITICAL: Enable persistence with 100Gi PVC for model caching
 persistence:
   enabled: true
-  size: 50Gi
-  storageClass: $(get_default_storage_class)
+  size: 100Gi
+  storageClass: oci-bv
 
+# CRITICAL: NIM-specific resource configuration (VM.GPU.A10.2 with 2 GPUs)
 resources:
   limits:
-    nvidia.com/gpu: 1
-    memory: 32Gi
+    nvidia.com/gpu: 1  # Single GPU per pod for cost optimization
+    memory: 24Gi
     cpu: 8
+    ephemeral-storage: 200Gi  # Updated based on 2025-10-19 learnings
   requests:
     nvidia.com/gpu: 1
-    memory: 24Gi
+    memory: 16Gi
     cpu: 4
+    ephemeral-storage: 100Gi  # Updated based on 2025-10-19 learnings
+
+# CRITICAL: NIM-specific security context (GPU compatibility)
+podSecurityContext:
+  runAsNonRoot: false  # REQUIRED for NIM GPU access
+  runAsUser: 0         # Root user for GPU operations
+  fsGroup: 0           # Root group for GPU access
+  # seccompProfile: disabled - REQUIRED for NIM GPU compatibility
+
+# CRITICAL: Rolling update strategy to prevent pod explosion
+podLimiter:
+  enabled: true
+  rollingUpdate:
+    maxSurge: 0
+    maxUnavailable: 1
 
 nodeSelector:
   nvidia.com/gpu.present: "true"
@@ -96,7 +137,36 @@ tolerations:
   - key: nvidia.com/gpu
     operator: Exists
     effect: NoSchedule
+  - key: node.kubernetes.io/disk-pressure
+    operator: Exists
+    effect: NoSchedule
 EOF
+    
+    log_info "Running pre-deployment safety checks..."
+    
+    # CRITICAL: Disk usage check to prevent disk pressure
+    log_info "Checking node disk usage..."
+    local disk_usage
+    disk_usage=$(kubectl get nodes -o jsonpath='{.items[0].status.conditions[?(@.type=="DiskPressure")].status}' 2>/dev/null || echo "Unknown")
+    if [[ "$disk_usage" == "True" ]]; then
+        log_error "🚨 DISK PRESSURE DETECTED - Deployment blocked"
+        log_error "   Node has disk pressure, will cause pod evictions"
+        die "Disk pressure detected on node"
+    fi
+    log_success "Disk usage check passed"
+    
+    # CRITICAL: Dry run validation to prevent catastrophic failures
+    log_info "Validating deployment with dry-run..."
+    if ! helm upgrade "$RELEASE_NAME" "$HELM_CHART_DIR" \
+        -f "${HELM_CHART_DIR}/values.yaml" \
+        -f "$temp_values" \
+        --dry-run \
+        --timeout 60s; then
+        log_error "🚨 DRY RUN FAILED - Deployment blocked for safety"
+        log_error "   Fix configuration issues before proceeding"
+        die "Dry run validation failed"
+    fi
+    log_success "Dry run validation passed"
     
     log_info "Deploying NIM with Helm..."
     helm_install_or_upgrade \
@@ -109,10 +179,40 @@ EOF
         --timeout "${DEPLOY_TIMEOUT}s"
     
     log_info "Waiting for pods to be ready..."
+    
+    # CRITICAL: Monitor pod count to detect rolling update issues
+    local pod_count
+    pod_count=$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=nvidia-nim --no-headers | wc -l)
+    log_info "Initial pod count: $pod_count"
+    
+    if [[ "$pod_count" -gt 1 ]]; then
+        log_warn "⚠️  Multiple pods detected (expected: 1)"
+        log_warn "   This may indicate rolling update issues"
+        log_warn "   Previous session: 2,582+ pods created"
+        
+        # Emergency stop if too many pods
+        if [[ "$pod_count" -gt 5 ]]; then
+            log_error "🚨 EMERGENCY: Too many pods created ($pod_count)"
+            log_error "   Initiating emergency cleanup to prevent cost escalation"
+            cleanup_on_failure
+            die "Emergency cleanup initiated - too many pods created"
+        fi
+    fi
+    
     if ! wait_for_pod_ready "app.kubernetes.io/name=nvidia-nim" "$NAMESPACE" "$DEPLOY_TIMEOUT"; then
         log_error "Pods failed to become ready"
         log_info "Checking pod status..."
         kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=nvidia-nim
+        
+        # Check for pod eviction issues
+        local evicted_pods
+        evicted_pods=$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=nvidia-nim --no-headers | grep -c "Evicted" || echo "0")
+        if [[ "$evicted_pods" -gt 0 ]]; then
+            log_error "🚨 Pod eviction detected ($evicted_pods pods)"
+            log_error "   This may indicate disk pressure issues"
+            log_error "   Check node disk usage and boot volume size"
+        fi
+        
         log_info "Recent logs:"
         get_pod_logs "app.kubernetes.io/name=nvidia-nim" "$NAMESPACE" 50
         die "Deployment failed - pods not ready"
