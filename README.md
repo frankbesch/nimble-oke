@@ -14,7 +14,7 @@ provisioning a GPU node pool and proving it was deleted.
 |------|-------|
 | First deployment | October 2025, on a cluster built with the Console's Quick Create plus `oci` CLI steps for what the Console could not do. NIM served inference. No run receipt was kept. |
 | Measured run, fixed GPU pool | 2026-10-01: PASS. Provision in 15 min 53 s, deploy in 6 min 56 s, 5 of 5 benchmark requests, teardown confirmed clean. [Receipt](docs/runs/2026-10-01-run-1-fixed.md). It is the first proof of the scripted provisioning path. |
-| Measured run, autoscaling 0 to 1 to 0 | Pending. |
+| Measured run, autoscaling 0 to 1 to 0 | 2026-10-01: PASS, once, on one A10. Pod Pending to GPU node Ready in 385 s; zero replicas to no GPU node in 312 s; teardown clean on the first attempt. [Receipt](docs/runs/2026-10-01-run-2-autoscale.md). |
 | Review pass | October 2026. Teardown, provisioning, and secret handling were reworked. See [What changed in October 2026](#what-changed-in-october-2026). |
 | CI | Shellcheck, stubbed tests of the runner and of the provision and teardown scripts, Helm lint and render, secret scan. |
 
@@ -154,9 +154,10 @@ The receipt records the seconds from pod Pending to GPU node Ready, the
 seconds from zero replicas to no GPU node, the autoscaler timers, GPU-node
 minutes, and a line `autoscale result: 0→1→0 PASS` or `FAIL` with the reason.
 
-Scope: one GPU node. `MAX_GPU_NODES` above 1 is refused. Oracle's
-documentation does not state that a node pool can scale up from zero nodes;
-the upstream autoscaler code supports it. The measured run is the test.
+Scope: one GPU node, measured once. `MAX_GPU_NODES` above 1 is refused.
+Oracle's documentation does not state that a node pool can scale up from zero
+nodes. [Run 2](docs/runs/2026-10-01-run-2-autoscale.md) shows that it does,
+with add-on 1.34.3.
 
 ### How the runner ends
 
@@ -215,10 +216,10 @@ each kit has to do itself.
 | GPU taint and toleration | The autoscaler treats GPU nodes as tainted `nvidia.com/gpu:NoSchedule`. The chart carries the toleration. | GKE adds the taint `nvidia.com/gpu=present:NoSchedule` and adds the toleration to pods that request a GPU. |
 | System node | One CPU node pool that the autoscaler does not manage. Oracle requires it to run the autoscaler and cluster add-ons. | The default CPU node pool runs system pods. Google states that a Standard cluster keeps at least one node for them. |
 | Cluster autoscaler | The kit installs the Cluster Autoscaler add-on with `min:max:pool` and its scale-down timers. | Three flags on the node pool: `--enable-autoscaling`, `--min-nodes`, `--max-nodes`. The kit deploys no autoscaler. |
-| Autoscaler permissions | A dynamic group and a six-statement policy, created once by the account owner. | The kit creates none. |
-| GPU pool from zero nodes | Supported by the autoscaler's code. Oracle's documentation does not state it. The pool carries a tag that tells the autoscaler the node's storage. | Measured once: 0 to 1 to 0 on one L4, in nim-gke run 3. |
+| Autoscaler permissions | A dynamic group and a six-statement policy, created once by the account owner. IAM writes go to the tenancy's home region. | The kit creates none. |
+| GPU pool from zero nodes | Measured once: 0 to 1 to 0 on one A10, in nimble-oke run 2. Oracle's documentation does not state it. The pool carries a tag that tells the autoscaler the node's storage. | Measured once: 0 to 1 to 0 on one L4, in nim-gke run 3. |
 | GPU quota | A service limit per availability domain, `gpu-a10-count`. The default is 0. | A project quota, `GPUS_ALL_REGIONS`, plus the regional GPU quota. |
-| Confirming a delete | A delete returns a work request. The kit waits for it, then reads the resource state. | `gcloud` waits for the delete. The kit then checks for a leftover model-store disk. |
+| Confirming a delete | A delete returns a work request. The kit waits for it, then polls the resource state. A node pool delete drains nodes for up to 60 minutes by default; the kit passes a zero grace period at teardown. | `gcloud` waits for the delete. The kit then checks for a leftover model-store disk. |
 | Cluster fee | $0.10 per hour for an enhanced cluster. Basic clusters are free and cannot run the add-on. | The zonal cluster fee applies on both paths. |
 
 None of these is a defect in either platform. They are the steps a script
@@ -278,14 +279,13 @@ Their figures were corrected in October 2026.
 
 ## Known gaps
 
-- One measured run is committed. One run does not show repeatability.
+- Two measured runs are committed, one per mode. One run of each does not show repeatability.
 - The Kubernetes API endpoint is public and open on 6443 by default. Set `API_ALLOWED_CIDR` to narrow it.
 - The node image OCID is pinned to Phoenix. Other regions need a different image.
 - The pod runs as uid 1000 with no further hardening. The chart says so.
 - The NVIDIA device plugin is pinned at v0.14.0 and has not been re-tested against newer releases.
 - The scripts are tested on bash 3.2. Bash 5 is exercised only in CI.
-- Autoscaling is limited to one GPU node and is unproven until its receipt is committed.
-- Teardown now skips the node drain and polls for the final state. Both changes came from run 1 and are not measured yet.
+- Autoscaling is limited to one GPU node and has been measured once.
 - The watchdog runs on the machine that starts the run. If that machine loses power or sleeps with the lid closed, nothing tears the cluster down until it wakes.
 
 ## References
