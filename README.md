@@ -12,7 +12,7 @@ provisioning a GPU node pool and proving it was deleted.
 
 | Item | State |
 |------|-------|
-| First deployment | October 2025, on a cluster made with the Console's Quick Create. NIM served inference. No run receipt was kept. |
+| First deployment | October 2025, on a cluster built with the Console's Quick Create plus `oci` CLI steps for what the Console could not do. NIM served inference. No run receipt was kept. |
 | Measured rerun | Pending. `scripts/run_measured.sh` writes a timed receipt to [docs/runs/](docs/runs/). None is committed yet. It will be the first proof of the scripted provisioning path. |
 | Review pass | October 2026. Teardown, provisioning, and secret handling were reworked. See [What changed in October 2026](#what-changed-in-october-2026). |
 | CI | Shellcheck, stubbed tests of the runner and of the provision and teardown scripts, Helm lint and render, secret scan. |
@@ -195,6 +195,29 @@ OCI API; the measured run does that.
 | A cluster of only tainted GPU nodes had nowhere to run DNS | A small system node pool is created first, and provisioning waits for DNS. |
 | A failed install uninstalled the release before anyone could see why | Deploy captures pod state, events, and logs before it cleans up. |
 | Prices and shapes disagreed across files, and `VM.GPU.A10.4` is not an Oracle shape | One rate table. Three valid shapes. |
+
+## OKE compared with GKE
+
+This kit has a companion, [nim-gke](https://github.com/frankbesch/nim-gke),
+that does the same job on Google Kubernetes Engine. The two platforms reach
+the same result. OKE needs more explicit setup. The table lists what each kit
+has to do itself.
+
+| Task | OKE, this kit | GKE, nim-gke |
+|------|---------------|--------------|
+| Network rules for node registration | The kit creates two security lists: workers to the API endpoint on 6443 and 12250, the control plane to workers, and node to node. | The cluster create command sets up the rules. |
+| Subnets | The kit creates an API endpoint subnet and a worker subnet. A node pool cannot share the service load-balancer subnet. | The cluster create command uses the default network. |
+| Root filesystem on a large boot volume | The node pool runs `oci-growfs` in cloud-init. Without it the filesystem stays near 35 GB. | The disk size flag takes effect without a further step. |
+| GPU device plugin | The kit checks for an allocatable GPU and applies the NVIDIA device plugin if none is reported. | The platform installs the device plugin on GPU node pools. |
+| Cluster autoscaler | The kit installs the Cluster Autoscaler add-on, which runs on a worker node. It needs a node pool it does not manage. | Autoscaling is a flag on the node pool. It runs in the managed control plane. |
+| Autoscaler permissions | A dynamic group and a six-statement policy, created once by the account owner. | None to create. |
+| Scale from zero GPU nodes | Supported by the autoscaler's code. Oracle's documentation does not state it. The pool carries a tag that tells the autoscaler the node's storage. | Documented. Minimum nodes can be zero. |
+| Deleted-resource checks | A delete is confirmed by its work request, then by reading the resource state. | A delete command waits for completion. |
+
+None of these is a defect in either platform. They are the steps a script
+must own on OKE and can leave to the platform on GKE. Each row for OKE is
+covered by a stubbed test here. The measured runs in [docs/runs/](docs/runs/)
+show which rows are proven against the real API.
 
 ## Repository layout
 
