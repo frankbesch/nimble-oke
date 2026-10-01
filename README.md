@@ -6,6 +6,11 @@ everything down. The project is a smoke-test harness, not a production
 platform. Its focus is the part that costs money when it goes wrong:
 provisioning a GPU node pool and proving it was deleted.
 
+Both modes have been measured end to end, once each. See the
+[run 1 receipt](docs/runs/2026-10-01-run-1-fixed.md) (fixed GPU pool) and the
+[run 2 receipt](docs/runs/2026-10-01-run-2-autoscale.md) (GPU node autoscaling
+0→1→0 on one A10) for every measured number in this file.
+
 **Based on:** [NVIDIA nim-deploy, Oracle OKE reference](https://github.com/NVIDIA/nim-deploy/tree/main/cloud-service-providers/oracle/oke)
 
 ## Status
@@ -21,6 +26,26 @@ provisioning a GPU node pool and proving it was deleted.
 Timing and cost figures elsewhere in this repository that come from the
 simulation scripts are estimates from static assumptions. They are labelled
 as estimates. Only a file in `docs/runs/` is a measurement.
+
+## Measured results
+
+One run of each mode on 2026-10-01, `us-phoenix-1`, one `VM.GPU.A10.1`.
+
+| Measure | Run 1, fixed pool | Run 2, autoscale 0→1→0 |
+|---|---|---|
+| Provision | 15 min 53 s | 11 min 58 s, GPU pool at 0 nodes |
+| Deploy to NIM Ready | 6 min 56 s | 10 min 43 s from pod Pending, including the new node |
+| Scale-up: pod Pending to GPU node Ready | not applicable | 385 s |
+| Scale-down: zero replicas to no GPU node | not applicable | 312 s |
+| Benchmark, 5 non-streamed requests | 5 of 5; p50 3.85 s; 27.6 tokens/s | 5 of 5; p50 3.96 s; 27.3 tokens/s |
+| Teardown | clean, third attempt, 30 min 55 s | clean, first attempt, 6 min 54 s |
+| GPU node present | 17 min 44 s | 10 min 07 s |
+| Cost estimate at list price | about $0.73 | about $0.44 |
+| Receipt | [run 1](docs/runs/2026-10-01-run-1-fixed.md) | [run 2](docs/runs/2026-10-01-run-2-autoscale.md) |
+
+Costs are estimates at Oracle list prices, not a bill. Five requests on one
+stream is a smoke test, not a performance result. Run 1's slow teardown was
+the default node drain; the kit now skips it, and run 2 shows the effect.
 
 ## What it deploys
 
@@ -301,3 +326,9 @@ Their figures were corrected in October 2026.
 
 MIT. See [LICENSE](LICENSE). NVIDIA NIM and Oracle Cloud services are subject
 to their own terms.
+
+---
+
+**Last measured**: 2026-10-01. See the
+[run 1 receipt](docs/runs/2026-10-01-run-1-fixed.md) and the
+[run 2 receipt](docs/runs/2026-10-01-run-2-autoscale.md).
