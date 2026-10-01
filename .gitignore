@@ -106,6 +106,8 @@ usage-report.json
 
 # Measured-run output under docs/runs/: OCIDs live only in these files.
 # receipt.md (no OCIDs, no IPs, no key) and summary.json stay committable.
+# Raw run directories stay local; the committed receipt is docs/runs/<date>-run-N-*.md.
+docs/runs/*/
 docs/runs/**/.oke_ids
 docs/runs/**/cluster-info.txt*
 docs/runs/**/*.log

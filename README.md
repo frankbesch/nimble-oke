@@ -13,7 +13,8 @@ provisioning a GPU node pool and proving it was deleted.
 | Item | State |
 |------|-------|
 | First deployment | October 2025, on a cluster built with the Console's Quick Create plus `oci` CLI steps for what the Console could not do. NIM served inference. No run receipt was kept. |
-| Measured rerun | Pending. `scripts/run_measured.sh` writes a timed receipt to [docs/runs/](docs/runs/). None is committed yet. It will be the first proof of the scripted provisioning path. |
+| Measured run, fixed GPU pool | 2026-10-01: PASS. Provision in 15 min 53 s, deploy in 6 min 56 s, 5 of 5 benchmark requests, teardown confirmed clean. [Receipt](docs/runs/2026-10-01-run-1-fixed.md). It is the first proof of the scripted provisioning path. |
+| Measured run, autoscaling 0 to 1 to 0 | Pending. |
 | Review pass | October 2026. Teardown, provisioning, and secret handling were reworked. See [What changed in October 2026](#what-changed-in-october-2026). |
 | CI | Shellcheck, stubbed tests of the runner and of the provision and teardown scripts, Helm lint and render, secret scan. |
 
@@ -277,13 +278,14 @@ Their figures were corrected in October 2026.
 
 ## Known gaps
 
-- No measured receipt is committed yet. Until one is, the scripted provisioning path is untested against the real OCI API.
+- One measured run is committed. One run does not show repeatability.
 - The Kubernetes API endpoint is public and open on 6443 by default. Set `API_ALLOWED_CIDR` to narrow it.
 - The node image OCID is pinned to Phoenix. Other regions need a different image.
 - The pod runs as uid 1000 with no further hardening. The chart says so.
 - The NVIDIA device plugin is pinned at v0.14.0 and has not been re-tested against newer releases.
 - The scripts are tested on bash 3.2. Bash 5 is exercised only in CI.
-- Autoscaling is limited to one GPU node and is unproven until a receipt is committed.
+- Autoscaling is limited to one GPU node and is unproven until its receipt is committed.
+- Teardown now skips the node drain and polls for the final state. Both changes came from run 1 and are not measured yet.
 - The watchdog runs on the machine that starts the run. If that machine loses power or sleeps with the lid closed, nothing tears the cluster down until it wakes.
 
 ## References

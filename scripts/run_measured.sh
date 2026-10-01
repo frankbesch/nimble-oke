@@ -700,7 +700,8 @@ sys_cost = usd(sys_rate, cost_secs)
 total_hourly = hourly
 est_cost = usd(total_hourly, cost_secs)
 cost_note = ("rate from scripts/_lib.sh estimate_hourly_cost: GPU and enhanced-cluster rates verified there; "
-             "LB and storage are estimates (unverified); plus the CPU system pool at %s USD/h (%s)"
+             "LB and storage are estimates (unverified); includes the CPU system pool at %s USD/h (%s). "
+             "Upper bound: the rate is applied to the whole billable window, but the GPU bills only while its node pool exists"
              % (E.get("S_SYS_RATE"), E.get("S_SYS_BASIS")))
 AS = None
 if autoscale:

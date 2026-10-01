@@ -807,22 +807,48 @@ oci_ce_delete_confirmed() {
     fi
 
     log_info "Deleting $kind $id (waiting for the work request)..."
+    # A node pool delete cordons and drains by default, for up to 60 minutes
+    # (measured 2026-10-01: 21 minutes for one system node). At teardown the
+    # cluster is going away, so skip the drain unless the caller overrides it.
+    local -a extra=()
+    if [[ "$kind" == "node-pool" ]]; then
+        extra=(--override-eviction-grace-duration "${NODE_POOL_EVICTION_GRACE:-PT0M}")
+    fi
     # Delete --wait-for-state takes work-request states, not DELETED.
-    if ! oci ce "$kind" delete "$flag" "$id" --force \
+    local rc=0 errf
+    errf="$(mktemp "${TMPDIR:-/tmp}/nimble-delete.XXXXXX")"
+    oci ce "$kind" delete "$flag" "$id" --force ${extra[@]+"${extra[@]}"} \
         --wait-for-state SUCCEEDED --wait-for-state FAILED \
-        --max-wait-seconds "${OCI_DELETE_MAX_WAIT:-1800}" >&2; then
-        log_error "$kind delete call failed: $id"
-        return 1
+        --max-wait-seconds "${OCI_DELETE_MAX_WAIT:-3600}" >&2 2>"$errf" || rc=$?
+    cat "$errf" >&2
+    if [[ "$rc" -ne 0 ]]; then
+        # 409 Conflict: a delete is already in progress. Wait for it below.
+        if grep -q '"status": 409' "$errf" 2>/dev/null; then
+            log_warn "$kind delete answered 409 (a delete is already in progress); waiting for it: $id"
+        else
+            rm -f "$errf"
+            log_error "$kind delete call failed: $id"
+            return 1
+        fi
     fi
+    rm -f "$errf"
 
-    if ! state=$(oci_ce_get_state "$kind" "$id"); then
-        log_error "Could not confirm $kind deletion (get call failed): $id"
-        return 1
-    fi
-    if [[ "$state" != "DELETED" && "$state" != "NOTFOUND" ]]; then
-        log_error "$kind is in state '${state:-unknown}', not DELETED: $id"
-        return 1
-    fi
+    # The work request can report SUCCEEDED before the resource state flips,
+    # so poll the state for a bounded time instead of reading it once.
+    local settle_deadline
+    settle_deadline=$(( $(date +%s) + ${OCI_DELETE_SETTLE_SEC:-600} ))
+    while :; do
+        if ! state=$(oci_ce_get_state "$kind" "$id"); then
+            log_error "Could not confirm $kind deletion (get call failed): $id"
+            return 1
+        fi
+        [[ "$state" == "DELETED" || "$state" == "NOTFOUND" ]] && break
+        if (( $(date +%s) >= settle_deadline )); then
+            log_error "$kind is in state '${state:-unknown}', not DELETED: $id"
+            return 1
+        fi
+        sleep "${OCI_DELETE_POLL_SEC:-10}"
+    done
     log_success "$kind confirmed DELETED (${state}): $id"
     return 0
 }

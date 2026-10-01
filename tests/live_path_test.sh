@@ -5,6 +5,8 @@
 # TMPDIR pointed at scratch dirs. No network, no cloud, no cluster.
 # Needs bash, jq, bc, awk. Runs on bash 3.2 (macOS) and bash 5 (CI).
 set -u
+# Keep the post-delete state poll short in tests (real default: 600 s, every 10 s).
+export OCI_DELETE_SETTLE_SEC="${OCI_DELETE_SETTLE_SEC:-2}" OCI_DELETE_POLL_SEC="${OCI_DELETE_POLL_SEC:-1}"
 
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$TESTS_DIR/.." && pwd)"
@@ -154,6 +156,8 @@ echo "  -- T5 teardown with two pools"
 gd=$(line_of 'oci ce node-pool delete --node-pool-id ocid1.nodepool.oc1.phx.sim '); sd=$(line_of 'oci ce node-pool delete --node-pool-id ocid1.nodepool.oc1.phx.system ')
 check "T5 GPU pool deleted before system pool (lines $gd < $sd)" lt "$gd" "$sd"
 check "T5 system pool deleted before cluster (lines $sd < $cl)" lt "$sd" "$cl"
+# Live run 2026-10-01: the default drain held a one-node system pool delete for 21 minutes.
+check "T5 node-pool deletes skip the drain (PT0M eviction grace)" test "$(grep -c '^oci ce node-pool delete .*--override-eviction-grace-duration PT0M' "$CASE/argv.log")" -ge 2
 check "T5 both pools confirmed DELETED" test "$(grep -c 'node-pool confirmed DELETED' "$CASE/td.out")" -eq 2
 check "T5 pools listed by cluster id" grep -q '^oci ce node-pool list --compartment-id ocid1.compartment.oc1..sim --cluster-id ocid1.cluster.oc1.phx.sim --all' "$CASE/argv.log"
 check "order cluster < subnets" lt "$cl" "$sn"
