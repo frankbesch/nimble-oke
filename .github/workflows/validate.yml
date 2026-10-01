@@ -1,0 +1,113 @@
+name: Validate Nimble OKE
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint-scripts:
+    name: Lint and test shell scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Syntax check
+        run: |
+          for f in scripts/*.sh tests/*.sh setup-env.sh fix-oci-auth.sh; do
+            bash -n "$f"
+          done
+
+      - name: Lint scripts
+        run: |
+          shellcheck -x -S warning scripts/*.sh setup-env.sh fix-oci-auth.sh
+          shellcheck -x -S warning tests/*.sh
+
+      - name: Run runner tests (stubs only, no cloud calls)
+        run: |
+          bash tests/run_measured_test.sh
+          bash tests/run_measured_reliability_test.sh
+
+  validate-chart:
+    name: Validate Helm chart
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Lint chart
+        run: helm lint helm --set ngc.apiKey=dummy
+
+      - name: Chart renders with a key
+        run: helm template nimble helm --set ngc.apiKey=dummy > /dev/null
+
+      - name: Chart refuses to render without a key
+        run: |
+          if helm template nimble helm > /dev/null 2>&1; then
+            echo "Error: chart rendered without ngc.apiKey; it must be required"
+            exit 1
+          fi
+
+  security-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Chart default key is empty
+        run: |
+          # The NGC key is supplied at install time. A non-empty default in
+          # values.yaml is a committed credential.
+          if ! grep -qE '^[[:space:]]+apiKey:[[:space:]]*""' helm/values.yaml; then
+            echo "Error: helm/values.yaml ngc.apiKey must default to an empty string"
+            exit 1
+          fi
+
+      - name: No NGC key-shaped strings
+        run: |
+          # grep exits 0 on a hit, 1 on no hit, 2 on error; treat 2 as a failure too.
+          # nvapi-xxxx... is the documented placeholder.
+          rc=0
+          grep -rnP --exclude-dir=.git 'nvapi-(?!x{4,})[A-Za-z0-9_-]{20,}' . || rc=$?
+          if [ "$rc" -eq 0 ]; then
+            echo "Error: found an NGC key-shaped string"
+            exit 1
+          elif [ "$rc" -gt 1 ]; then
+            echo "Error: key-shape scan failed to run (grep rc=$rc)"
+            exit 1
+          fi
+
+          # Legacy NGC keys are base64 of "<id>:<uuid>"; flag long base64
+          # literals assigned to a key-like field.
+          rc=0
+          grep -rnP --exclude-dir=.git \
+              '(?i)(api_?key|password|token)["'"'"']?\s*[:=]\s*["'"'"'][A-Za-z0-9+/]{40,}={0,2}["'"'"']' . || rc=$?
+          if [ "$rc" -eq 0 ]; then
+            echo "Error: found a long literal assigned to a credential field"
+            exit 1
+          elif [ "$rc" -gt 1 ]; then
+            echo "Error: credential-literal scan failed to run (grep rc=$rc)"
+            exit 1
+          fi
+
+      - name: No account identifiers
+        run: |
+          rc=0
+          grep -rnP --exclude-dir=.git \
+              'ocid1\.(tenancy|compartment|user|cluster|nodepool|vcn|subnet)\.oc1\.[a-z0-9-]*\.[a-z0-9]{30,}' . || rc=$?
+          if [ "$rc" -eq 0 ]; then
+            echo "Error: found an account-specific OCID"
+            exit 1
+          elif [ "$rc" -gt 1 ]; then
+            echo "Error: OCID scan failed to run (grep rc=$rc)"
+            exit 1
+          fi

@@ -12,7 +12,6 @@ source "${SCRIPT_DIR}/_lib.sh"
 # Configuration
 NAMESPACE="${NAMESPACE:-nim}"
 LOG_DIR="/tmp/nim-logs"
-ANALYSIS_OUTPUT="/tmp/nim-analysis.json"
 
 log_info "Enhanced Log Analyzer initialized"
 log_info "Namespace: $NAMESPACE"
@@ -87,7 +86,7 @@ analyze_error_patterns() {
     if grep -q "ImagePullBackOff\|ErrImagePull\|Failed to pull image" "$LOG_DIR"/*.log 2>/dev/null; then
         log_error "Image pull failure detected"
         error_patterns+=("IMAGE_PULL_FAILURE")
-        ((error_count++))
+        error_count=$((error_count + 1))
         
         # Extract specific image pull errors
         grep -h "ImagePullBackOff\|ErrImagePull\|Failed to pull image" "$LOG_DIR"/*.log 2>/dev/null | head -5
@@ -98,7 +97,7 @@ analyze_error_patterns() {
     if grep -q "Insufficient nvidia.com/gpu\|No nodes are available\|didn't have free resources" "$LOG_DIR"/*.log 2>/dev/null; then
         log_error "GPU allocation failure detected"
         error_patterns+=("GPU_ALLOCATION_FAILURE")
-        ((error_count++))
+        error_count=$((error_count + 1))
         
         # Extract GPU allocation errors
         grep -h "Insufficient nvidia.com/gpu\|No nodes are available\|didn't have free resources" "$LOG_DIR"/*.log 2>/dev/null | head -5
@@ -109,7 +108,7 @@ analyze_error_patterns() {
     if grep -q "OOMKilled\|MemoryPressure\|Out of memory" "$LOG_DIR"/*.log 2>/dev/null; then
         log_error "Memory pressure detected"
         error_patterns+=("MEMORY_PRESSURE")
-        ((error_count++))
+        error_count=$((error_count + 1))
         
         # Extract memory errors
         grep -h "OOMKilled\|MemoryPressure\|Out of memory" "$LOG_DIR"/*.log 2>/dev/null | head -5
@@ -120,7 +119,7 @@ analyze_error_patterns() {
     if grep -q "FailedMount\|MountVolume\|PersistentVolumeClaim" "$LOG_DIR"/*.log 2>/dev/null; then
         log_error "Storage mounting issues detected"
         error_patterns+=("STORAGE_MOUNT_FAILURE")
-        ((error_count++))
+        error_count=$((error_count + 1))
         
         # Extract storage errors
         grep -h "FailedMount\|MountVolume\|PersistentVolumeClaim" "$LOG_DIR"/*.log 2>/dev/null | head -5
@@ -131,7 +130,7 @@ analyze_error_patterns() {
     if grep -q "Connection refused\|Connection timeout\|Network unreachable" "$LOG_DIR"/*.log 2>/dev/null; then
         log_error "Network connectivity issues detected"
         error_patterns+=("NETWORK_CONNECTIVITY")
-        ((error_count++))
+        error_count=$((error_count + 1))
         
         # Extract network errors
         grep -h "Connection refused\|Connection timeout\|Network unreachable" "$LOG_DIR"/*.log 2>/dev/null | head -5
@@ -142,7 +141,7 @@ analyze_error_patterns() {
     if grep -q "authentication failed\|unauthorized\|401\|403" "$LOG_DIR"/*.log 2>/dev/null; then
         log_error "NGC authentication issues detected"
         error_patterns+=("NGC_AUTHENTICATION")
-        ((error_count++))
+        error_count=$((error_count + 1))
         
         # Extract auth errors
         grep -h "authentication failed\|unauthorized\|401\|403" "$LOG_DIR"/*.log 2>/dev/null | head -5
@@ -158,7 +157,8 @@ analyze_performance_patterns() {
     log_info "Analyzing performance patterns..."
     
     # Check pod startup times
-    local startup_time=$(grep -h "Started container\|Container started" "$LOG_DIR"/*.log 2>/dev/null | wc -l)
+    local startup_time
+    startup_time=$(grep -h "Started container\|Container started" "$LOG_DIR"/*.log 2>/dev/null | wc -l)
     log_info "Container startup events: $startup_time"
     
     # Check for slow operations
@@ -183,8 +183,10 @@ analyze_resource_patterns() {
     log_info "Analyzing resource patterns..."
     
     # Check node capacity
-    local node_count=$(kubectl get nodes --no-headers | wc -l)
-    local gpu_nodes=$(kubectl get nodes -l nvidia.com/gpu.present=true --no-headers 2>/dev/null | wc -l)
+    local node_count
+    node_count=$(kubectl get nodes --no-headers | wc -l)
+    local gpu_nodes
+    gpu_nodes=$(kubectl get nodes -l nvidia.com/gpu.present=true --no-headers 2>/dev/null | wc -l)
     
     log_info "Node analysis:"
     log_info "  Total nodes: $node_count"
@@ -225,7 +227,11 @@ EOF
 
     # Add error patterns if found
     if [[ -f "$LOG_DIR/error-patterns.txt" ]]; then
-        local error_patterns=($(cat "$LOG_DIR/error-patterns.txt"))
+        local error_patterns=()
+        local _p
+        while IFS= read -r _p; do
+            [[ -n "$_p" ]] && error_patterns+=("$_p")
+        done < "$LOG_DIR/error-patterns.txt"
         if [[ ${#error_patterns[@]} -gt 0 ]]; then
             cat >> "$report_file" << EOF
 ### Detected Issues
@@ -237,7 +243,7 @@ EOF
                         cat >> "$report_file" << EOF
 - **Image Pull Failure**: Check NGC API key and image access
   - Verify NGC_API_KEY is set correctly
-  - Check NGC catalog access for model: ${NIM_MODEL:-meta/llama-3.1-8b-instruct}
+  - Check NGC catalog access for model: ${NIM_MODEL:-meta/llama3-8b-instruct}
 
 EOF
                         ;;

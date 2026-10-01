@@ -6,7 +6,8 @@
 set -euo pipefail
 
 readonly SESSION_DIR="${HOME}/.nimble-oke/sessions"
-readonly SESSION_FILE="${SESSION_DIR}/session-$(date +%Y%m%d-%H%M%S).json"
+SESSION_FILE="${SESSION_DIR}/session-$(date +%Y%m%d-%H%M%S).json"
+readonly SESSION_FILE
 readonly CURRENT_SESSION="${SESSION_DIR}/current.json"
 
 # Initialize session tracking
@@ -49,12 +50,15 @@ EOF
 # Start phase tracking
 start_phase() {
     local phase="$1"
-    local phase_start=$(date +%s)
+    local phase_start
+    phase_start=$(date +%s)
     
     # Update current session
     if [[ -f "$CURRENT_SESSION" ]]; then
-        local session_file=$(readlink -f "$CURRENT_SESSION")
-        local temp_file=$(mktemp)
+        local session_file
+        session_file=$(readlink -f "$CURRENT_SESSION")
+        local temp_file
+        temp_file=$(mktemp)
         
         jq --arg phase "$phase" \
            --arg start_time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -74,17 +78,21 @@ start_phase() {
 # End phase tracking
 end_phase() {
     local phase="$1"
-    local phase_end=$(date +%s)
+    local phase_end
+    phase_end=$(date +%s)
     local start_file="/tmp/nimble-oke-phase-${phase}-start"
     
     if [[ -f "$start_file" ]]; then
-        local phase_start=$(cat "$start_file")
+        local phase_start
+        phase_start=$(cat "$start_file")
         local duration=$((phase_end - phase_start))
         
         # Update current session
         if [[ -f "$CURRENT_SESSION" ]]; then
-            local session_file=$(readlink -f "$CURRENT_SESSION")
-            local temp_file=$(mktemp)
+            local session_file
+            session_file=$(readlink -f "$CURRENT_SESSION")
+            local temp_file
+            temp_file=$(mktemp)
             
             jq --arg phase "$phase" \
                --arg end_time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -112,13 +120,17 @@ log_obstacle() {
     local time_delay="$6"
     local cost_impact="$7"
     
-    local obstacle_id="obs-$(date +%s)-$$"
+    local obstacle_id
+    obstacle_id="obs-$(date +%s)-$$"
     
     if [[ -f "$CURRENT_SESSION" ]]; then
-        local session_file=$(readlink -f "$CURRENT_SESSION")
-        local temp_file=$(mktemp)
+        local session_file
+        session_file=$(readlink -f "$CURRENT_SESSION")
+        local temp_file
+        temp_file=$(mktemp)
         
-        local obstacle_json=$(jq -n \
+        local obstacle_json
+        obstacle_json=$(jq -n \
             --arg id "$obstacle_id" \
             --arg phase "$phase" \
             --arg type "$obstacle_type" \
@@ -155,8 +167,10 @@ update_costs() {
     local actual_hourly="$2"
     
     if [[ -f "$CURRENT_SESSION" ]]; then
-        local session_file=$(readlink -f "$CURRENT_SESSION")
-        local temp_file=$(mktemp)
+        local session_file
+        session_file=$(readlink -f "$CURRENT_SESSION")
+        local temp_file
+        temp_file=$(mktemp)
         
         jq --argjson estimated "$estimated_hourly" \
            --argjson actual "$actual_hourly" \
@@ -169,13 +183,18 @@ update_costs() {
 # Calculate performance metrics
 calculate_performance() {
     if [[ -f "$CURRENT_SESSION" ]]; then
-        local session_file=$(readlink -f "$CURRENT_SESSION")
-        local temp_file=$(mktemp)
+        local session_file
+        session_file=$(readlink -f "$CURRENT_SESSION")
+        local temp_file
+        temp_file=$(mktemp)
         
         # Calculate total duration and efficiency
-        local total_duration=$(jq -r '.phases | to_entries | map(.value.duration) | add // 0' "$session_file")
-        local obstacle_count=$(jq -r '.obstacles | length' "$session_file")
-        local total_obstacle_time=$(jq -r '.obstacles | map(.time_delay_seconds) | add // 0' "$session_file")
+        local total_duration
+        total_duration=$(jq -r '.phases | to_entries | map(.value.duration) | add // 0' "$session_file")
+        local obstacle_count
+        obstacle_count=$(jq -r '.obstacles | length' "$session_file")
+        local total_obstacle_time
+        total_obstacle_time=$(jq -r '.obstacles | map(.time_delay_seconds) | add // 0' "$session_file")
         
         # Efficiency score: (planned_time / actual_time) * 100
         # Higher score = more efficient (fewer delays)
@@ -205,8 +224,10 @@ calculate_performance() {
 # Generate session summary
 generate_summary() {
     if [[ -f "$CURRENT_SESSION" ]]; then
-        local session_file=$(readlink -f "$CURRENT_SESSION")
-        local session_id=$(jq -r '.session_id' "$session_file")
+        local session_file
+        session_file=$(readlink -f "$CURRENT_SESSION")
+        local session_id
+        session_id=$(jq -r '.session_id' "$session_file")
         
         echo ""
         echo "==============================================================="
@@ -235,7 +256,8 @@ generate_summary() {
         echo ""
         
         # Obstacles
-        local obstacle_count=$(jq -r '.obstacles | length' "$session_file")
+        local obstacle_count
+        obstacle_count=$(jq -r '.obstacles | length' "$session_file")
         if [[ "$obstacle_count" -gt 0 ]]; then
             echo "=== OBSTACLES ($obstacle_count) ==="
             jq -r '.obstacles[] | "\(.phase): \(.description) (\(.time_delay_seconds)s, \$$.cost_impact_usd) - \(.root_cause)"' "$session_file"
@@ -273,9 +295,12 @@ compare_sessions() {
         echo ""
         
         # Calculate improvements
-        local current_duration=$(jq -r '.performance.total_duration' "$current_file")
-        local current_efficiency=$(jq -r '.performance.efficiency_score' "$current_file")
-        local current_cost=$(jq -r '.costs.session_total' "$current_file")
+        local current_duration
+        current_duration=$(jq -r '.performance.total_duration' "$current_file")
+        local current_efficiency
+        current_efficiency=$(jq -r '.performance.efficiency_score' "$current_file")
+        local current_cost
+        current_cost=$(jq -r '.costs.session_total' "$current_file")
         
         echo "Improvement Opportunities:"
         echo "- Duration: Target < $(echo "scale=0; $current_duration * 0.8" | bc -l)s (20% faster)"

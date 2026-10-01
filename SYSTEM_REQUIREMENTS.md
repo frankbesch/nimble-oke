@@ -2,28 +2,30 @@
 
 **Version:** v0.1.0-20251013-dev  
 **Last Updated:** October 13, 2025  
-**Pricing Source:** [Oracle IaaS and PaaS Services Highlights](https://www.oracle.com/cloud/iaas-paas/) (December 2024)
+**Pricing Source:** Oracle price list API, parts B95909 (A10 GPU) and B96545 (OKE enhanced cluster), checked 2026-10-01
 
 ## Executive Summary
 
-The **VM.GPU.A10.1** OCI shape **exceeds all NVIDIA NIM requirements** for deploying Llama 3.1 8B Instruct:
-- **240GB RAM** (2.6× NVIDIA's 90GB recommendation)
-- **24GB GPU VRAM** (meets A10 minimum for 8B models)
-- **15 OCPUs** (exceeds compute requirements)
-- **$2.62/hour** (cost-effective for testing and development)
+The **VM.GPU.A10.1** OCI shape runs Llama 3 8B Instruct (`nvcr.io/nim/meta/llama3-8b-instruct:1.0.3`):
+- **240GB RAM**
+- **24GB GPU VRAM** (fits the model in FP16)
+- **15 OCPUs** (Intel Xeon Platinum 8358)
+- **$2.00/hour** for the GPU, plus $0.10/hour for the enhanced cluster
+
+NVIDIA's support matrix lists A10G for Llama 3 8B, not OCI's A10. The A10 falls under NVIDIA's generic "any NVIDIA GPU with sufficient memory" configuration (24 GB, FP16), which is not guaranteed. NVIDIA's NGC catalog marks image 1.0.3 End of Support; the current NIM LLM line is 2.x (llama-3.1-8b-instruct).
 
 ## NVIDIA NIM Official Requirements
 
-Based on [NVIDIA NIM Documentation](https://docs.nvidia.com/nim/cosmos/latest/prerequisites.html).
+The table below was taken from NVIDIA's [Cosmos NIM prerequisites](https://docs.nvidia.com/nim/cosmos/latest/prerequisites.html), not the LLM NIM page. It is not re-verified for Llama 3 8B.
 
 ### Hardware Requirements
 
 | Component | Minimum | Recommended | Notes |
 |-----------|---------|-------------|-------|
-| **GPU** | NVIDIA A10 (Ampere) | A100 (Ampere/Hopper) | 24GB VRAM minimum for Llama 3.1 8B |
+| **GPU** | NVIDIA A10 (Ampere) | A100 (Ampere/Hopper) | A10 runs Llama 3 8B only under NVIDIA's generic configuration |
 | **GPU Memory** | 24GB VRAM | 40GB+ VRAM | Larger models require more VRAM |
 | **CPU** | x86_64 architecture | x86_64 | ARM not supported |
-| **System Memory** | 40GB RAM | **90GB+ RAM** | **Critical: NVIDIA official recommendation** |
+| **System Memory** | 40GB RAM | **90GB+ RAM** | From the Cosmos NIM page; not verified for Llama 3 8B |
 | **Disk Space** | 100GB | 200GB+ | Model cache (50-100GB) + containers |
 
 ### Software Requirements
@@ -34,7 +36,7 @@ Based on [NVIDIA NIM Documentation](https://docs.nvidia.com/nim/cosmos/latest/pr
 | **GPU Driver** | NVIDIA 535+ | Latest stable | ✅ Yes |
 | **NVIDIA Container Toolkit** | 1.16.2+ | Latest | ✅ Yes |
 | **Docker/containerd** | 23.0.1+ | Latest | ✅ Yes (containerd) |
-| **Kubernetes** | 1.28+ | 1.28+ | ✅ Yes (OKE managed) |
+| **Kubernetes** | v1.34 | OKE offers v1.34.x–v1.36.x | ✅ Yes (scripts pin v1.34.1) |
 
 ## OCI VM.GPU.A10.1 Shape Specifications
 
@@ -50,20 +52,22 @@ Based on [NVIDIA NIM Documentation](https://docs.nvidia.com/nim/cosmos/latest/pr
 | **Network Bandwidth** | 24.6 Gbps | 10Gbps+ recommended | ✅ **Exceeds** |
 | **Block Storage** | 100GB+ configurable | 100GB minimum | ✅ **Configurable** |
 | **Local NVMe** | Not included | Optional | ⚠️ Use block storage |
-| **Architecture** | x86_64 (AMD EPYC) | x86_64 required | ✅ **Compatible** |
+| **Architecture** | x86_64 (Intel Xeon Platinum 8358) | x86_64 required | ✅ **Compatible** |
 
 ### Cost Structure
 
-> **Note:** All prices are as of December 2024 and are subject to change. Volume discounts may be applicable for Oracle Universal Credits subscriptions. Please contact an Oracle sales representative for an official quote.
+> **Note:** GPU and cluster rates were checked on 2026-10-01 against the Oracle price list API. Load balancer and block storage rates are not verified here. Volume discounts may apply under Oracle Universal Credits.
 
 | Component | Rate | 5-Hour Test | 24/7 Month | Notes |
 |-----------|------|-------------|------------|-------|
-| **GPU Compute** | $2.62/hour | $13.10 | $1,890 | Primary cost |
-| **OKE Cluster** | $0.10/hour | $0.50 | $72 | Managed K8s |
-| **Block Storage (200GB)** | $0.03/GB/month | ~$0.25 | $5 | Model cache |
-| **Load Balancer** | ~$1.25/hour | $6.25 | $900 | External access |
+| **GPU Compute** | $2.00/hour | $10.00 | $1,460 | Primary cost |
+| **OKE Enhanced Cluster** | $0.10/hour | $0.50 | $73 | Counted once; basic cluster is free |
+| **Block Storage (200GB)** | not verified here | — | — | Model cache |
+| **Load Balancer** | not verified here | — | — | External access |
 | **Network Egress** | Variable | Minimal | Variable | Model downloads |
-| **Total** | **~$2.88/hr** | **~$14.42** | **~$2,077** | **Time-box for testing!** |
+| **Total** | **$2.10/hr** | **$10.50** | **$1,533** | Plus load balancer and block storage; time-box for testing |
+
+A 24/7 month is 730 hours, so $2.10 × 730 = $1,533.
 
 ### GPU Specifications (NVIDIA A10)
 
@@ -73,7 +77,7 @@ Based on [NVIDIA NIM Documentation](https://docs.nvidia.com/nim/cosmos/latest/pr
 | **CUDA Cores** | 9,216 | ✅ Sufficient for inference |
 | **Tensor Cores** | 288 (3rd Gen) | ✅ Accelerated FP16/BF16 inference |
 | **RT Cores** | 72 (2nd Gen) | N/A for NIM |
-| **GPU Memory** | 24GB GDDR6 | ✅ Meets Llama 3.1 8B minimum |
+| **GPU Memory** | 24GB GDDR6 | ✅ Fits Llama 3 8B in FP16 |
 | **Memory Bandwidth** | 600 GB/s | ✅ Fast inference |
 | **TDP** | 150W | ✅ Efficient |
 | **FP32 Performance** | 31.2 TFLOPS | ✅ Good baseline |
@@ -81,7 +85,7 @@ Based on [NVIDIA NIM Documentation](https://docs.nvidia.com/nim/cosmos/latest/pr
 
 ## Model-Specific Requirements
 
-### Meta Llama 3.1 8B Instruct
+### Meta Llama 3 8B Instruct
 
 | Requirement | Specification | VM.GPU.A10.1 | Status |
 |-------------|---------------|--------------|--------|
@@ -96,9 +100,8 @@ Based on [NVIDIA NIM Documentation](https://docs.nvidia.com/nim/cosmos/latest/pr
 
 | Model | Parameters | VRAM Required | VM.GPU.A10.1 | Alternative Shape |
 |-------|------------|---------------|--------------|-------------------|
-| Llama 3.1 8B | 8B | 24GB (FP16) | ✅ **Supported** | VM.GPU.A10.1 |
-| Llama 3.1 70B | 70B | 140GB (FP16) | ❌ Insufficient VRAM | VM.GPU.A100.2 (80GB × 2) |
-| Llama 3.1 405B | 405B | 810GB (FP16) | ❌ Insufficient VRAM | BM.GPU.A100-v2.8 (640GB) |
+| Llama 3 8B | 8B | 24GB (FP16) | ✅ Runs (generic configuration, not guaranteed) | VM.GPU.A10.1 |
+| Llama 3 70B | 70B | 140GB (FP16) | ❌ Insufficient VRAM | A100 shape (not verified here) |
 
 **Note:** For models >24GB VRAM, use VM.GPU.A100 shapes with 40GB or 80GB VRAM per GPU.
 
@@ -141,12 +144,12 @@ Based on [NVIDIA NIM Documentation](https://docs.nvidia.com/nim/cosmos/latest/pr
 
 | Resource | Minimum Quota | Recommended | Request Method |
 |----------|---------------|-------------|----------------|
-| **VM.GPU.A10.1 count** | 1 GPU | 2-4 GPUs | OCI Console → Limits, Quotas and Usage |
+| **`gpu-a10-count`** | 1 GPU | 2-4 GPUs | OCI Console → Limits, Quotas and Usage |
 | **GPUs for VM instances** | 1 GPU | 2-4 GPUs | Same request |
 | **Cores for GPU shapes** | 15 OCPUs | 30-60 OCPUs | Auto-calculated with GPU quota |
 | **Block Volume storage** | 100GB | 500GB+ | Usually sufficient by default |
 
-**Processing Time:** GPU quota requests typically take 24-48 hours for approval.
+**Default limit:** OCI's default GPU limit is 0. Request a `gpu-a10-count` increase through the Console.
 
 ### Cost Optimization Options
 
@@ -161,6 +164,8 @@ Based on [NVIDIA NIM Documentation](https://docs.nvidia.com/nim/cosmos/latest/pr
 - **Cost Analysis:** Detailed usage and billing reports
 
 ### Regional Availability
+
+*As of October 2025, not re-verified.*
 
 | Region | VM.GPU.A10.1 Available | Recommended | Notes |
 |--------|----------------------|-------------|-------|
@@ -183,7 +188,7 @@ Based on [NVIDIA NIM Documentation](https://docs.nvidia.com/nim/cosmos/latest/pr
 |-------------|---------------|------|-------|
 | **NGC Account** | Required | **Free** | [Register here](https://catalog.ngc.nvidia.com/) |
 | **NGC API Key** | Required | **Free** | [Generate here](https://ngc.nvidia.com/setup/api-key) |
-| **Model Access** | Llama 3.1 8B | **Free** | May require accepting terms |
+| **Model Access** | Llama 3 8B | **Free** | May require accepting terms |
 | **Container Access** | NIM containers | **Free** | Requires NGC authentication |
 
 ### API Key Management
@@ -215,7 +220,7 @@ curl -H "Authorization: Bearer $NGC_API_KEY" \
 - [ ] **OCI CLI:** Installed and configured (`oci iam region list`)
 - [ ] **kubectl:** Installed (`kubectl version --client`)
 - [ ] **Helm:** Installed (`helm version`)
-- [ ] **Budget Alert:** $50 budget configured (recommended)
+- [ ] **Budget Alert:** Budget alert configured (recommended)
 
 ### Post-Deployment Validation
 
@@ -293,7 +298,7 @@ curl -H "Authorization: Bearer $NGC_API_KEY" \
 
 ---
 
-**✅ The VM.GPU.A10.1 shape meets and exceeds all NVIDIA NIM requirements for deploying Llama 3.1 8B Instruct.**
+**The VM.GPU.A10.1 shape fits Llama 3 8B Instruct in FP16 under NVIDIA's generic configuration, which NVIDIA does not guarantee.**
 
 ## OCI Deployment Models
 

@@ -2,7 +2,7 @@
 
 > **📖 Reading time:** 2 minutes
 
-Get NVIDIA NIM running in 12-48 minutes with runbook automation.
+Deploy NVIDIA NIM on OKE with runbook automation. Deployment time is not measured yet; see [docs/runs/](docs/runs/).
 
 ## System Requirements
 
@@ -11,12 +11,12 @@ Get NVIDIA NIM running in 12-48 minutes with runbook automation.
 | Component | Specification | Notes |
 |-----------|---------------|-------|
 | **OCI Account** | Paid account | Free tier not supported |
-| **GPU Quota** | VM.GPU.A10.4 (4 GPUs) | Request via OCI Console |
-| **System Memory** | 40GB RAM minimum | VM.GPU.A10.4 has 960GB ✅ |
+| **GPU Quota** | VM.GPU.A10.1 (1× A10 24 GB) | Default limit is 0; request a `gpu-a10-count` increase in the OCI Console |
+| **Node Memory** | 240 GB | VM.GPU.A10.1: 15 OCPU, 240 GB RAM |
 | **Disk Space** | 100GB | For model cache + containers |
 | **NGC API Key** | Required | [Generate here](https://ngc.nvidia.com/setup/api-key) |
 
-**NVIDIA recommends 90GB RAM** - VM.GPU.A10.4 provides 960GB (10.7× recommendation). **Cost: $12.24/hour.**
+**Cost:** $2.00/hr GPU + $0.10/hr enhanced cluster = $2.10/hr, plus load balancer and block storage, not verified here.
 
 ## Prerequisites
 
@@ -100,6 +100,8 @@ KEEP_CACHE=yes make cleanup
 FORCE=yes make cleanup
 ```
 
+`make cleanup` removes the NIM release only. GPU billing continues until you run `make teardown`, which deletes the node pool and cluster.
+
 ## Complete Workflow
 
 ```bash
@@ -116,7 +118,7 @@ make all  # discover → install → verify
 | `CONFIRM_COST` | Bypass cost guard | `yes` |
 | `KEEP_CACHE` | Preserve PVCs during cleanup | `yes` |
 
-**📖 Complete reference:** [README.md - Environment Variables](README.md#environment-variables)
+**📖 Complete reference:** [README.md - Environment Variables](README.md#makefile-targets)
 
 ## Troubleshooting
 

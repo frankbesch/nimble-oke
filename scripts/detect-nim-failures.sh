@@ -133,26 +133,30 @@ check_image_pull_issues() {
     kubectl describe pod "$pod_name" -n "$namespace" 2>/dev/null | grep -A 5 "Failed to pull image" || echo "  No pull errors found"
     echo ""
     
-    # Check NGC secret
-    local ngc_secret
-    ngc_secret=$(kubectl get secret nvidia-nim-ngc-api -n "$namespace" 2>/dev/null || echo "")
-    
-    if [[ -z "$ngc_secret" ]]; then
-        log_error "❌ NGC secret missing"
-        echo "  Fix: Create NGC secret with API key"
-        echo "  Run: kubectl create secret generic nvidia-nim-ngc-api --from-literal=NGC_API_KEY=nvapi-..."
+    # Chart secrets derive from the release fullname (<fullname>-ngc-registry,
+    # <fullname>-ngc-api). Select them by release label, not by a fixed name.
+    local release="${RELEASE_NAME:-nvidia-nim}"
+    local ngc_secrets
+    if ! ngc_secrets=$(kubectl get secret -n "$namespace" -l "app.kubernetes.io/instance=$release" \
+            -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.type}{"\n"}{end}' 2>/dev/null); then
+        log_error "❌ Could not list secrets (kubectl failed)"
+    elif [[ -z "$ngc_secrets" ]]; then
+        log_error "❌ No NGC secrets found for release $release"
+        echo "  Fix: re-run 'make install' with NGC_API_KEY exported; the chart creates both secrets"
+        echo "       from ngc.apiKey (deploy.sh passes it in a private values file, never argv)"
     else
-        log_success "✅ NGC secret exists"
+        log_success "✅ NGC secrets for release $release:"
+        echo "$ngc_secrets" | sed 's/^/    /'
     fi
-    
+
     # Check image pull secrets
     local pull_secrets
     pull_secrets=$(kubectl get pod "$pod_name" -n "$namespace" -o jsonpath='{.spec.imagePullSecrets[*].name}' 2>/dev/null || echo "")
     
     if [[ -z "$pull_secrets" ]]; then
         log_error "❌ No image pull secrets configured"
-        echo "  Fix: Add ngc-secret to imagePullSecrets"
-        echo "  Update: values.yaml imagePullSecrets section"
+        echo "  Fix: the chart adds <fullname>-ngc-registry to imagePullSecrets when ngc.apiKey is set"
+        echo "  Check: helm get values ${RELEASE_NAME:-nvidia-nim} -n $namespace (shows whether ngc.apiKey was supplied)"
     else
         log_success "✅ Image pull secrets configured: $pull_secrets"
     fi

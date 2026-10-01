@@ -11,6 +11,7 @@ readonly DRY_RUN="${DRY_RUN:-false}"
 
 # Session tracking
 readonly SESSION_DIR="${HOME}/.nimble-oke/sessions"
+# shellcheck disable=SC2034  # read by scripts that source _lib.sh
 readonly CURRENT_SESSION="${SESSION_DIR}/current.json"
 
 log_info() {
@@ -35,15 +36,17 @@ smart_retry() {
     local base_delay="${2:-5}"
     local command="${*:3}"
     local attempt=1
-    local circuit_breaker_threshold=5
-    local circuit_breaker_reset_time=300  # 5 minutes
+local circuit_breaker_reset_time=300  # 5 minutes
     
     # Check circuit breaker
-    local circuit_breaker_file="/tmp/nim-circuit-breaker-$(echo "$command" | md5sum | cut -d' ' -f1)"
-    local current_time=$(date +%s)
+    local circuit_breaker_file
+    circuit_breaker_file="/tmp/nim-circuit-breaker-$(echo "$command" | md5sum | cut -d' ' -f1)" || true
+    local current_time
+    current_time=$(date +%s) || true
     
     if [[ -f "$circuit_breaker_file" ]]; then
-        local last_failure_time=$(cat "$circuit_breaker_file")
+        local last_failure_time
+        last_failure_time=$(cat "$circuit_breaker_file") || true
         local time_since_failure=$((current_time - last_failure_time))
         
         if [[ $time_since_failure -lt $circuit_breaker_reset_time ]]; then
@@ -123,10 +126,12 @@ die() {
 # Session tracking functions
 init_session() {
     local operation="$1"
-    local session_id="session-$(date +%Y%m%d-%H%M%S)"
+    local session_id
+    session_id="session-$(date +%Y%m%d-%H%M%S)" || true
     
     if [[ -x "scripts/session-tracker.sh" ]]; then
-        local session_file=$(scripts/session-tracker.sh init "$session_id" "$operation" 2>/dev/null)
+        local session_file
+        session_file=$(scripts/session-tracker.sh init "$session_id" "$operation" 2>/dev/null) || true
         if [[ -n "$session_file" ]]; then
             log_info "Session tracking initialized: $session_file"
         fi
@@ -196,13 +201,15 @@ retry() {
     shift 3
     local cmd=("$@")
     local attempt=1
-    local start_time=$(date +%s)
+    local start_time
+    start_time=$(date +%s) || true
     
     debug "Retrying command: ${cmd[*]} (max attempts: $max_attempts, delay: ${delay}s)"
     
     until "${cmd[@]}"; do
         if (( attempt >= max_attempts )); then
-            local end_time=$(date +%s)
+            local end_time
+            end_time=$(date +%s) || true
             local total_delay=$((end_time - start_time))
             
             log_error "Command failed after $max_attempts attempts: ${cmd[*]}"
@@ -424,7 +431,8 @@ check_oci_credentials() {
 
 check_kubectl_context() {
     debug "Checking kubectl context..."
-    local context=$(kubectl config current-context 2>/dev/null || echo "none")
+    local context
+    context=$(kubectl config current-context 2>/dev/null || echo "none") || true
     debug "Current context: $context"
     
     if ! kubectl cluster-info &>/dev/null; then

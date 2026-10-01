@@ -176,7 +176,7 @@ EOF
         -f "${HELM_CHART_DIR}/values.yaml" \
         -f "$temp_values" \
         --dry-run \
-        --timeout 60s; then
+        --timeout 60s >/dev/null; then  # the rendered Secrets hold the NGC key
         log_error "🚨 DRY RUN FAILED - Deployment blocked for safety"
         log_error "   Fix configuration issues before proceeding"
         die "Dry run validation failed"

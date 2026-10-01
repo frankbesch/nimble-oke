@@ -136,12 +136,13 @@ make dry-run
 - Hard fail at 125% of budget
 
 ### Cost Scenarios
-- Quick smoke test (5h, 1 GPU): ~$14.42
-- Extended testing (10h, 1 GPU): ~$33.50
-- Full day testing (24h, 1 GPU): ~$78.30
-- Multi-GPU smoke test (5h, 3 GPU): ~$35.00
-- Weekly development (168h, 1 GPU): ~$539.10
-- Monthly development (720h, 1 GPU): ~$2,305.50
+Each figure is hours × ($2.00 per GPU + $0.10 cluster), plus load balancer and block storage:
+- Quick smoke test (5h, 1 GPU): $10.50
+- Extended testing (10h, 1 GPU): $21.00
+- Full day testing (24h, 1 GPU): $50.40
+- Multi-GPU smoke test (5h, 3 GPU): $30.50 (5 × (3 × $2.00 + $0.10))
+- Weekly development (168h, 1 GPU): $352.80
+- Monthly development (720h, 1 GPU): $1,512.00
 
 ## Integration with Existing Workflow
 
@@ -216,12 +217,12 @@ make install
 - Validation of all dependencies before deployment
 
 ### Time Reduction
-- **30-40% faster troubleshooting**
+- **30-40% faster troubleshooting** (estimate (static assumption, not measured))
 - Eliminate failed deployments due to missing resources
 - Faster iteration cycles with dry-run testing
 
 ### Cost Reduction
-- **60-70% cost savings** through early validation
+- **60-70% cost savings** through early validation (estimate, not measured)
 - Prevent failed deployments that still incur costs
 - Optimize resource selection before deployment
 

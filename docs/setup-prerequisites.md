@@ -12,8 +12,8 @@ This guide covers all prerequisites needed before deploying NVIDIA NIM on Oracle
 | Component | Minimum | Recommended | Notes |
 |-----------|---------|-------------|-------|
 | **GPU** | NVIDIA A10 (24GB VRAM) | A100 (40GB/80GB) | Ampere architecture or later |
-| **GPU Memory** | 24GB VRAM | 40GB+ VRAM | For Llama 3.1 8B model |
-| **System Memory** | 40GB RAM | 90GB+ RAM | **NVIDIA recommends 90GB** |
+| **GPU Memory** | 24GB VRAM | 40GB+ VRAM | For Llama 3 8B model |
+| **System Memory** | 40GB RAM | 90GB+ RAM | From NVIDIA's Cosmos NIM page; not verified for Llama 3 8B |
 | **Disk Space** | 100GB | 200GB+ | Model cache + container images |
 | **CPU Architecture** | x86_64 | x86_64 | ARM not supported |
 | **GPU Driver** | NVIDIA 535+ | Latest | Auto-provisioned by OKE |
@@ -25,12 +25,12 @@ The recommended OCI shape for this deployment:
 
 | Resource | Specification | Compliance |
 |----------|---------------|------------|
-| **GPU** | 1× NVIDIA A10 (24GB VRAM) | ✅ Meets Llama 3.1 8B minimum |
+| **GPU** | 1× NVIDIA A10 (24GB VRAM) | Fits Llama 3 8B in FP16; NVIDIA lists A10G, not A10, so this is the generic configuration (not guaranteed) |
 | **vCPUs** | 15 OCPUs | ✅ Exceeds requirements |
-| **Memory** | 240GB RAM | ✅ **Exceeds NVIDIA's 90GB recommendation by 2.6×** |
+| **Memory** | 240GB RAM | 15 OCPU, Intel Xeon Platinum 8358 |
 | **Network** | 24.6 Gbps | ✅ Fast model downloads |
 | **Storage** | 100GB+ block volumes | ✅ Configurable |
-| **Cost** | $2.62/hour | Cost-effective for testing |
+| **Cost** | $2.00/hour GPU + $0.10/hour enhanced cluster | Plus load balancer and block storage, not verified here |
 
 **✅ The VM.GPU.A10.1 shape exceeds all NVIDIA NIM requirements.**
 
@@ -362,11 +362,11 @@ chmod +x check-prerequisites.sh
 
 1. Navigate to: **Governance → Cost Management → Budgets**
 2. Click **Create Budget**
-3. Set budget amount: **$50** (or your preferred limit)
+3. Set a budget amount (your preferred limit; 5 h of the default shape is $10.50 plus load balancer and block storage)
 4. Add alert thresholds:
-   - 50% ($25)
-   - 80% ($40)
-   - 100% ($50)
+   - 50%
+   - 80%
+   - 100%
 5. Set notification email
 
 ### Monitor Costs
@@ -405,7 +405,7 @@ Once all prerequisites are complete:
    export OCI_REGION=us-phoenix-1
    export NGC_API_KEY=nvapi-...
    ```
-3. ✅ Proceed to [Deployment Guide](deployment-guide.md)
+3. ✅ Proceed to the [Runbook](RUNBOOK.md)
 
 ## Troubleshooting
 

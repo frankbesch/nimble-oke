@@ -1,5 +1,9 @@
 # OCI Service Limits Analysis for Nimble OKE
 
+*Historical working note from October 2025; figures corrected 2026-10-01. See README for current status.*
+
+Limit values below are as of October 2025, not re-verified.
+
 ## Executive Summary
 
 Based on the [OCI Service Limits documentation](https://docs.oracle.com/en-us/iaas/Content/General/Concepts/servicelimits.htm), Nimble OKE is **within all service limits** for its current configuration. This analysis validates our approach and identifies areas for optimization.
@@ -24,9 +28,9 @@ Based on the [OCI Service Limits documentation](https://docs.oracle.com/en-us/ia
 
 | Resource | Limit | Nimble OKE Usage | Status |
 |----------|-------|------------------|--------|
-| **VM.GPU.A10.1 per AD** | Varies by region | 1 | ✅ **Within limit** |
+| **`gpu-a10-count`** | Default 0; request an increase in the Console | 1 | Requires a limit increase |
 | **Block Volumes per Instance** | 32 | 1 | ✅ **Well within limit** |
-| **Total Block Volume Size** | 100 TB (Universal Credits) | 50GB | ✅ **Well within limit** |
+| **Total Block Volume Size** | 100 TB (Universal Credits) | 100GB | ✅ **Well within limit** |
 
 **Analysis**: Single GPU instance with minimal storage is well within compute limits.
 
@@ -47,7 +51,7 @@ Based on the [OCI Service Limits documentation](https://docs.oracle.com/en-us/ia
 | Resource | Limit | Nimble OKE Usage | Status |
 |----------|-------|------------------|--------|
 | **Block Volumes per Instance** | 32 | 1 | ✅ **Well within limit** |
-| **Total Storage per Region** | 100 TB (Universal Credits) | 50GB | ✅ **Well within limit** |
+| **Total Storage per Region** | 100 TB (Universal Credits) | 100GB | ✅ **Well within limit** |
 | **Backup Count** | 100,000 | 0 (optional) | ✅ **Not used** |
 
 **Analysis**: Minimal storage usage is well within all limits.
@@ -118,7 +122,7 @@ Nimble OKE uses **NVIDIA NGC API keys**, not Hugging Face tokens:
 ```yaml
 # From helm/values.yaml
 ngc:
-  apiKey: "<YOUR_NGC_API_KEY>"
+  apiKey: ""   # required; pass --set ngc.apiKey=$NGC_API_KEY at install
   registry: nvcr.io
   username: "$oauthtoken"
 ```
@@ -129,7 +133,7 @@ ngc:
 |--------|------------|--------------|
 | **Model Registry** | `nvcr.io` | `huggingface.co` |
 | **Authentication** | NGC API Key | HF Token |
-| **Model Access** | `meta/llama-3.1-8b-instruct` | Various models |
+| **Model Access** | `meta/llama3-8b-instruct` | Various models |
 | **Our Choice** | ✅ **NGC** | Not used |
 
 ### **NGC API Key Requirements**
@@ -160,21 +164,20 @@ ngc:
 
 | Resource | Our Configuration | NVIDIA NIM Requirement | Status |
 |----------|------------------|------------------------|--------|
-| **GPU** | 1× A10 (24GB VRAM) | A10 minimum | ✅ **Meets requirement** |
-| **Memory** | 240GB RAM | 40GB minimum, 90GB recommended | ✅ **Exceeds recommendation** |
+| **GPU** | 1× A10 (24GB VRAM) | Not in NVIDIA's support matrix for Llama 3 8B (A10G is) | Generic configuration (FP16), not guaranteed |
+| **Memory** | 240GB RAM | 90GB figure came from NVIDIA's Cosmos NIM page | Not verified for Llama 3 8B |
 | **CPU** | 15 OCPUs | x86_64 architecture | ✅ **Exceeds requirements** |
-| **Storage** | 200GB persistent volume | 100GB minimum | ✅ **Exceeds requirement** |
+| **Storage** | 100GB persistent volume | 100GB minimum | ✅ **Meets requirement** |
 
 ### **Storage Configuration - Optimized**
 
-**Solution**: Updated to 200GB storage to avoid resource constraints during runs.
+**At the time**: storage was raised to 200GB. The current chart uses 100Gi.
 
 **Configuration**:
 ```yaml
 # In helm/values.yaml
-model:
-  cache:
-    size: "200Gi"  # Recommended for model caching and avoiding resource constraints
+persistence:
+  size: 100Gi
 ```
 
 ---
@@ -183,9 +186,8 @@ model:
 
 ### **1. Storage Optimization - COMPLETED**
 - **Previous**: 50GB persistent volume
-- **Updated**: 200GB persistent volume (exceeds NVIDIA 100GB minimum)
-- **Cost Impact**: +$2.50 for 5-hour test
-- **Status**: ✅ **Implemented in helm/values.yaml**
+- **Updated**: 200GB at the time; the current chart uses 100Gi
+- **Cost Impact**: block storage rate not verified here
 
 ### **2. Resource Efficiency**
 - **Current**: Single node with 240GB RAM
@@ -194,9 +196,9 @@ model:
 - **Potential**: Scale to 2-3 NIM instances per node
 
 ### **3. Cost Optimization**
-- **Current**: $3.02/hour total cost
+- **Current**: $2.10/hour ($2.00 GPU + $0.10 enhanced cluster), plus load balancer and block storage
 - **Optimization**: Preemptible instances (if available)
-- **Savings**: Up to 90% cost reduction
+- **Savings**: preemptible discount as of October 2025, not re-verified
 - **Trade-off**: Potential interruptions
 
 ---
@@ -222,15 +224,15 @@ model:
 ### **OKE Configuration**
 - ✅ **Best Practices**: Following OCI recommendations
 - ✅ **Resource Sizing**: Appropriate for workload
-- ✅ **Storage Size**: 200GB (exceeds NVIDIA 100GB minimum)
+- ✅ **Storage Size**: 100Gi in the current chart
 
 ---
 
 ## 🎯 Recommendations
 
 ### **Immediate Actions**
-1. ✅ **Update Storage**: Changed persistent volume to 200GB (exceeds NVIDIA minimum)
-2. **Validate GPU Quota**: Ensure VM.GPU.A10.1 quota is approved
+1. **Storage**: persistent volume is 100Gi in the current chart
+2. **Validate GPU Quota**: Ensure the `gpu-a10-count` limit increase is approved (default is 0)
 3. **Test NGC API Key**: Verify NGC authentication works
 
 ### **Future Optimizations**
@@ -247,6 +249,6 @@ model:
 
 ## 📋 Summary
 
-**Nimble OKE is fully compliant with OCI service limits and best practices.** The storage has been updated to 200GB to exceed NVIDIA NIM requirements and avoid resource constraints during runs. All other configurations are optimal for the intended use case.
+**Nimble OKE fits within the OCI service limits listed above, as of October 2025.** The GPU limit defaults to 0 and needs an increase. The current chart uses a 100Gi persistent volume.
 
-**Ready for deployment once GPU quota is approved!** 🚀
+**Ready for deployment once the GPU limit increase is approved.**

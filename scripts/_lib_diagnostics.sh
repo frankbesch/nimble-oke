@@ -18,11 +18,16 @@ capture_error_context() {
     debug "Capturing error context for phase: $phase"
     
     # Gather context
-    local pod_status=$(kubectl get pods -o json 2>/dev/null || echo "{}")
-    local events=$(kubectl get events --sort-by='.lastTimestamp' -o json 2>/dev/null || echo "{}")
-    local node_status=$(kubectl get nodes -o json 2>/dev/null || echo "{}")
-    local service_status=$(kubectl get services -o json 2>/dev/null || echo "{}")
-    local pvc_status=$(kubectl get pvc -o json 2>/dev/null || echo "{}")
+    local pod_status
+    pod_status=$(kubectl get pods -o json 2>/dev/null || echo "{}")
+    local events
+    events=$(kubectl get events --sort-by='.lastTimestamp' -o json 2>/dev/null || echo "{}")
+    local node_status
+    node_status=$(kubectl get nodes -o json 2>/dev/null || echo "{}")
+    local service_status
+    service_status=$(kubectl get services -o json 2>/dev/null || echo "{}")
+    local pvc_status
+    pvc_status=$(kubectl get pvc -o json 2>/dev/null || echo "{}")
     
     # Store as JSON
     jq -n \
@@ -57,15 +62,20 @@ quick_diagnostic() {
     echo "=== QUICK DIAGNOSTIC ==="
     
     # Pod status
-    local total_pods=$(kubectl get pods --no-headers 2>/dev/null | wc -l || echo "0")
-    local running_pods=$(kubectl get pods --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l || echo "0")
-    local pending_pods=$(kubectl get pods --field-selector=status.phase=Pending --no-headers 2>/dev/null | wc -l || echo "0")
-    local failed_pods=$(kubectl get pods --field-selector=status.phase=Failed --no-headers 2>/dev/null | wc -l || echo "0")
+    local total_pods
+    total_pods=$(kubectl get pods --no-headers 2>/dev/null | wc -l || echo "0")
+    local running_pods
+    running_pods=$(kubectl get pods --field-selector=status.phase=Running --no-headers 2>/dev/null | wc -l || echo "0")
+    local pending_pods
+    pending_pods=$(kubectl get pods --field-selector=status.phase=Pending --no-headers 2>/dev/null | wc -l || echo "0")
+    local failed_pods
+    failed_pods=$(kubectl get pods --field-selector=status.phase=Failed --no-headers 2>/dev/null | wc -l || echo "0")
     
     echo "Pods: $total_pods total ($running_pods running, $pending_pods pending, $failed_pods failed)"
     
     # GPU nodes
-    local gpu_nodes=$(kubectl get nodes -l nvidia.com/gpu.present=true --no-headers 2>/dev/null | wc -l || echo "0")
+    local gpu_nodes
+    gpu_nodes=$(kubectl get nodes -l nvidia.com/gpu.present=true --no-headers 2>/dev/null | wc -l || echo "0")
     echo "GPU Nodes: $gpu_nodes"
     
     # Recent events
@@ -73,12 +83,15 @@ quick_diagnostic() {
     kubectl get events --sort-by='.lastTimestamp' --field-selector type=Warning 2>/dev/null | tail -3 || echo "  No warning events"
     
     # Storage classes
-    local default_sc=$(get_default_storage_class)
+    local default_sc
+    default_sc=$(get_default_storage_class)
     echo "Default StorageClass: $default_sc"
     
     # NIM specific resources
-    local nim_pods=$(kubectl get pods -l app.kubernetes.io/name=nvidia-nim --no-headers 2>/dev/null | wc -l || echo "0")
-    local nim_services=$(kubectl get services -l app.kubernetes.io/name=nvidia-nim --no-headers 2>/dev/null | wc -l || echo "0")
+    local nim_pods
+    nim_pods=$(kubectl get pods -l app.kubernetes.io/name=nvidia-nim --no-headers 2>/dev/null | wc -l || echo "0")
+    local nim_services
+    nim_services=$(kubectl get services -l app.kubernetes.io/name=nvidia-nim --no-headers 2>/dev/null | wc -l || echo "0")
     echo "NIM Resources: $nim_pods pods, $nim_services services"
     
     echo "======================="
@@ -113,12 +126,15 @@ diagnose_gpu() {
     echo "=== GPU DIAGNOSTICS ==="
     
     # Check for GPU nodes
-    local gpu_nodes=$(get_gpu_nodes)
+    local gpu_nodes
+    gpu_nodes=$(get_gpu_nodes)
     if [[ -n "$gpu_nodes" ]]; then
         echo "GPU Nodes found:"
         for node in $gpu_nodes; do
-            local capacity=$(kubectl get node "$node" -o jsonpath='{.status.capacity.nvidia\.com/gpu}' 2>/dev/null || echo "0")
-            local allocatable=$(kubectl get node "$node" -o jsonpath='{.status.allocatable.nvidia\.com/gpu}' 2>/dev/null || echo "0")
+            local capacity
+            capacity=$(kubectl get node "$node" -o jsonpath='{.status.capacity.nvidia\.com/gpu}' 2>/dev/null || echo "0")
+            local allocatable
+            allocatable=$(kubectl get node "$node" -o jsonpath='{.status.allocatable.nvidia\.com/gpu}' 2>/dev/null || echo "0")
             echo "  $node: $capacity capacity, $allocatable allocatable"
         done
     else
@@ -228,7 +244,8 @@ capture_full_context() {
     local namespace="${3:-default}"
     
     # Capture basic context
-    local context_file=$(capture_error_context "$phase" "$error_msg")
+    local context_file
+    context_file=$(capture_error_context "$phase" "$error_msg")
     
     # Run quick diagnostic
     quick_diagnostic

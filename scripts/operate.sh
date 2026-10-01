@@ -71,7 +71,7 @@ main() {
         echo "curl -X POST http://${external_ip}:8000/v1/chat/completions \\"
         echo "  -H 'Content-Type: application/json' \\"
         echo "  -d '{
-    \"model\": \"meta/llama-3.1-8b-instruct\",
+    \"model\": \"meta/llama3-8b-instruct\",
     \"messages\": [{\"role\": \"user\", \"content\": \"Hello\"}],
     \"max_tokens\": 50
   }'"
@@ -114,13 +114,22 @@ main() {
     
     echo ""
     echo "=== Cost Monitoring ==="
-    local gpu_count
-    gpu_count=$(get_gpu_count)
-    local hourly_cost
-    hourly_cost=$(estimate_hourly_cost "$gpu_count")
-    echo "Current hourly cost: \$$(format_cost "$hourly_cost")"
-    echo "Daily cost (if running 24/7): \$$(format_cost "$(echo "$hourly_cost * 24" | bc -l)")"
-    echo "REMINDER: Run 'make cleanup' when finished to stop charges"
+    # get_gpu_count counts GPU NODES; rates come from _lib.sh for GPU_SHAPE.
+    local node_count shape hourly_cost
+    shape="${GPU_SHAPE:-$NIM_DEFAULT_GPU_SHAPE}"
+    node_count=$(get_gpu_count)
+    if [[ "$node_count" == "0" ]]; then
+        echo "No GPU nodes visible (or kubectl failed); showing the estimate for 1 node."
+        node_count=1
+    fi
+    if hourly_cost=$(estimate_hourly_cost "$node_count" "$shape"); then
+        echo "Estimated hourly cost ($node_count x $shape, rates from _lib.sh): \$$(format_cost "$hourly_cost")"
+        echo "Daily cost (if running 24/7): \$$(format_cost "$(echo "$hourly_cost * 24" | bc -l)")"
+    else
+        echo "Hourly cost: rate not verified for shape '$shape'"
+    fi
+    echo "REMINDER: 'make cleanup' removes the NIM release only; GPU nodes keep billing."
+    echo "          Run 'make teardown' when finished to delete the cluster and stop GPU charges."
     
     echo ""
     echo "=== Quick Troubleshooting ==="

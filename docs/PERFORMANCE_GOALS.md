@@ -2,6 +2,8 @@
 
 **Purpose:** Performance targets for NIM smoke testing across different optimization levels and scenarios.
 
+Every time and cost tier below is a target or an estimate (static assumption, not measured). No measured run is committed yet; receipts will live in [docs/runs/](runs/).
+
 ## Overview
 
 Performance goals are categorized into four tiers based on optimization level and use case:
@@ -9,7 +11,7 @@ Performance goals are categorized into four tiers based on optimization level an
 - **Slow (Baseline):** First-time deployment, no optimizations
 - **Typical (Standard):** Basic optimizations, reasonable performance
 - **Fast (Optimized):** Advanced optimizations, rapid iteration
-- **Ultra-Fast (Maximum):** All optimizations, production-grade efficiency
+- **Ultra-Fast (Maximum):** All optimizations, maximum efficiency
 
 ---
 
@@ -49,7 +51,7 @@ Performance goals are categorized into four tiers based on optimization level an
 | **Slow (Baseline)** | 63 minutes | Full cycle, no optimizations | Learning, initial setup |
 | **Typical (Standard)** | 33 minutes | Basic optimizations | Regular development |
 | **Fast (Optimized)** | 17 minutes | Advanced optimizations | Rapid iteration |
-| **Ultra-Fast (Maximum)** | 10 minutes | All optimizations | Production-grade efficiency |
+| **Ultra-Fast (Maximum)** | 10 minutes | All optimizations | Maximum efficiency |
 
 ---
 
@@ -142,7 +144,7 @@ Characteristics:
 • Hot standby nodes
 • Parallel operations
 • Instant health validation
-• Production-grade efficiency
+• Maximum efficiency
 ```
 
 ---
@@ -194,7 +196,7 @@ make install KEEP_CACHE=yes
 **Implementation:**
 ```bash
 # Maximum optimizations
-make install ULTRA_FAST=true
+make install  # an ULTRA_FAST flag is not implemented
 # Hot standby node pools
 # OCIR mirror configuration
 # Parallel operation flags
@@ -208,19 +210,19 @@ make install ULTRA_FAST=true
 
 | Performance Level | Cost | Description | Optimization |
 |------------------|------|-------------|--------------|
-| **Slow** | $14.42 | Baseline, no optimizations | None |
-| **Typical** | $12.00 | Basic caching, some reuse | $5.50 saved |
-| **Fast** | $8.50 | Advanced caching + reuse | $9.00 saved |
-| **Ultra-Fast** | $6.00 | Maximum optimization | $11.50 saved |
+| **Slow** | $10.50 (5 h × $2.10) + LB and storage | Baseline, no optimizations | None |
+| **Typical** | not measured | Basic caching, some reuse | not measured |
+| **Fast** | not measured | Advanced caching + reuse | not measured |
+| **Ultra-Fast** | not measured | Maximum optimization | not measured |
 
 ### **Cost per Iteration (with optimizations)**
 
 | Performance Level | Cost | Description | Use Case |
 |------------------|------|-------------|----------|
-| **Slow** | $15.10 | Full deployment each time | Learning |
-| **Typical** | $8.00 | Partial reuse, some caching | Regular testing |
-| **Fast** | $4.33 | Smart reuse, full caching | Rapid iteration |
-| **Ultra-Fast** | $1.50 | Hot swap, minimal resources | Production testing |
+| **Slow** | $10.50 + LB and storage | Full deployment each time | Learning |
+| **Typical** | not measured | Partial reuse, some caching | Regular testing |
+| **Fast** | not measured | Smart reuse, full caching | Rapid iteration |
+| **Ultra-Fast** | not measured | Hot swap, minimal resources | Production testing |
 
 ---
 
@@ -230,25 +232,25 @@ make install ULTRA_FAST=true
 - **Target:** Slow/Typical performance
 - **Focus:** Understanding, reliability
 - **Acceptable:** 25-48 minutes deployment
-- **Cost:** $15-15.10 per test
+- **Cost:** $10.50 per 5-hour test, plus LB and storage
 
 ### **Regular Development**
 - **Target:** Typical/Fast performance
 - **Focus:** Balanced speed and cost
 - **Acceptable:** 12-25 minutes deployment
-- **Cost:** $4.33-12 per test
+- **Cost:** not measured
 
 ### **Rapid Iteration**
 - **Target:** Fast performance
 - **Focus:** Speed, frequent testing
 - **Acceptable:** 12 minutes deployment
-- **Cost:** $4.33 per iteration
+- **Cost:** not measured
 
 ### **Production Testing**
 - **Target:** Ultra-Fast performance
 - **Focus:** Maximum efficiency
 - **Acceptable:** 8 minutes deployment
-- **Cost:** $1.50 per test
+- **Cost:** not measured
 
 ---
 

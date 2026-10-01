@@ -1,0 +1,5 @@
+#!/bin/bash
+# Stub helm for tests: logs and refuses, so an unexpected real deploy path is visible.
+echo "helm $*" >> "${STUB_LOG:-/dev/null}"
+echo "helm stub: not available in tests" >&2
+exit 1

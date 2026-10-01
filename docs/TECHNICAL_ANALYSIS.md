@@ -59,20 +59,20 @@
 
 ### **Realistic Performance Targets**
 
-**Baseline (48 minutes) - VALIDATED:**
+**Baseline (48 minutes) - estimate (static assumption, not measured):**
 - Image pull (15min): 15GB over 100 Mbps = realistic
 - GPU node ready (10min): OCI OKE provisioning = realistic
 - Model download (10min): 16GB over 100 Mbps = realistic
 - NIM startup (9min): Container + model validation = realistic
 - LoadBalancer (3min): OCI LB provisioning = realistic
 
-**Optimized (12 minutes) - VALIDATED:**
+**Optimized (12 minutes) - estimate, not measured:**
 - Image pull cached (2min): Pre-pulled images = realistic
 - Model cached (1min): PVC cache access = realistic
 - NIM startup (5min): Optimized probes = realistic
 - Parallel operations = realistic
 
-**Ultra-Fast (8 minutes) - VALIDATED:**
+**Ultra-Fast (8 minutes) - estimate, not measured:**
 - OCIR mirror (0.5min): Local registry = realistic
 - Hot standby nodes (0min): Pre-warmed = realistic
 - Parallel LB + NIM (3min): Concurrent ops = realistic
@@ -165,7 +165,7 @@ Cache_Hit_Time = 60 seconds (PVC access)
 Cache_Miss_Time = (Model_Size_GB × 1024) / (Bandwidth_Mbps ÷ 8 × 0.8)
 
 Where:
-- Model_Size_GB = 16 (Llama 3.1 8B)
+- Model_Size_GB = 16 (Llama 3 8B)
 - Cache_Benefit = Cache_Miss_Time / Cache_Hit_Time = ~273x
 ```
 
@@ -209,10 +209,10 @@ calculate_costs() {
 Total_Cost = (GPU_Rate × GPU_Count × Duration) + (OKE_Rate × Duration) + Storage_Fixed + (LB_Rate × Duration)
 
 Where:
-- GPU_Rate = $2.62/hour (VM.GPU.A10.1)
-- OKE_Rate = $0.10/hour (ENHANCED cluster)
-- Storage_Fixed = $1.50 (50GB PVC)
-- LB_Rate = $1.25/hour (flexible shape)
+- GPU_Rate = $2.00/hour (VM.GPU.A10.1; Oracle part B95909)
+- OKE_Rate = $0.10/hour (ENHANCED cluster; part B96545)
+- Storage_Fixed = estimate, not verified here
+- LB_Rate = estimate, not verified here
 ```
 
 #### **4. Failure Detection (`scripts/detect-nim-failures.sh`)**

@@ -51,6 +51,8 @@ make session-compare
 
 ### Session File Location
 
+Illustrative sample output, not a measured run:
+
 ```
 ~/.nimble-oke/sessions/
 ├── session-20241012-143022.json  # Individual session
@@ -210,7 +212,7 @@ session-20241012-091230 smoke-test      dev   1245s 94.1% $0.12 0 obs
 Improvement Opportunities:
 - Duration: Target < 1478s (20% faster)
 - Efficiency: Target > 107.6% (10% improvement)
-- Cost: Monitor for $0.17 threshold
+- Cost: Monitor against your own threshold (sample values above are illustrative)
 ```
 
 ### Historical Analysis

@@ -49,15 +49,12 @@
 
 **OCI GPU Pricing (Uniform Across Regions):**
 
-VM.GPU.A10.1 pricing is **identical across all OCI regions**:
-- Standard rate: $2.62/hour
-- No regional price variations (unlike AWS/GCP)
+VM.GPU.A10.1 pricing was **identical across OCI regions** (as of October 2025, not re-verified):
+- Standard rate: $2.00/hour (Oracle price list, part B95909, checked 2026-10-01)
 
 **Other Components (Also Uniform):**
 - ENHANCED cluster: $0.10/hour (all regions)
-- Block storage: $0.0255/GB/month (all regions)
-- Load Balancer: ~$0.25/hour (all regions)
-- Network egress: First 10TB free, then $0.0085/GB
+- Block storage, load balancer, and egress: not verified here
 
 **Winner:** Tie - all regions have same pricing
 
@@ -106,7 +103,6 @@ make provision
 - Second closest to Austin (~1,500 miles, 25-35ms)
 - OCI's original US region (best capacity)
 - Excellent GPU availability
-- Default in our scripts
 
 **Cons:**
 - 10-15ms higher latency vs Phoenix
@@ -125,11 +121,11 @@ make provision
 **5-Hour Smoke Test:**
 ```
 Region: us-phoenix-1 OR us-ashburn-1
-ENHANCED cluster: $0.50
-GPU (VM.GPU.A10.1): $13.10
-Storage + LB: $7.75
+ENHANCED cluster: $0.50  (5 h × $0.10)
+GPU (VM.GPU.A10.1): $10.00  (5 h × $2.00)
+Storage + LB: not verified here
 ────────────────────────
-Total: $21.35 (identical)
+Total: $10.50, plus load balancer and block storage
 ```
 
 **No cost difference between regions.**
@@ -216,7 +212,7 @@ done
 | **Distance from Austin** | 900 mi | 1,500 mi | 1,500 mi |
 | **Latency** | 15-25ms ⭐ | 25-35ms ✓ | 30-40ms |
 | **GPU Availability** | High ⭐ | Very High ⭐ | High ✓ |
-| **Cost** | $11 | $11 | $11 |
+| **Cost** | $10.50 + LB/storage | $10.50 + LB/storage | $10.50 + LB/storage |
 | **Deployment Speed** | Fast ⭐ | Fast ⭐ | Fast ✓ |
 | **Recommendation** | **PRIMARY** | **BACKUP** | Alternative |
 
@@ -263,7 +259,7 @@ make provision
 
 **Backup:** `us-ashburn-1` (if Phoenix lacks capacity)
 
-**Cost:** $11 per 5-hour test (identical in all US regions)
+**Cost:** $10.50 per 5-hour test, plus load balancer and block storage
 
 **Action:** Update scripts to use `us-phoenix-1` as default for Austin-based deployment.
 

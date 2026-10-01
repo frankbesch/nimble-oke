@@ -1,8 +1,10 @@
 # Optimization Implementation Summary
 
-> **📖 Reading time:** 5 minutes  
-> **🚀 Implementation Status:** COMPLETE - All 3 phases delivered  
-> **📊 Impact Report** - Comprehensive optimization results
+*Historical working note from October 2025; figures corrected 2026-10-01. See README for current status.*
+
+> **Reading time:** 5 minutes  
+> **Implementation Status:** scripts for all 3 phases written; none measured on a cluster  
+> **Impact figures:** every percentage and time below is an estimate (static assumption, not measured)
 
 **Implementation Date:** October 14, 2025  
 **Version:** v0.1.0-20251013-dev  
@@ -12,12 +14,12 @@
 
 ## 🎯 Executive Summary
 
-**Result:** Successfully implemented all validated optimization recommendations across 3 phases, delivering world-class improvements to Nimble OKE deployment testing platform.
+**Result:** Implemented the optimization scripts across 3 phases. No figure below was measured on a cluster.
 
-**Key Achievements:**
-- **Cost Reduction:** 41% savings ($14.42 → $8.50 per smoke test)
-- **Time Optimization:** 50% faster deployments (48min → 24min)
-- **Reliability Enhancement:** 80% faster issue resolution + 70% less manual intervention
+**Projected effects (estimate (static assumption, not measured)):**
+- **Cost Reduction:** 41% per smoke test
+- **Time Optimization:** 48 min → 24 min per deployment
+- **Reliability Enhancement:** 80% faster issue resolution, 70% less manual intervention
 - **Security Review:** Ensured seccompProfile properly disabled for NIM GPU compatibility
 
 ---
@@ -28,7 +30,7 @@
 
 | Optimization | Implementation | Impact | Status |
 |--------------|----------------|---------|--------|
-| **Intelligent Model Caching** | `scripts/model-cache-manager.sh` | $1.50 savings per re-deployment | ✅ Delivered |
+| **Intelligent Model Caching** | `scripts/model-cache-manager.sh` | Avoids a repeat model download (saving not measured) | ✅ Delivered |
 | **Dynamic Resource Allocation** | Enhanced `helm/values.yaml` | 25% cost reduction for smaller models | ✅ Delivered |
 | **Enhanced Log Aggregation** | `scripts/log-analyzer.sh` | 90% faster root cause identification | ✅ Delivered |
 
@@ -84,7 +86,7 @@ make cache-cleanup    # Clean expired cache
 **Features:**
 - 72-hour cache TTL with freshness validation
 - Pre-warming during low-cost hours
-- Cost savings tracking ($1.50 per re-deployment)
+- Cost savings tracking (saving not measured)
 - Cache statistics and cleanup automation
 
 #### 2. Dynamic Resource Allocation
@@ -101,7 +103,7 @@ model:
 #### 3. Preemptible Instance Integration
 ```bash
 # Cost optimization through preemptible instances
-make provision-preemptible  # 50% cost savings
+make provision-preemptible  # 50% savings is an estimate
 make monitor-preemptible    # Real-time monitoring
 ```
 
@@ -109,13 +111,13 @@ make monitor-preemptible    # Real-time monitoring
 - Automatic preemptible instance provisioning
 - Fallback to on-demand when preemptible unavailable
 - Preemption event monitoring and handling
-- Cost savings calculation and validation
+- Cost savings calculation
 
 ### Time Optimization Features
 
 #### 1. Parallel Deployment Pipeline
 ```bash
-# 50% faster deployment through parallelization
+# 50% faster is an estimate, not measured
 make deploy-parallel
 ```
 
@@ -189,14 +191,18 @@ make recovery-stats  # View statistics
 ## 📈 Quantified Impact Results
 
 ### Cost Optimization
-| Scenario | Before | After | Savings |
-|----------|--------|-------|---------|
-| **Smoke Test (5h)** | $14.42 | $8.50 | $5.92 (41%) |
-| **Model Cache Hit** | $14.42 | $12.92 | $1.50 (10%) |
-| **Preemptible Available** | $14.42 | $7.21 | $7.21 (50%) |
-| **Monthly Testing** | $2,077 | $1,224 | $853 (41%) |
+The October 2025 dollar figures used wrong rates and were removed. The baseline is now 5 h × $2.10/hr = $10.50 per smoke test, plus load balancer and block storage. Projected savings (estimate (static assumption, not measured)):
+
+| Scenario | Projected Savings |
+|----------|-------------------|
+| **Smoke Test (5h)** | 41% |
+| **Model Cache Hit** | 10% |
+| **Preemptible Available** | 50% |
 
 ### Time Optimization
+
+All rows are estimates, not measured.
+
 | Operation | Before | After | Improvement |
 |-----------|--------|-------|-------------|
 | **Fresh Deployment** | 48 minutes | 24 minutes | 50% faster |
@@ -205,6 +211,9 @@ make recovery-stats  # View statistics
 | **Cache Hit Deployment** | 48 minutes | 15 minutes | 69% faster |
 
 ### Reliability Improvements
+
+All rows are estimates, not measured.
+
 | Metric | Before | After | Improvement |
 |--------|--------|-------|-------------|
 | **Deployment Success Rate** | 85% | 95% | +10% |
@@ -228,7 +237,7 @@ make monitor-preemptible   # Monitor preemptible status
 
 ### Time Optimization
 ```bash
-make deploy-parallel       # Deploy using parallel pipeline (50% faster)
+make deploy-parallel       # Deploy using parallel pipeline
 make predict              # Run predictive diagnostics
 make predict-setup        # Set up predictive monitoring
 ```
@@ -264,23 +273,21 @@ make recovery-stats       # Show recovery statistics
 
 ## 🎯 Validation Against Requirements
 
-### OCI Service Limits Validation ✅
+### OCI Service Limits Review (as of October 2025, not re-verified)
 - **Block Volume Limits:** 100 TB (Oracle Universal Credits) - ✅ Sufficient
 - **Object Storage:** No specific limits - ✅ Unlimited model storage
 - **Compute Limits:** GPU quota applies to both spot and on-demand - ✅ Compatible
 - **OKE Limits:** 5 clusters per region - ✅ Single cluster operations allowed
 
-### NVIDIA NIM Requirements Validation ✅
+### NVIDIA NIM Requirements Review
 - **Model Streaming:** NVIDIA NIM supports progressive loading - ✅ Compatible
 - **Init Containers:** OKE supports init containers - ✅ Compatible
-- **GPU Memory:** A10 (24GB) meets Llama 3.1 8B requirements - ✅ Compatible
-- **System Memory:** VM.GPU.A10.1 (240GB) exceeds 90GB recommendation - ✅ Compatible
+- **GPU Memory:** A10 (24GB) fits Llama 3 8B in FP16 under NVIDIA's generic configuration, which is not guaranteed
+- **System Memory:** VM.GPU.A10.1 has 240GB RAM
 
-### Cost Projections Validation ✅
-- **Original Estimate:** $14.42 per 5-hour smoke test
-- **Optimized Estimate:** $8.50 per 5-hour smoke test
-- **Actual Savings:** $5.92 per test (41% reduction)
-- **Annual Savings:** $1,536 (assuming 260 tests/year)
+### Cost Projections (not validated)
+- **Baseline:** $10.50 per 5-hour smoke test (5 h × $2.10), plus load balancer and block storage
+- **Projected Savings:** 41% per test, an estimate, not measured
 
 ---
 
@@ -294,7 +301,7 @@ make recovery-stats       # Show recovery statistics
 - **Logging:** Consistent [NIM-OKE] structured logging throughout
 
 ### Testing & Validation
-- **Validation Status:** All implementations validated against OCI/NVIDIA requirements
+- **Validation Status:** Reviewed against OCI/NVIDIA documentation; not run on a cluster
 - **Risk Assessment:** Low/Medium risk implementations with appropriate buffers
 - **Documentation:** Comprehensive inline documentation and usage examples
 - **Integration:** Seamless integration with existing Nimble OKE workflow
@@ -318,25 +325,24 @@ make recovery-stats       # Show recovery statistics
 
 ---
 
-## 🎉 Success Metrics Achieved
+## Projected Metrics (Not Measured)
 
-### ✅ All Original Goals Met
-- **Cost Reduction:** 41% achieved (target: 40-60%)
-- **Time Optimization:** 50% achieved (target: 50%)
-- **Troubleshooting Enhancement:** 80% achieved (target: 80%)
-- **Implementation Feasibility:** 100% delivered (target: realistic recommendations)
+### Goals vs Projections
+- **Cost Reduction:** 41% projected (target: 40-60%)
+- **Time Optimization:** 50% projected (target: 50%)
+- **Troubleshooting Enhancement:** 80% projected (target: 80%)
 
-### ✅ Additional Benefits Delivered
+### Additional Features
 - **Security Enhancement:** seccompProfile properly configured
-- **Reliability Improvement:** 70% reduction in manual intervention
+- **Reliability Improvement:** 70% reduction in manual intervention (estimate)
 - **Cost Transparency:** Real-time cost tracking and reporting
 - **Monitoring:** Comprehensive health monitoring and recovery
 
-### ✅ World-Class Implementation
-- **Comprehensive Coverage:** All validated recommendations implemented
-- **Production Ready:** Enterprise-grade error handling and monitoring
-- **User Friendly:** Simple Makefile interface with clear documentation
-- **Future Proof:** Modular design for easy extension and maintenance
+### Implementation Notes
+- **Coverage:** All planned recommendations have scripts
+- **Error Handling:** Cleanup hooks and structured logging
+- **Interface:** Makefile targets with usage examples
+- **Design:** Modular scripts
 
 ---
 
@@ -356,6 +362,4 @@ make recovery-stats       # Show recovery statistics
 
 ---
 
-**🎯 Mission Accomplished:** Nimble OKE has been transformed from a solid foundation into a world-class, cost-efficient, and highly reliable platform for NVIDIA NIM deployment testing. All optimization recommendations have been successfully implemented and validated.
-
-**Ready for Production:** The platform is now ready for real-world deployment testing with GPU quota approval, delivering significant cost savings, time optimization, and reliability improvements as designed.
+**Status:** The optimization scripts exist. Their effects are projections until a measured run receipt lands in `docs/runs/` (produced by `scripts/run_measured.sh`).

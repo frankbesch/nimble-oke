@@ -9,7 +9,13 @@ readonly RELEASE_NAME="nvidia-nim"
 readonly NAMESPACE="default"
 
 verify_deployment_exists() {
-    if ! kubectl get deployment -n "$NAMESPACE" -l app.kubernetes.io/name=nvidia-nim &>/dev/null; then
+    # A label query exits 0 with no rows when nothing matches; require a name.
+    local deployments
+    if ! deployments=$(kubectl get deployment -n "$NAMESPACE" -l app.kubernetes.io/name=nvidia-nim -o name 2>/dev/null); then
+        log_error "Could not list deployments (kubectl failed)"
+        return 1
+    fi
+    if [[ -z "$deployments" ]]; then
         log_error "NIM deployment not found"
         return 1
     fi
@@ -155,24 +161,24 @@ main() {
     
     echo ""
     echo "=== Deployment Verification ==="
-    verify_deployment_exists || ((failed++))
-    verify_pods_running || ((failed++))
-    verify_pods_ready || ((failed++))
-    verify_gpu_allocation || ((failed++))
+    verify_deployment_exists || failed=$((failed + 1))
+    verify_pods_running || failed=$((failed + 1))
+    verify_pods_ready || failed=$((failed + 1))
+    verify_gpu_allocation || failed=$((failed + 1))
     
     echo ""
     echo "=== Service Verification ==="
-    verify_service_exists || ((failed++))
-    verify_service_endpoint || ((warnings++))
+    verify_service_exists || failed=$((failed + 1))
+    verify_service_endpoint || warnings=$((warnings + 1))
     
     echo ""
     echo "=== Storage Verification ==="
-    verify_pvc_bound || ((warnings++))
+    verify_pvc_bound || warnings=$((warnings + 1))
     
     echo ""
     echo "=== API Verification ==="
-    verify_api_health || ((warnings++))
-    verify_model_loading || ((warnings++))
+    verify_api_health || warnings=$((warnings + 1))
+    verify_model_loading || warnings=$((warnings + 1))
     
     echo ""
     echo "=== Pod Details ==="

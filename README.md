@@ -1,272 +1,203 @@
-# Nimble OKE — Rapid Smoke Testing for NVIDIA NIM on Oracle Cloud
+# Nimble OKE — NVIDIA NIM on Oracle Kubernetes Engine
 
-> **📖 Reading time:** 8 minutes  
-> **🚧 GPU Validation:** Requires GPU resource limit increase (default is 0). Submit a request via the OCI Console → Service Limits → Compute. 
+Shell scripts and a Helm chart that take an NVIDIA NIM LLM microservice from
+nothing to a served request on Oracle Kubernetes Engine (OKE), then tear
+everything down. The project is a smoke-test harness, not a production
+platform. Its focus is the part that costs money when it goes wrong:
+provisioning a GPU node pool and proving it was deleted.
 
-A **GPU-accelerated**, **cost-efficient** smoke-testing platform for validating **NVIDIA Inference Microservices (NIM)** on **Oracle Cloud Infrastructure (OCI)** via **Oracle Kubernetes Engine (OKE)**. Built to automate the full lifecycle — **zero → smoke test → cleanup** — in under an hour for less than $50.
-
-**Based on:** [NVIDIA nim-deploy Oracle OKE Reference](https://github.com/NVIDIA/nim-deploy/tree/main/cloud-service-providers/oracle/oke)
+**Based on:** [NVIDIA nim-deploy, Oracle OKE reference](https://github.com/NVIDIA/nim-deploy/tree/main/cloud-service-providers/oracle/oke)
 
 ## Status
 
-**v0.1.0** (October 2025) — complete reference implementation, validated with real OKE deployments after GPU quota approval. Cost optimization achieved with zero ongoing costs.
+| Item | State |
+|------|-------|
+| First deployment | October 2025. NIM served inference on OKE. No run receipt was kept from that period. |
+| Measured rerun | Pending. `scripts/run_measured.sh` writes a timed receipt to `docs/runs/`. None is committed yet. |
+| Review pass | October 2026. Teardown, provisioning, and secret handling were reworked. See [What changed in October 2026](#what-changed-in-october-2026). |
+| CI | Shellcheck, stubbed runner tests, Helm lint and render, secret scan. |
 
-### Validation notes (2025-10-19)
-- **Resource Cleanup:** Successfully eliminated $97.20/month in ongoing costs
-- **Console-Based Operations:** Established superior approach for complex OCI resource management
-- **Infrastructure Optimization:** Clean slate achieved with essential resources preserved
-- **Documentation:** Comprehensive postmortem and redeployment plans created
+Timing and cost figures elsewhere in this repository that come from the
+simulation scripts are estimates from static assumptions. They are labelled
+as estimates. Only a file in `docs/runs/` is a measurement.
 
-## Purpose
+## What it deploys
 
-Validates NVIDIA NIM deployments with comprehensive testing framework. Purpose-built for rapid smoke testing:
+| Component | Value |
+|-----------|-------|
+| Cluster | OKE enhanced cluster, Kubernetes v1.34.1 |
+| GPU node | `VM.GPU.A10.1` by default: one NVIDIA A10 (24 GB), 15 OCPU, 240 GB RAM |
+| Model | `nvcr.io/nim/meta/llama3-8b-instruct:1.0.3` (Llama 3 8B Instruct) |
+| Storage | 100 Gi block volume for the model cache |
+| Endpoint | OpenAI-compatible API on port 8000 |
 
-- **12-48 minute deployment** (simulated, depending on optimization level)
-- **$6.32-$25.28 complete smoke test** (simulated, depending on duration and optimization)
-- **Idempotent operations** - safe to re-run
-- **Cost guards** - prevent surprise bills
-- **Automatic cleanup** on failure
-- **Production-grade patterns** from first deployment
+Two limits you should know before you rely on this stack:
 
-## Platform Features
+- **The image is past NVIDIA's end of support.** The NGC catalog marks
+  `llama3-8b-instruct` 1.x as no longer supported. The current NIM LLM line
+  is 2.x (`llama-3.1-8b-instruct`). This repository keeps the image that was
+  deployed here. An upgrade is a separate, unmeasured change.
+- **The A10 is not on NVIDIA's optimized list for this model.** NVIDIA's
+  support matrix lists the A10G. OCI's A10 runs under the generic
+  configuration, which NVIDIA describes as not guaranteed.
 
-### Enhanced Over Reference Implementation
+## Cost
 
-**Beyond the [NVIDIA nim-deploy Oracle OKE reference](https://github.com/NVIDIA/nim-deploy/tree/main/cloud-service-providers/oracle/oke), Nimble OKE adds:**
+Rates are Oracle list prices, read from Oracle's price list on 2026-10-01.
 
-| Enhancement | Description | Impact |
-|-------------|-------------|---------|
-| **Mathematical Performance Modeling** | 48min baseline → 12min optimized deployment | 70% improvement |
-| **Comprehensive Testing Framework** | Complete simulation without infrastructure costs | Risk-free validation |
-| **Cost Engineering** | $25.28 → $6.32 per iteration optimization | 75% cost reduction |
-| **Failure Pattern Detection** | Proactive troubleshooting for common NIM issues | Faster problem resolution |
-| **Rapid Iteration Optimization** | Caching strategies and performance tuning | Reduced iteration time |
-| **Security Optimization** | NIM-compatible security settings | GPU compatibility maintained |
-| **Cost Guards & Budget Controls** | $50 daily limit with automatic validation | Prevents surprise bills |
-| **Session Cost Tracking** | Real-time deployment cost monitoring | Budget awareness |
+| Line | Rate |
+|------|------|
+| A10 GPU | $2.00 per GPU-hour |
+| OKE enhanced cluster | $0.10 per cluster-hour |
+| **Default shape, `VM.GPU.A10.1`** | **$2.10 per hour** |
+| `VM.GPU.A10.2` (two GPUs) | $4.10 per hour |
+| `BM.GPU.A10.4` (four GPUs, bare metal) | $8.10 per hour |
 
-### Core Platform Features
+The load balancer and block storage add a small amount. This repository does
+not verify those two rates, so the scripts label them as estimates.
 
-| Feature | Description | Benefit |
-|---------|-------------|---------|
-| **Runbook-Driven Workflow** | discover → prereqs → deploy → verify → operate → troubleshoot → cleanup | Systematic operations |
-| **Cost Guards** | ENVIRONMENT and CONFIRM_COST checks before expensive operations | Budget protection |
-| **Idempotent Operations** | Every script safe to re-run | Error-free retries |
-| **Cleanup Hooks** | Automatic resource cleanup on failure | No resource leaks |
-| **Structured Logging** | Consistent [NIM-OKE][LEVEL] output | Parseable logs |
-| **Smart Discovery** | Automatic StorageClass and GPU node detection | Zero-config setup |
-| **Enhanced Security** | NIM-optimized security (non-root, capability dropping) | Production-ready defaults |
-| **Comprehensive Diagnostics** | Systematic troubleshooting runbook | Faster issue resolution |
+One table in [scripts/_lib.sh](scripts/_lib.sh) holds every rate. An unknown
+shape is an error, not a default price.
 
-## Quick Start
-
-### Prerequisites
-
-```bash
-# Set credentials
-export NGC_API_KEY=nvapi-your-key-here
-export OCI_COMPARTMENT_ID=ocid1.compartment.oc1...
-
-# Set region (closest to Austin, TX)
-export OCI_REGION=us-phoenix-1  # Phoenix, AZ (recommended)
-# export OCI_REGION=us-ashburn-1  # Ashburn, VA
-# export OCI_REGION=us-sanjose-1  # San Jose, CA
-```
-
-| Option | Commands | Time | Cost |
-|--------|----------|------|------|
-| **Complete Smoke Test** | `make provision CONFIRM_COST=yes`<br/>`make all`<br/>`make cleanup`<br/>`make teardown` | 5 hours | ~$31.60 |
-| **Use Existing Cluster** | `make discover`<br/>`make install CONFIRM_COST=yes`<br/>`make verify`<br/>`make cleanup` | 1-2 hours | ~$6.32-$12.64 |
+GPU billing stops only when the node pool is deleted. `make cleanup` removes
+the NIM release and leaves the cluster running. `make teardown` deletes the
+node pool and the cluster.
 
 ## Prerequisites
 
-**Quick requirements:** OCI paid account, GPU quota (VM.GPU.A10.2), NGC API key, OCI CLI, kubectl, Helm.
+- An OCI paid account and a compartment. The default GPU limit is 0. Request
+  an increase for `gpu-a10-count` in the Console under Limits, Quotas and Usage.
+- An NGC API key with access to `nvcr.io`.
+- `oci`, `kubectl`, `helm`, `jq`, and `python3` on the path.
 
-**Region configuration:** `make region-show` - View available regions | `make region-set REGION=us-phoenix-1` - Set region
+Details: [docs/setup-prerequisites.md](docs/setup-prerequisites.md).
 
-**📖 Complete setup guide:** [docs/setup-prerequisites.md](docs/setup-prerequisites.md) - Detailed prerequisites, tool installation, and configuration steps.
-
-## Cost Breakdown
-
-| Scenario | Duration | Cost | Notes |
-|----------|----------|------|-------|
-| **Smoke test** | 5 hours | ~$31.60 | Full deployment + testing |
-| **Existing cluster test** | 1-2 hours | ~$6.32-$12.64 | Using provisioned cluster |
-| **24/7 operation** | Monthly | ~$4,550/month | ⚠️ Not recommended |
-
-**Hourly rate:** $6.32 (GPU $6.12 + control plane $0.10 + enhanced $0.10 + storage $0.05 + LB $0.01)
-
-**📊 Detailed cost breakdown:** [PROJECT_SUMMARY.md - Cost Analysis](PROJECT_SUMMARY.md#cost-analysis)
-
-## Runbook Architecture
-
-**Workflow:** `discover → prereqs → deploy → verify → operate → troubleshoot → cleanup`
-
-**Key patterns:**  
-- Cost guards (CONFIRM_COST for >$5 ops)  
-- Idempotent operations (safe to re-run)  
-- Automatic cleanup on failure  
-
-**📚 Complete operational guide:** [docs/RUNBOOK.md](docs/RUNBOOK.md)
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    Makefile Orchestration                │
-│  discover | prereqs | deploy | verify | cleanup          │
-└──────────────────────┬──────────────────────────────────┘
-                       │
-       ┌───────────────┼───────────────┐
-       │               │               │
-       ▼               ▼               ▼
-┌──────────┐    ┌──────────┐    ┌──────────┐
-│ _lib.sh  │    │ OCI CLI  │    │ kubectl  │
-│  Logging │    │  APIs    │    │  + Helm  │
-│  Costs   │    │          │    │          │
-│  Guards  │    │          │    │          │
-└──────────┘    └──────────┘    └──────────┘
-       │               │               │
-       └───────────────┼───────────────┘
-                       │
-                       ▼
-       ┌───────────────────────────────┐
-       │    OCI OKE Cluster            │
-       │  ┌─────────────────────────┐  │
-       │  │  GPU Node Pool          │  │
-       │  │  (VM.GPU.A10.2 × 1)     │  │
-       │  │                         │  │
-       │  │  ┌───────────────────┐  │  │
-       │  │  │  NIM Pod          │  │  │
-       │  │  │  Llama 3.1 8B     │  │  │
-       │  │  │  GPU: 4x A10      │  │  │
-       │  │  └───────────────────┘  │  │
-       │  └─────────────────────────┘  │
-       │                               │
-       │  LoadBalancer (External IP)   │
-       └───────────────────────────────┘
-```
-
-## Project Structure
-
-```
-Makefile           # Primary interface
-scripts/           # Runbook automation (discover, prereqs, deploy, verify, cleanup)
-helm/              # Kubernetes manifests and configuration
-docs/              # Operational guides and API examples
-```
-
-**📦 Complete inventory:** [ARTIFACT_INVENTORY.md](ARTIFACT_INVENTORY.md)
-
-## Makefile Targets
-
-| Category | Command | Purpose | Cost Guard | Duration |
-|----------|---------|---------|------------|----------|
-| **Primary Operations** | `make provision` | Provision OKE cluster with GPU nodes | ✅ Yes | ~15min |
-| | `make teardown` | Teardown entire OKE cluster | ✅ Yes | ~10min |
-| | `make discover` | Discover cluster state and costs | ❌ No | ~30sec |
-| | `make prereqs` | Validate prerequisites | ❌ No | ~1min |
-| | `make install` | Deploy NIM (discover → prereqs → deploy) | ✅ Yes | ~12-48min |
-| | `make verify` | Verify deployment health | ❌ No | ~2min |
-| | `make operate` | Show operational commands | ❌ No | ~30sec |
-| | `make troubleshoot` | Run diagnostics | ❌ No | ~3min |
-| | `make cleanup` | Remove NIM deployment | ❌ No | ~2min |
-| **Shortcuts & Utilities** | `make all` | Complete workflow | discover → install → verify | Varies |
-| | `make clean` | Alias for cleanup | Same as make cleanup | ❌ No |
-| | `make help` | Show all targets | Complete command reference | ❌ No |
-| | `make status` | Quick deployment status | Pod health, costs, GPU usage | ❌ No |
-| | `make logs` | Fetch recent logs | Last 100 lines from all pods | ❌ No |
-
-### Environment Variables
-
-| Variable | Values | Default | Purpose |
-|----------|--------|---------|---------|
-| `ENVIRONMENT` | `dev` \| `production` | `dev` | Triggers cost guards |
-| `CONFIRM_COST` | `yes` \| `no` | `no` | Bypass cost guard prompt |
-| `COST_THRESHOLD_USD` | Number | `5` | Cost threshold for guards |
-| `NGC_API_KEY` | `nvapi-...` | **Required** | NVIDIA NGC API key |
-| `OCI_COMPARTMENT_ID` | `ocid1...` | **Required** | OCI compartment |
-| `KEEP_CACHE` | `yes` \| `no` | `no` | Preserve PVCs during cleanup |
-| `FORCE` | `yes` \| `no` | `no` | Skip cleanup confirmation |
-
-### Examples
+## Quick start
 
 ```bash
-# Discovery
-make discover
-
-# Deploy with cost guard
-NGC_API_KEY=nvapi-xxx make install
-
-# Production deployment (requires confirmation)
-ENVIRONMENT=production CONFIRM_COST=yes NGC_API_KEY=nvapi-xxx make install
-
-# Cleanup preserving model cache
-KEEP_CACHE=yes make cleanup
-
-# Force cleanup without prompt
-FORCE=yes make cleanup
-
-# Check deployment status
-make status
-
-# View logs
-make logs
-
-# Troubleshoot issues
-make troubleshoot
+export OCI_COMPARTMENT_ID=ocid1.compartment.oc1..your-compartment
+export NGC_API_KEY=nvapi-xxxxxxxxxxxxxxxxxxxx
+export OCI_REGION=us-phoenix-1
 ```
 
-## Helm Chart Features
+| Step | Command | Bills |
+|------|---------|-------|
+| Check tools and access | `make prereqs` | No |
+| Create the cluster and GPU node pool | `make provision CONFIRM_COST=yes` | Yes, from here |
+| Deploy NIM | `make install CONFIRM_COST=yes` | Yes |
+| Check health and send a request | `make verify` | Yes |
+| Remove NIM, keep the cluster | `make cleanup` | Yes |
+| Delete the node pool and cluster | `make teardown` | Stops here |
 
-**Security:** Non-root execution, dropped capabilities, NIM-optimized (**seccomp disabled** for GPU compatibility)  
-**HA:** GPU node affinity, optimized health probes (15s readiness, 45s liveness)  
-**Operations:** Config checksums for auto-restart, resource limits  
+The NGC key is passed to Helm at install time. The chart has no default key
+and refuses to render without one.
 
-**📋 Complete Helm details:** [PROJECT_SUMMARY.md - Helm Chart Enhancements](PROJECT_SUMMARY.md#helm-chart-enhancements)
+## Measured run
 
-## Troubleshooting
+`scripts/run_measured.sh` runs the whole path once and records it:
+preflight, provision, deploy, wait for ready, benchmark, teardown, and a
+check that nothing is left.
 
-**Quick fixes:** Run `make troubleshoot` for systematic diagnostics.
+```bash
+OCI_COMPARTMENT_ID=... NGC_API_KEY=... scripts/run_measured.sh docs/runs/out
+```
 
-**Common issues:** Cost guard triggered (`CONFIRM_COST=yes`), NGC credentials (`export NGC_API_KEY`), pods pending (`make troubleshoot`).
+A free check of access, quota, and configuration, with nothing created:
 
-**📚 Complete troubleshooting:** [docs/RUNBOOK.md - Phase 6: Troubleshoot](docs/RUNBOOK.md#phase-6-troubleshoot)
+```bash
+OCI_COMPARTMENT_ID=... scripts/run_measured.sh --preflight-only /tmp/preflight
+```
 
-## 💡 Nimble OKE vs. OCI Marketplace NIM
+The runner is built to end with the cluster deleted:
 
-| Aspect | Nimble OKE (This project) | OCI Marketplace NIM |
-|--------|--------------------------|---------------------|
-| **Platform** | OKE (Kubernetes) | OCI Data Science |
-| **Control** | Full infrastructure control | Managed service |
-| **Region** | Any A10-supported region | us-ashburn-1 only |
-| **Cost** | $6.32-$31.60 (simulated) | $1/hr per GPU |
-| **Purpose** | Learning, optimization, custom deployment | Quick managed deployment |
+- A trap runs teardown once on success, failure, Ctrl-C, `TERM`, and `HUP`.
+- A watchdog runs in its own session, outside the terminal's process tree.
+  It starts before anything billable exists. It takes over teardown if the
+  runner dies, and at a time limit.
+- If teardown cannot be confirmed, the runner exits non-zero, leaves the
+  watchdog armed, and prints the `oci` commands to delete by hand.
+- The NGC key never appears in the logs or in process arguments.
 
-## Additional Resources
+The runner's behaviour is tested with stubs in [tests/](tests/). Those tests
+make no cloud call.
 
-- **NVIDIA NIM Documentation:** https://docs.nvidia.com/nim/
-- **NVIDIA NGC Catalog:** https://catalog.ngc.nvidia.com/
-- **Oracle OKE Documentation:** https://docs.oracle.com/en-us/iaas/Content/ContEng/home.htm
-- **Oracle IaaS and PaaS Services:** https://www.oracle.com/cloud/iaas-paas/
-- **OCI Cost Estimator:** https://www.oracle.com/cloud/cost-estimator/
-- **Reference Implementation:** https://github.com/NVIDIA/nim-deploy/tree/main/cloud-service-providers/oracle/oke
-- **Complete Runbook:** [docs/RUNBOOK.md](docs/RUNBOOK.md)
+## What changed in October 2026
+
+A review found defects that could leave a GPU billing or damage unrelated
+resources. Each is fixed and covered by a stubbed test or a CI check.
+
+| Defect | Fix |
+|--------|-----|
+| An NGC API key was committed in `helm/values.yaml` | Removed. The chart now requires the key at install. CI scans for key-shaped strings. |
+| A failed provision left the cluster running with no local record | Each OCID is recorded when it is created. The failure trap deletes what the run started. |
+| Teardown printed "charges stopped" when deletes failed | Each delete is confirmed. On failure, teardown keeps its state file and exits non-zero. |
+| Teardown waited on a state the OCI CLI does not accept, so cluster deletes failed silently | It now waits on the work request, then checks the resource is deleted. |
+| Teardown deleted the user's whole `~/.kube/config` | It removes only this cluster's entries. |
+| Emergency cleanup force-deleted every instance, volume, and load balancer in the first compartment it found | It is scoped to `OCI_COMPARTMENT_ID` and to OKE resources, and asks for a typed confirmation. |
+| An early exit from deploy uninstalled a healthy release and deleted its model cache | Destructive cleanup is armed only for a release that this run created. |
+| Deploy left the NGC key in a temp file, and setup printed it | The temp file is removed on every exit path. Scripts print only "set" or "not set". |
+| Prices and shapes disagreed across files, and `VM.GPU.A10.4` is not an Oracle shape | One rate table. Three valid shapes. |
+
+## Repository layout
+
+```
+Makefile            Entry point for every step
+scripts/            Provision, deploy, verify, cleanup, teardown, and the measured-run runner
+scripts/_lib.sh     Logging, cost guards, rate table, confirmed-delete helpers
+helm/               Chart for the NIM deployment
+tests/              Stubbed tests for the runner
+docs/               Runbook, prerequisites, API examples, and historical working notes
+docs/runs/          Receipts from measured runs
+```
+
+Several documents at the repository root and in `docs/` are working notes
+from October 2025. Each carries a note saying so. Their figures were
+corrected in October 2026.
+
+## Makefile targets
+
+| Target | Purpose | Cost guard |
+|--------|---------|------------|
+| `make prereqs` | Check tools, credentials, and access | No |
+| `make provision` | Create the cluster and GPU node pool | Yes |
+| `make install` | Deploy NIM with Helm | Yes |
+| `make verify` | Check health and run an inference request | No |
+| `make status` / `make logs` | Show pod state and recent logs | No |
+| `make troubleshoot` | Run diagnostics | No |
+| `make cleanup` | Remove the NIM release; the cluster keeps billing | No |
+| `make teardown` | Delete the node pool and cluster | Yes |
+| `make lint` | Shellcheck and Helm lint | No |
+| `make test` | Run the stubbed runner tests | No |
+| `make help` | List every target | No |
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `OCI_COMPARTMENT_ID` | required | Compartment that owns every resource |
+| `NGC_API_KEY` | required | NGC key, passed to Helm at install |
+| `OCI_REGION` | `us-phoenix-1` | Region. The pinned node image is Phoenix-only. |
+| `OKE_GPU_SHAPE` | `VM.GPU.A10.1` | GPU node shape |
+| `CONFIRM_COST` | `no` | Set `yes` to pass the cost guard without a prompt |
+| `KEEP_CACHE` | `no` | Keep the model-cache volume during `make cleanup` |
+| `FORCE` | `no` | Skip confirmation prompts |
+
+## Known gaps
+
+- No measured receipt is committed yet.
+- The node image OCID is pinned to Phoenix. Other regions need a different image.
+- The pod runs with the image's default user and no hardening. The chart says so.
+- The NVIDIA device plugin is pinned at v0.14.0 and has not been re-tested against newer releases.
+- The scripts are tested on bash 3.2. Bash 5 is exercised only in CI.
+
+## References
+
+- [NVIDIA NIM documentation](https://docs.nvidia.com/nim/)
+- [NVIDIA NIM for LLMs support matrix](https://docs.nvidia.com/nim/large-language-models/latest/reference/support-matrix.html)
+- [Oracle OKE documentation](https://docs.oracle.com/en-us/iaas/Content/ContEng/home.htm)
+- [OCI compute shapes](https://docs.oracle.com/en-us/iaas/Content/Compute/References/computeshapes.htm)
+- [Oracle Cloud price list](https://www.oracle.com/cloud/price-list/)
+- [Runbook](docs/RUNBOOK.md)
 
 ## License
 
-This project references NVIDIA NIM deployment examples and Oracle Cloud documentation. 
-Please refer to respective licenses for NVIDIA NIM and Oracle Cloud services.
-
-## Contributing
-
-For issues or improvements, please refer to the upstream repositories:
-- https://github.com/NVIDIA/nim-deploy
-
----
-
-**Ready for rapid smoke testing?** Run `make help` to get started.
-
-**Remember:** Always run `make cleanup` after testing to stop charges.
-
----
+MIT. See [LICENSE](LICENSE). NVIDIA NIM and Oracle Cloud services are subject
+to their own terms.

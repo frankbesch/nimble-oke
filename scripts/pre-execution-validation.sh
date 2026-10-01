@@ -9,7 +9,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/_lib.sh"
 source "${SCRIPT_DIR}/_lib_audit.sh"
 
-readonly VALIDATION_TIMEOUT=300
 readonly DEFAULT_GPU_SHAPE="VM.GPU.A10.1"
 readonly DEFAULT_REQUIRED_GPUS=1
 
@@ -168,8 +167,7 @@ validate_kubernetes_connectivity() {
 validate_gpu_resources() {
     log_info "=== Validating GPU Resources ==="
     
-    local gpu_ok=true
-    local shape="${GPU_SHAPE:-$DEFAULT_GPU_SHAPE}"
+local shape="${GPU_SHAPE:-$DEFAULT_GPU_SHAPE}"
     local required="${REQUIRED_GPUS:-$DEFAULT_REQUIRED_GPUS}"
     
     # Check GPU quota (non-fatal if OCI not fully configured)
@@ -348,13 +346,20 @@ validate_cost_estimation() {
     
     # Show cost breakdown
     echo ""
-    echo "Cost Breakdown:"
-    echo "  GPU Node (${gpu_count}x): \$$(echo "scale=2; $hourly_cost * $duration" | bc -l)"
-    echo "  OKE Control Plane: \$$(echo "scale=2; 0.10 * $duration" | bc -l)"
-    echo "  ENHANCED Cluster: \$$(echo "scale=2; 0.10 * $duration" | bc -l)"
-    echo "  Storage (50GB): \$1.50"
-    echo "  Load Balancer: \$$(echo "scale=2; 1.25 * $duration" | bc -l)"
+    # Every line is derived from the _lib.sh rates (single source of truth).
+    local shape="${GPU_SHAPE:-$NIM_DEFAULT_GPU_SHAPE}" node_rate
+    node_rate=$(get_gpu_hourly_rate "$shape") || node_rate=""
+    echo "Cost Breakdown (${duration}h, rates from _lib.sh):"
+    if [[ -n "$node_rate" ]]; then
+        echo "  GPU nodes (${gpu_count} x $shape @ \$${node_rate}/h): \$$(format_cost "$(echo "$node_rate * $gpu_count * $duration" | bc -l)")"
+    else
+        echo "  GPU nodes ($shape): rate not verified"
+    fi
+    echo "  Enhanced cluster (control plane, counted once): \$$(format_cost "$(echo "$NIM_ENHANCED_CLUSTER_HOURLY_USD * $duration" | bc -l)")"
+    echo "  Load balancer: \$$(format_cost "$(echo "$NIM_LB_HOURLY_ESTIMATE_USD * $duration" | bc -l)") - ESTIMATE (unverified rate)"
+    echo "  Storage: \$$(format_cost "$(echo "$NIM_STORAGE_HOURLY_ESTIMATE_USD * $duration" | bc -l)") - ESTIMATE (unverified rate)"
     echo "  Total: \$$(format_cost "$total_cost")"
+    echo "  Hourly: \$$(format_cost "$hourly_cost")"
     echo ""
     
     return 0
@@ -424,7 +429,7 @@ main() {
     local gpu_count="${2:-1}"
     
     # Initialize results file
-    > "$VALIDATION_RESULTS_FILE"
+    : > "$VALIDATION_RESULTS_FILE"
     
     log_info "Starting pre-execution validation..."
     log_info "Mode: ${DRY_RUN:+DRY-RUN }${DEBUG:+DEBUG }${ENVIRONMENT}"

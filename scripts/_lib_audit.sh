@@ -3,12 +3,13 @@
 set -euo pipefail
 
 readonly DAILY_BUDGET_USD="${DAILY_BUDGET_USD:-50}"
-readonly BUDGET_WARN_80=$(echo "$DAILY_BUDGET_USD * 0.80" | bc -l)
-readonly BUDGET_WARN_90=$(echo "$DAILY_BUDGET_USD * 0.90" | bc -l)
-readonly BUDGET_WARN_100=$(echo "$DAILY_BUDGET_USD * 1.00" | bc -l)
-readonly BUDGET_WARN_110=$(echo "$DAILY_BUDGET_USD * 1.10" | bc -l)
-readonly BUDGET_WARN_120=$(echo "$DAILY_BUDGET_USD * 1.20" | bc -l)
-readonly BUDGET_HARD_FAIL=$(echo "$DAILY_BUDGET_USD * 1.25" | bc -l)
+BUDGET_WARN_80=$(echo "$DAILY_BUDGET_USD * 0.80" | bc -l)
+BUDGET_WARN_90=$(echo "$DAILY_BUDGET_USD * 0.90" | bc -l)
+BUDGET_WARN_100=$(echo "$DAILY_BUDGET_USD * 1.00" | bc -l)
+BUDGET_WARN_110=$(echo "$DAILY_BUDGET_USD * 1.10" | bc -l)
+BUDGET_WARN_120=$(echo "$DAILY_BUDGET_USD * 1.20" | bc -l)
+BUDGET_HARD_FAIL=$(echo "$DAILY_BUDGET_USD * 1.25" | bc -l)
+readonly BUDGET_WARN_80 BUDGET_WARN_90 BUDGET_WARN_100 BUDGET_WARN_110 BUDGET_WARN_120 BUDGET_HARD_FAIL
 readonly POLICY_CACHE_DIR="${HOME}/.nimble-oke"
 readonly POLICY_CACHE_FILE="${POLICY_CACHE_DIR}/policy-cache.json"
 readonly POLICY_CACHE_TTL=3600
@@ -62,10 +63,19 @@ check_cli_authentication() {
     fi
 }
 
+# The CALLER's user OCID comes from the active profile in the OCI config.
+# (Listing users and taking data[0] returned an arbitrary tenancy user.)
 get_user_ocid() {
-    oci iam user list --query 'data[0].id' --raw-output 2>/dev/null || \
-    grep "^user=" ~/.oci/config 2>/dev/null | head -1 | cut -d= -f2 | tr -d ' ' || \
-    echo "unknown"
+    local cfg="${OCI_CLI_CONFIG_FILE:-$HOME/.oci/config}"
+    local profile="${OCI_CLI_PROFILE:-DEFAULT}"
+    local user=""
+    if [[ -f "$cfg" ]]; then
+        user=$(awk -v p="[$profile]" '
+            /^[[:space:]]*\[/ { in_p = ($0 ~ "^[[:space:]]*\\[" substr(p, 2, length(p) - 2) "\\][[:space:]]*$") ; next }
+            in_p && /^[[:space:]]*user[[:space:]]*=/ { sub(/^[^=]*=[[:space:]]*/, ""); gsub(/[[:space:]]/, ""); print; exit }
+        ' "$cfg")
+    fi
+    echo "${user:-unknown}"
 }
 
 get_user_name() {
@@ -301,9 +311,13 @@ get_gpu_service_limit() {
     local compartment_id="${OCI_COMPARTMENT_ID:-}"
     local shape="${1:-VM.GPU.A10.1}"
     
+    # On any failure: print "0" (callers treat 0 as "no quota", never as
+    # success), explain on stderr, and return 1 so callers can tell
+    # "query failed" from "quota is 0".
     if [[ -z "$compartment_id" ]]; then
+        echo "[NIM-OKE][ERROR] get_gpu_service_limit: OCI_COMPARTMENT_ID not set" >&2
         echo "0"
-        return
+        return 1
     fi
     
     local limit_name
@@ -331,19 +345,26 @@ get_gpu_service_limit() {
         --raw-output 2>/dev/null)
     
     if [[ -z "$ad" ]]; then
+        echo "[NIM-OKE][ERROR] get_gpu_service_limit: availability-domain query failed" >&2
         echo "0"
-        return
+        return 1
     fi
     
     # Get available quota (not limit value)
-    oci limits resource-availability get \
-        --service-name compute \
-        --limit-name "$limit_name" \
-        --compartment-id "$compartment_id" \
-        --region "${OCI_REGION:-us-phoenix-1}" \
-        --availability-domain "$ad" \
-        --query 'data.available' \
-        --raw-output 2>/dev/null || echo "0"
+    local available
+    if ! available=$(oci limits resource-availability get \
+            --service-name compute \
+            --limit-name "$limit_name" \
+            --compartment-id "$compartment_id" \
+            --region "${OCI_REGION:-us-phoenix-1}" \
+            --availability-domain "$ad" \
+            --query 'data.available' \
+            --raw-output 2>/dev/null) || ! [[ "$available" =~ ^[0-9]+$ ]]; then
+        echo "[NIM-OKE][ERROR] get_gpu_service_limit: quota query for $limit_name failed or returned '${available:-}'" >&2
+        echo "0"
+        return 1
+    fi
+    echo "$available"
 }
 
 get_kubernetes_versions_available() {
@@ -425,9 +446,11 @@ check_daily_budget() {
 get_current_tenancy_burn_rate() {
     local compartment_id="${OCI_COMPARTMENT_ID:-}"
     
+    # ROUGH ESTIMATE: $0.50 per running instance is a static assumption, not
+    # an Oracle rate. A failed query is an error, not a zero burn rate.
     if [[ -z "$compartment_id" ]]; then
-        echo "0"
-        return
+        echo "[NIM-OKE][ERROR] get_current_tenancy_burn_rate: OCI_COMPARTMENT_ID not set" >&2
+        return 1
     fi
     
     local compute_instances
@@ -436,17 +459,17 @@ get_current_tenancy_burn_rate() {
         --all \
         --lifecycle-state RUNNING \
         --query 'data | length(@)' \
-        --raw-output 2>/dev/null || echo "0")
+        --raw-output 2>/dev/null) || return 1
     
     local oke_clusters
     oke_clusters=$(oci ce cluster list \
         --compartment-id "$compartment_id" \
         --lifecycle-state ACTIVE \
         --query 'data | length(@)' \
-        --raw-output 2>/dev/null || echo "0")
+        --raw-output 2>/dev/null) || return 1
     
     local estimated_cost
-    estimated_cost=$(echo "($compute_instances * 0.5) + ($oke_clusters * 0.1)" | bc -l)
+    estimated_cost=$(echo "($compute_instances * 0.5) + ($oke_clusters * $NIM_ENHANCED_CLUSTER_HOURLY_USD)" | bc -l)
     echo "$estimated_cost"
 }
 
@@ -473,19 +496,28 @@ check_budget_alerts_configured() {
     [[ "$budget_count" != "0" ]]
 }
 
+# Same failure contract as get_gpu_service_limit: "0" on stdout, reason on
+# stderr, return 1.
 get_oke_cluster_quota() {
     local compartment_id="${OCI_COMPARTMENT_ID:-}"
     
     if [[ -z "$compartment_id" ]]; then
+        echo "[NIM-OKE][ERROR] get_oke_cluster_quota: OCI_COMPARTMENT_ID not set" >&2
         echo "0"
-        return
+        return 1
     fi
     
-    oci limits value list \
-        --compartment-id "$compartment_id" \
-        --service-name container-engine \
-        --query 'data[?name==`cluster-count`].value | [0]' \
-        --raw-output 2>/dev/null || echo "0"
+    local value
+    if ! value=$(oci limits value list \
+            --compartment-id "$compartment_id" \
+            --service-name container-engine \
+            --query 'data[?name==`cluster-count`].value | [0]' \
+            --raw-output 2>/dev/null) || ! [[ "$value" =~ ^[0-9]+$ ]]; then
+        echo "[NIM-OKE][ERROR] get_oke_cluster_quota: limit query failed or returned '${value:-}'" >&2
+        echo "0"
+        return 1
+    fi
+    echo "$value"
 }
 
 check_vcn_has_internet_access() {
@@ -617,10 +649,13 @@ get_nvidia_compatible_images() {
     local compartment_id="${OCI_COMPARTMENT_ID:-}"
     
     if [[ -z "$compartment_id" ]]; then
+        echo "[NIM-OKE][ERROR] get_latest_gpu_image: OCI_COMPARTMENT_ID not set" >&2
         echo ""
-        return
+        return 1
     fi
     
+    # data[0] here is the newest image (sorted by TIMECREATED DESC, limit 1),
+    # not an arbitrary pick.
     oci compute image list \
         --compartment-id "$compartment_id" \
         --all \
@@ -634,10 +669,13 @@ get_latest_gpu_image() {
     local shape="${1:-VM.GPU.A10.1}"
     
     if [[ -z "$compartment_id" ]]; then
+        echo "[NIM-OKE][ERROR] get_latest_gpu_image: OCI_COMPARTMENT_ID not set" >&2
         echo ""
-        return
+        return 1
     fi
     
+    # data[0] here is the newest image (sorted by TIMECREATED DESC, limit 1),
+    # not an arbitrary pick.
     oci compute image list \
         --compartment-id "$compartment_id" \
         --operating-system "Oracle Linux" \
@@ -647,7 +685,7 @@ get_latest_gpu_image() {
         --sort-order DESC \
         --limit 1 \
         --query 'data[0].id' \
-        --raw-output 2>/dev/null || echo ""
+        --raw-output 2>/dev/null || { echo ""; return 1; }
 }
 
 export -f get_tenancy_name get_tenancy_ocid get_subscription_type

@@ -6,10 +6,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Force dry-run BEFORE sourcing: _lib.sh declares DRY_RUN readonly, so the
+# old `readonly DRY_RUN=true` after sourcing aborted the script at startup.
+export DRY_RUN=true
 source "${SCRIPT_DIR}/_lib.sh"
 source "${SCRIPT_DIR}/_lib_audit.sh"
-
-readonly DRY_RUN=true
 
 simulate_vcn_creation() {
     log_info "=== Simulating VCN Creation ==="

@@ -1,5 +1,9 @@
 # OKE Optimization Changes - Critical Fixes Applied
 
+*Historical working note from October 2025; figures corrected 2026-10-01. See README for current status.*
+
+> **Correction (2026-10-01):** This note named a 4-GPU A10 VM shape. Oracle has no such shape. The 4×A10 shape is BM.GPU.A10.4 (bare metal, 64 OCPU, 1024 GB). The conclusion that VM.GPU.A10.1 cannot run NIM on OKE is not supported by any receipt and is withdrawn. The repo default is VM.GPU.A10.1 with 1 GPU per pod.
+
 ## Overview
 This document details the critical fixes applied to resolve persistent node registration timeout issues in the NVIDIA NIM OKE deployment.
 
@@ -7,42 +11,21 @@ This document details the critical fixes applied to resolve persistent node regi
 After 4 failed deployment attempts with consistent 21-22 minute node registration timeouts, we identified the root cause:
 
 1. **Image Compatibility Issue**: Generic GPU images not optimized for OKE
-2. **Incorrect GPU Shape**: VM.GPU.A10.1 insufficient for OKE requirements
+2. **Incorrect GPU Shape**: suspected at the time; not supported (see correction above)
 3. **Missing OKE-Specific Configuration**: Manual KMS instead of OKE built-in
 4. **Outdated Kubernetes Version**: v1.28.2 not compatible with current OKE
 
-## CRITICAL DISCOVERY: Minimum Requirements for NIM on OKE
+## Shape Hypothesis (Withdrawn)
 
-**VM.GPU.A10.4 is the SMALLEST compute shape that supports NIM on OKE**
-
-- **VM.GPU.A10.1**: Uses generic GPU image → **INCOMPATIBLE with NIM on OKE**
-- **VM.GPU.A10.4**: Uses OKE-optimized image → **REQUIRED for NIM on OKE**
-
-**Why VM.GPU.A10.1 fails**:
-- Restricted to generic GPU images
-- Lacks OKE-specific NVIDIA drivers
-- No Kubernetes GPU device plugin support
-- Results in persistent node registration timeouts
-
-**Why VM.GPU.A10.4 succeeds**:
-- Access to OKE-optimized images
-- Pre-configured NVIDIA drivers for Kubernetes
-- Proper GPU device plugin integration
-- Reliable node registration and NIM deployment
+The October 2025 note claimed a 4-GPU shape was the smallest that supports NIM on OKE. It named that shape as a VM shape, which does not exist. No receipt supports the claim. It is withdrawn.
 
 ## Critical Fixes Applied
 
-### 1. GPU Shape Upgrade (CRITICAL REQUIREMENT)
-**Before**: `VM.GPU.A10.1` (1x NVIDIA A10 GPU) - **INCOMPATIBLE**
-**After**: `VM.GPU.A10.4` (4x NVIDIA A10 GPUs) - **REQUIRED**
+### 1. GPU Shape (Reverted)
+**At the time**: moved from `VM.GPU.A10.1` to a 4-GPU shape.
+**Now**: `VM.GPU.A10.1` (1× A10 24 GB, 15 OCPU, 240 GB) is the repo default.
 
-**Critical Discovery**: 
-- **VM.GPU.A10.1 uses generic GPU image which does NOT support NIM on OKE**
-- **VM.GPU.A10.4 is the smallest compute shape for NIM on OKE (Oracle's managed Kubernetes)**
-- You must choose VM.GPU.A10.4 to get the OKE-optimized image
-- Generic GPU images lack proper OKE integration and NVIDIA driver support
-
-**Cost Impact**: $3.06/hour → $12.24/hour (4x increase) - **NECESSARY FOR COMPATIBILITY**
+**Cost**: VM.GPU.A10.1 = $2.00/hour; BM.GPU.A10.4 = $8.00/hour (4 × $2.00 per GPU-hour).
 
 ### 2. OKE-Optimized Image (SHAPE-DEPENDENT)
 **Before**: Generic GPU image - **INCOMPATIBLE WITH OKE**
@@ -50,24 +33,20 @@ After 4 failed deployment attempts with consistent 21-22 minute node registratio
 
 **Image OCID**: `ocid1.image.oc1.phx.aaaaaaaa2gmabafvnqzelab5ujtlqksdkbgss5w72s3gvf4so34cdic3cwpa`
 
-**Critical Requirements**:
-- **This OKE-optimized image is ONLY available for VM.GPU.A10.4 and larger shapes**
-- **VM.GPU.A10.1 cannot use this image - it's restricted to generic GPU images**
-- **Generic GPU images lack OKE-specific drivers and Kubernetes integration**
-- **NIM requires OKE-optimized drivers for proper GPU device plugin functionality**
+**Shape restriction (withdrawn)**: the note claimed this image works only on 4-GPU shapes. No receipt supports that claim.
 
 **Rationale**:
 - Pre-configured with OKE-specific drivers
 - Optimized for Kubernetes GPU workloads
 - Proper NVIDIA driver integration
-- **MANDATORY for NIM deployment on OKE**
+- Recommended for GPU node pools on OKE
 
 ### 3. Kubernetes Version Update
 **Before**: `v1.28.2`
 **After**: `v1.34.1`
 
 **Rationale**:
-- Latest supported OKE version
+- Supported OKE version (OKE currently offers v1.34.x–v1.36.x)
 - Better GPU device plugin compatibility
 - Enhanced stability and performance
 
@@ -91,7 +70,7 @@ After 4 failed deployment attempts with consistent 21-22 minute node registratio
 ## Files Modified
 
 ### 1. `scripts/provision-cluster.sh`
-- Updated GPU shape to VM.GPU.A10.4
+- Updated GPU shape (since reverted to VM.GPU.A10.1)
 - Updated Kubernetes version to v1.34.1
 - Added OKE-optimized image configuration
 - Implemented proper placement configuration
@@ -99,15 +78,12 @@ After 4 failed deployment attempts with consistent 21-22 minute node registratio
 - Updated cost estimation
 
 ### 2. `scripts/_lib.sh`
-- Updated cost estimation for VM.GPU.A10.4
-- Added VM.GPU.A10.4 to GPU hourly rate function
+- Updated cost estimation (now $2.00 per A10 GPU-hour)
+- Updated the GPU hourly rate function
 - Updated default GPU shape
 
 ### 3. `helm/values.yaml`
-- Updated GPU resource limits (1 → 4 GPUs)
-- Increased memory limits (32Gi → 128Gi)
-- Increased CPU limits (8 → 32 cores)
-- Updated model requirements for VM.GPU.A10.4
+- Changed GPU resource limits at the time (since reverted to 1 GPU, 24Gi memory, 8 CPU)
 
 ### 4. `scripts/oke-optimized-config.sh` (NEW)
 - Centralized OKE-optimized configuration
@@ -118,40 +94,40 @@ After 4 failed deployment attempts with consistent 21-22 minute node registratio
 ## Configuration Details
 
 ### GPU Resources
+Current `helm/values.yaml`:
 ```yaml
 resources:
   limits:
-    nvidia.com/gpu: 4
-    memory: "128Gi"
-    cpu: "32"
+    nvidia.com/gpu: 1
+    memory: "24Gi"
+    cpu: "8"
   requests:
-    nvidia.com/gpu: 4
-    memory: "96Gi"
-    cpu: "16"
+    nvidia.com/gpu: 1
+    memory: "16Gi"
+    cpu: "4"
 ```
 
 ### Node Pool Configuration
 ```bash
---node-shape VM.GPU.A10.4
+--node-shape VM.GPU.A10.1
 --kubernetes-version v1.34.1
 --placement-configs '[{"availabilityDomain": "yAdn:PHX-AD-1", "subnetId": "subnet-id"}]'
 --node-source-details '{"sourceType": "IMAGE", "imageId": "ocid1.image.oc1.phx.aaaaaaaa2gmabafvnqzelab5ujtlqksdkbgss5w72s3gvf4so34cdic3cwpa", "bootVolumeSizeInGBs": 200}'
 ```
 
 ### Cost Structure
-- **VM.GPU.A10.4**: $12.24/hour (4x NVIDIA A10 GPUs)
-- **OKE Control Plane**: $0.10/hour
-- **Enhanced Cluster**: $0.10/hour
-- **Load Balancer**: $0.01/hour (10 Mbps flexible)
-- **Storage**: $0.05/hour (200GB block volume)
-- **Total**: ~$12.44/hour
+- **VM.GPU.A10.1**: $2.00/hour (1× NVIDIA A10 GPU)
+- **OKE Enhanced Cluster**: $0.10/hour (counted once; no separate control-plane charge)
+- **Load Balancer and Storage**: not verified here
+- **Total**: $2.10/hour, plus load balancer and block storage
 
 ### Budget Ranges
-- **Fast Test (1 hour)**: ~$12.44 (Budget: $15)
-- **Short Test (2 hours)**: ~$24.88 (Budget: $25)
-- **Extended Test (4 hours)**: ~$49.76 (Budget: $50)
-- **Full Day (24 hours)**: ~$298.56 (Budget: $300)
-- **Weekly (168 hours)**: ~$2,089.92 (Budget: $2,000)
+Each figure is hours × $2.10, plus load balancer and block storage:
+- **Fast Test (1 hour)**: $2.10
+- **Short Test (2 hours)**: $4.20
+- **Extended Test (4 hours)**: $8.40
+- **Full Day (24 hours)**: $50.40
+- **Weekly (168 hours)**: $352.80
 
 ## Validation Process
 
@@ -181,8 +157,7 @@ resources:
 - Proper placement configuration ensures connectivity
 
 ### 2. Improved Performance
-- 4x GPU power for better inference performance
-- Higher memory and CPU allocation
+- Inference performance is not measured yet
 - Optimized for NVIDIA NIM workloads
 
 ### 3. Enhanced Reliability
@@ -211,35 +186,34 @@ resources:
 
 4. **Monitor Costs**:
    ```bash
-   make cost-monitor
+   make operate
    ```
 
 ## Rollback Plan
 
 If issues persist:
 1. Terminate current cluster
-2. Revert to VM.GPU.A10.1 with OKE-optimized image
+2. Use VM.GPU.A10.1 (the current default) with the OKE-optimized image
 3. Test with single GPU configuration
-4. Scale up gradually
 
 ## Cost Monitoring
 
-- **Expected Cost**: ~$12.44/hour
-- **5-hour Test**: ~$62.20
-- **Daily Cost**: ~$298.56
-- **Weekly Cost**: ~$2,089.92
+- **Expected Cost**: $2.10/hour, plus load balancer and block storage
+- **5-hour Test**: $10.50
+- **Daily Cost**: $50.40
+- **Weekly Cost**: $352.80
 
 ## Success Metrics
 
 1. **Node Registration**: < 5 minutes
-2. **GPU Availability**: 4 GPUs detected
+2. **GPU Availability**: 1 GPU detected
 3. **NIM Deployment**: Successful pod startup
 4. **Inference Performance**: < 2s response time
 
 ## Lessons Learned
 
-1. **CRITICAL: VM.GPU.A10.4 Minimum Requirement**: VM.GPU.A10.4 is the smallest shape that supports NIM on OKE
-2. **Image Compatibility**: OKE-optimized images are shape-dependent and mandatory for NIM
+1. **Shape names**: check shape names against Oracle's compute shapes page; there is no 4-GPU A10 VM shape
+2. **Image Compatibility**: use OKE images for GPU node pools
 3. **Resource Allocation**: Higher resources prevent timeouts, but shape compatibility is more critical
 4. **OKE-Specific Configuration**: Use OKE-native features and optimized images
 5. **Validation**: Pre-deployment checks prevent failures, especially shape-image compatibility
@@ -252,4 +226,4 @@ If issues persist:
 2. Monitor node registration closely
 3. Verify GPU functionality
 4. Test NVIDIA NIM deployment
-5. Optimize for production use
+5. Commit a measured run receipt under `docs/runs/`

@@ -3,7 +3,7 @@
 > **📖 Reading time:** 9 minutes  
 > **🔗 API reference** - Copy/paste examples for testing
 
-Comprehensive API examples for testing and using NVIDIA NIM with Meta Llama 3.1 8B model.
+Comprehensive API examples for testing and using NVIDIA NIM with Meta Llama 3 8B model.
 
 ## Setup
 
@@ -68,7 +68,7 @@ Response:
   "object": "list",
   "data": [
     {
-      "id": "meta/llama-3.1-8b-instruct",
+      "id": "meta/llama3-8b-instruct",
       "object": "model",
       "created": 1728500000,
       "owned_by": "meta"
@@ -85,7 +85,7 @@ Response:
 curl -X POST $NIM_ENDPOINT/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "meta/llama-3.1-8b-instruct",
+    "model": "meta/llama3-8b-instruct",
     "messages": [
       {
         "role": "user",
@@ -102,7 +102,7 @@ Response:
   "id": "chatcmpl-xxxxx",
   "object": "chat.completion",
   "created": 1728500123,
-  "model": "meta/llama-3.1-8b-instruct",
+  "model": "meta/llama3-8b-instruct",
   "choices": [
     {
       "index": 0,
@@ -127,7 +127,7 @@ Response:
 curl -X POST $NIM_ENDPOINT/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "meta/llama-3.1-8b-instruct",
+    "model": "meta/llama3-8b-instruct",
     "messages": [
       {
         "role": "system",
@@ -149,7 +149,7 @@ curl -X POST $NIM_ENDPOINT/v1/chat/completions \
 curl -X POST $NIM_ENDPOINT/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "meta/llama-3.1-8b-instruct",
+    "model": "meta/llama3-8b-instruct",
     "messages": [
       {
         "role": "system",
@@ -183,7 +183,7 @@ curl -X POST $NIM_ENDPOINT/v1/chat/completions \
 curl -X POST $NIM_ENDPOINT/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "meta/llama-3.1-8b-instruct",
+    "model": "meta/llama3-8b-instruct",
     "messages": [
       {"role": "user", "content": "Write a haiku about AI"}
     ],
@@ -198,7 +198,7 @@ curl -X POST $NIM_ENDPOINT/v1/chat/completions \
 curl -X POST $NIM_ENDPOINT/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "meta/llama-3.1-8b-instruct",
+    "model": "meta/llama3-8b-instruct",
     "messages": [
       {"role": "user", "content": "Write a haiku about AI"}
     ],
@@ -213,7 +213,7 @@ curl -X POST $NIM_ENDPOINT/v1/chat/completions \
 curl -X POST $NIM_ENDPOINT/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "meta/llama-3.1-8b-instruct",
+    "model": "meta/llama3-8b-instruct",
     "messages": [
       {"role": "user", "content": "Explain machine learning"}
     ],
@@ -229,7 +229,7 @@ curl -X POST $NIM_ENDPOINT/v1/chat/completions \
 curl -X POST $NIM_ENDPOINT/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "meta/llama-3.1-8b-instruct",
+    "model": "meta/llama3-8b-instruct",
     "messages": [
       {"role": "user", "content": "List cloud providers"}
     ],
@@ -245,7 +245,7 @@ curl -X POST $NIM_ENDPOINT/v1/chat/completions \
 curl -X POST $NIM_ENDPOINT/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "meta/llama-3.1-8b-instruct",
+    "model": "meta/llama3-8b-instruct",
     "messages": [
       {"role": "user", "content": "Count from 1 to 10"}
     ],
@@ -262,7 +262,7 @@ curl -X POST $NIM_ENDPOINT/v1/chat/completions \
 curl -X POST $NIM_ENDPOINT/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "meta/llama-3.1-8b-instruct",
+    "model": "meta/llama3-8b-instruct",
     "messages": [
       {
         "role": "system",
@@ -284,7 +284,7 @@ curl -X POST $NIM_ENDPOINT/v1/chat/completions \
 curl -X POST $NIM_ENDPOINT/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "meta/llama-3.1-8b-instruct",
+    "model": "meta/llama3-8b-instruct",
     "messages": [
       {
         "role": "system",
@@ -306,7 +306,7 @@ curl -X POST $NIM_ENDPOINT/v1/chat/completions \
 curl -X POST $NIM_ENDPOINT/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "meta/llama-3.1-8b-instruct",
+    "model": "meta/llama3-8b-instruct",
     "messages": [
       {
         "role": "system",
@@ -328,7 +328,7 @@ curl -X POST $NIM_ENDPOINT/v1/chat/completions \
 curl -X POST $NIM_ENDPOINT/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "meta/llama-3.1-8b-instruct",
+    "model": "meta/llama3-8b-instruct",
     "messages": [
       {
         "role": "system",
@@ -350,7 +350,7 @@ curl -X POST $NIM_ENDPOINT/v1/chat/completions \
 curl -X POST $NIM_ENDPOINT/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "meta/llama-3.1-8b-instruct",
+    "model": "meta/llama3-8b-instruct",
     "messages": [
       {
         "role": "system",
@@ -375,7 +375,7 @@ curl -X POST $NIM_ENDPOINT/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Accept: text/event-stream" \
   -d '{
-    "model": "meta/llama-3.1-8b-instruct",
+    "model": "meta/llama3-8b-instruct",
     "messages": [
       {"role": "user", "content": "Write a short story about AI"}
     ],
@@ -410,7 +410,7 @@ for i in {1..5}; do
   time curl -s -X POST $NIM_ENDPOINT/v1/chat/completions \
     -H "Content-Type: application/json" \
     -d '{
-      "model": "meta/llama-3.1-8b-instruct",
+      "model": "meta/llama3-8b-instruct",
       "messages": [{"role": "user", "content": "Hi"}],
       "max_tokens": 10
     }' | jq -r '.choices[0].message.content'
@@ -427,7 +427,7 @@ for i in {1..10}; do
   curl -s -X POST $NIM_ENDPOINT/v1/chat/completions \
     -H "Content-Type: application/json" \
     -d '{
-      "model": "meta/llama-3.1-8b-instruct",
+      "model": "meta/llama3-8b-instruct",
       "messages": [{"role": "user", "content": "Hello"}],
       "max_tokens": 10
     }' &
@@ -442,7 +442,7 @@ echo "All requests completed"
 curl -s -X POST $NIM_ENDPOINT/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "meta/llama-3.1-8b-instruct",
+    "model": "meta/llama3-8b-instruct",
     "messages": [
       {"role": "user", "content": "Explain Kubernetes in detail"}
     ],
@@ -465,7 +465,7 @@ def chat_completion(messages, temperature=0.7, max_tokens=150):
         f"{NIM_ENDPOINT}/v1/chat/completions",
         headers={"Content-Type": "application/json"},
         json={
-            "model": "meta/llama-3.1-8b-instruct",
+            "model": "meta/llama3-8b-instruct",
             "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens
@@ -497,7 +497,7 @@ def chat_stream(messages, max_tokens=200):
             "Accept": "text/event-stream"
         },
         json={
-            "model": "meta/llama-3.1-8b-instruct",
+            "model": "meta/llama3-8b-instruct",
             "messages": messages,
             "stream": True,
             "max_tokens": max_tokens
@@ -541,7 +541,7 @@ class ConversationManager:
             f"{self.endpoint}/v1/chat/completions",
             headers={"Content-Type": "application/json"},
             json={
-                "model": "meta/llama-3.1-8b-instruct",
+                "model": "meta/llama3-8b-instruct",
                 "messages": self.messages,
                 "temperature": temperature,
                 "max_tokens": max_tokens
@@ -581,7 +581,7 @@ print(conv.get_response())
 curl -i -X POST $NIM_ENDPOINT/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "meta/llama-3.1-8b-instruct",
+    "model": "meta/llama3-8b-instruct",
     "messages": [{"role": "user", "content": "Hi"}],
     "max_tokens": 10
   }' | grep -i "x-ratelimit"
@@ -617,7 +617,7 @@ Response:
 curl -X POST $NIM_ENDPOINT/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "meta/llama-3.1-8b-instruct",
+    "model": "meta/llama3-8b-instruct",
     "messages": [{"role": "user", "content": "Hi"}],
     "max_tokens": 100000
   }'
@@ -628,7 +628,7 @@ curl -X POST $NIM_ENDPOINT/v1/chat/completions \
 ### Get Model Info
 
 ```bash
-curl $NIM_ENDPOINT/v1/models/meta/llama-3.1-8b-instruct
+curl $NIM_ENDPOINT/v1/models/meta/llama3-8b-instruct
 ```
 
 ### Performance Metrics
@@ -646,7 +646,7 @@ curl $NIM_ENDPOINT/metrics
 curl -X POST $NIM_ENDPOINT/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "meta/llama-3.1-8b-instruct",
+    "model": "meta/llama3-8b-instruct",
     "messages": [
       {
         "role": "system",
@@ -673,7 +673,7 @@ while IFS= read -r question; do
   curl -s -X POST $NIM_ENDPOINT/v1/chat/completions \
     -H "Content-Type: application/json" \
     -d "{
-      \"model\": \"meta/llama-3.1-8b-instruct\",
+      \"model\": \"meta/llama3-8b-instruct\",
       \"messages\": [{\"role\": \"user\", \"content\": \"$question\"}],
       \"max_tokens\": 100
     }" | jq -r '.choices[0].message.content'

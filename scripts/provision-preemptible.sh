@@ -59,16 +59,25 @@ provision_preemptible_gpu_nodes() {
     local node_pool_name="nim-preemptible-gpu-pool"
     local subnet_id
     
-    # Get subnet ID for the availability domain
-    subnet_id=$(oci network subnet list \
-        --compartment-id "${OCI_COMPARTMENT_ID}" \
-        --availability-domain "$availability_domain" \
-        --query 'data[0].id' \
-        --raw-output)
-    
-    if [[ -z "$subnet_id" || "$subnet_id" == "null" ]]; then
-        log_error "No subnet found in availability domain: $availability_domain"
-        return 1
+    # Subnet: PREEMPTIBLE_SUBNET_ID, else the one subnet named
+    # "nimble-oke-subnet" (the name provision-cluster.sh creates). Taking the
+    # first subnet in the compartment could land nodes in an unrelated VCN.
+    subnet_id="${PREEMPTIBLE_SUBNET_ID:-}"
+    if [[ -z "$subnet_id" ]]; then
+        local subnet_ids
+        subnet_ids=$(oci network subnet list \
+            --compartment-id "${OCI_COMPARTMENT_ID}" \
+            --display-name "nimble-oke-subnet" \
+            --lifecycle-state AVAILABLE \
+            --query 'data[].id' \
+            --raw-output) || { log_error "Subnet lookup failed (oci network subnet list)"; return 1; }
+        local n
+        n=$(echo "$subnet_ids" | grep -c 'ocid1\.subnet' || true)
+        if [[ "$n" -ne 1 ]]; then
+            log_error "Expected exactly one subnet named nimble-oke-subnet, found $n; set PREEMPTIBLE_SUBNET_ID"
+            return 1
+        fi
+        subnet_id=$(echo "$subnet_ids" | grep -o 'ocid1\.subnet[^"[:space:],]*')
     fi
     
     # Create preemptible node pool
@@ -245,13 +254,17 @@ handle_preemption() {
 get_gpu_node_image_id() {
     # Get the latest Oracle Linux 8 GPU image
     local image_id
+    # data[0] is the NEWEST image: sorted by TIMECREATED DESC with limit 1.
     image_id=$(oci compute image list \
         --compartment-id "${OCI_COMPARTMENT_ID}" \
         --operating-system "Oracle Linux" \
         --operating-system-version "8" \
-        --shape "VM.GPU.A10.1" \
+        --shape "${GPU_SHAPE:-VM.GPU.A10.1}" \
+        --sort-by TIMECREATED \
+        --sort-order DESC \
+        --limit 1 \
         --query 'data[0].id' \
-        --raw-output)
+        --raw-output) || { log_error "Image lookup failed (oci compute image list)"; return 1; }
     
     if [[ -z "$image_id" || "$image_id" == "null" ]]; then
         log_error "No GPU-compatible image found"
@@ -263,14 +276,10 @@ get_gpu_node_image_id() {
 
 # Function to get default NSG ID
 get_default_nsg_id() {
-    local nsg_id
-    nsg_id=$(oci network network-security-group list \
-        --compartment-id "${OCI_COMPARTMENT_ID}" \
-        --query 'data[0].id' \
-        --raw-output)
-    
-    if [[ -z "$nsg_id" || "$nsg_id" == "null" ]]; then
-        log_error "No network security group found"
+    # The first NSG in the compartment is an arbitrary pick; require it explicitly.
+    local nsg_id="${PREEMPTIBLE_NSG_ID:-}"
+    if [[ -z "$nsg_id" ]]; then
+        log_error "PREEMPTIBLE_NSG_ID not set (export the NSG OCID for the GPU nodes)"
         return 1
     fi
     
@@ -291,18 +300,26 @@ get_ssh_public_key() {
 
 # Function to calculate cost savings
 calculate_cost_savings() {
-    local preemptible_cost="1.31"  # 50% of on-demand cost
-    local ondemand_cost="2.62"
     local node_count="${1:-1}"
     local hours="${2:-5}"
+    local shape="${3:-${GPU_SHAPE:-$NIM_DEFAULT_GPU_SHAPE}}"
+    # On-demand node rate from _lib.sh. The 50% preemptible discount is an
+    # ESTIMATE (static assumption, not verified against Oracle pricing).
+    local ondemand_cost preemptible_cost
+    ondemand_cost=$(get_gpu_hourly_rate "$shape") || { log_error "No verified rate for $shape"; return 1; }
+    preemptible_cost=$(echo "$ondemand_cost * 0.5" | bc -l)
     
-    local preemptible_total=$(echo "$preemptible_cost * $node_count * $hours" | bc -l)
-    local ondemand_total=$(echo "$ondemand_cost * $node_count * $hours" | bc -l)
-    local savings=$(echo "$ondemand_total - $preemptible_total" | bc -l)
-    local savings_percentage=$(echo "scale=1; ($savings / $ondemand_total) * 100" | bc -l)
+    local preemptible_total
+    preemptible_total=$(echo "$preemptible_cost * $node_count * $hours" | bc -l)
+    local ondemand_total
+    ondemand_total=$(echo "$ondemand_cost * $node_count * $hours" | bc -l)
+    local savings
+    savings=$(echo "$ondemand_total - $preemptible_total" | bc -l)
+    local savings_percentage
+    savings_percentage=$(echo "scale=1; ($savings / $ondemand_total) * 100" | bc -l)
     
-    log_info "Cost comparison for $node_count nodes over $hours hours:"
-    log_info "  Preemptible cost: \$$(printf "%.2f" "$preemptible_total")"
+    log_info "Cost comparison for $node_count x $shape over $hours hours (GPU nodes only):"
+    log_info "  Preemptible cost: \$$(printf "%.2f" "$preemptible_total") - ESTIMATE (static assumption, not measured: 50% discount)"
     log_info "  On-demand cost: \$$(printf "%.2f" "$ondemand_total")"
     log_info "  Savings: \$$(printf "%.2f" "$savings") (${savings_percentage}%)"
     
@@ -320,8 +337,12 @@ calculate_cost_savings() {
 setup_preemption_monitoring() {
     log_info "Setting up preemption monitoring..."
     
+    # Private working directory (mktemp), not predictable /tmp paths
+    local monitor_dir
+    monitor_dir=$(mktemp -d "${TMPDIR:-/tmp}/nim-preemption-monitor.XXXXXX") || { log_error "mktemp failed"; return 1; }
+
     # Create monitoring script
-    cat > "/tmp/preemption-monitor.sh" << 'EOF'
+    cat > "$monitor_dir/preemption-monitor.sh" << 'EOF'
 #!/bin/bash
 
 # Preemption monitoring script
@@ -342,14 +363,15 @@ while true; do
 done
 EOF
     
-    chmod +x "/tmp/preemption-monitor.sh"
-    
+    chmod 700 "$monitor_dir/preemption-monitor.sh"
+
     # Start monitoring in background
-    nohup "/tmp/preemption-monitor.sh" > "/tmp/preemption-monitor.log" 2>&1 &
+    nohup "$monitor_dir/preemption-monitor.sh" > "$monitor_dir/preemption-monitor.log" 2>&1 &
     local monitor_pid=$!
-    
+
+    echo "$monitor_pid" > "$monitor_dir/preemption-monitor.pid"
     log_success "Preemption monitoring started (PID: $monitor_pid)"
-    echo "$monitor_pid" > "/tmp/preemption-monitor.pid"
+    log_info "  Log: $monitor_dir/preemption-monitor.log  Stop: kill $monitor_pid"
 }
 
 # Main preemptible provisioning function
@@ -361,8 +383,8 @@ provision_preemptible_cluster() {
     log_info "Starting preemptible cluster provisioning..."
     
     # Calculate cost savings
-    calculate_cost_savings "$node_count" 5
-    
+    calculate_cost_savings "$node_count" 5 "$shape"
+
     # Check if preemptible instances should be used
     if [[ "$USE_PREEMPTIBLE" != "yes" ]]; then
         log_info "Preemptible instances disabled, using on-demand"
@@ -402,7 +424,12 @@ provision_preemptible_cluster() {
     fi
 }
 
-# Main execution
+# Main execution. `monitor` (used by `make monitor-preemptible`) only reports
+# status; before, it was passed on as the node count.
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    provision_preemptible_cluster "$@"
+    if [[ "${1:-}" == "monitor" ]]; then
+        monitor_preemptible_status
+    else
+        provision_preemptible_cluster "$@"
+    fi
 fi

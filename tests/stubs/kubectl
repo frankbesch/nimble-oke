@@ -1,0 +1,9 @@
+#!/bin/bash
+# Stub kubectl for tests. Never touches the network.
+echo "kubectl $*" >> "${STUB_LOG:-/dev/null}"
+case "${1:-}" in
+  version) echo '{"serverVersion":{"gitVersion":"v1.34.1-stub"}}' ;;
+  port-forward) exec sleep 3600 ;;
+  *) : ;;
+esac
+exit 0

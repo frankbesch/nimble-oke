@@ -51,18 +51,18 @@ check_pod_health() {
         ready_status=$(echo "$line" | awk '{print $2}')
         restarts=$(echo "$line" | awk '{print $4}')
         
-        ((total_pods++))
+        total_pods=$((total_pods + 1))
         
         # Check for unhealthy conditions
         if [[ "$status" != "Running" ]]; then
             log_warn "Pod $pod_name is not running (status: $status)"
-            ((unhealthy_pods++))
+            unhealthy_pods=$((unhealthy_pods + 1))
         elif [[ "$ready_status" != "1/1" ]]; then
             log_warn "Pod $pod_name is not ready ($ready_status)"
-            ((unhealthy_pods++))
+            unhealthy_pods=$((unhealthy_pods + 1))
         elif [[ "$restarts" -gt 2 ]]; then
             log_warn "Pod $pod_name has excessive restarts ($restarts)"
-            ((unhealthy_pods++))
+            unhealthy_pods=$((unhealthy_pods + 1))
         else
             log_success "Pod $pod_name is healthy"
         fi
@@ -95,13 +95,11 @@ check_service_health() {
     echo "$services" | while read -r line; do
         local service_name
         local service_type
-        local cluster_ip
-        local external_ip
+local external_ip
         
         service_name=$(echo "$line" | awk '{print $1}')
         service_type=$(echo "$line" | awk '{print $2}')
-        cluster_ip=$(echo "$line" | awk '{print $3}')
-        external_ip=$(echo "$line" | awk '{print $4}')
+external_ip=$(echo "$line" | awk '{print $4}')
         
         # Check service endpoints
         local endpoints
@@ -151,7 +149,7 @@ check_gpu_allocation() {
         
         if [[ $gpu_allocated -eq 0 ]]; then
             log_error "Pod $pod_name has no GPU allocation"
-            ((gpu_allocation_issues++))
+            gpu_allocation_issues=$((gpu_allocation_issues + 1))
         else
             log_success "Pod $pod_name has GPU allocated"
         fi
@@ -359,17 +357,17 @@ comprehensive_health_check() {
     
     # Check pod health
     if ! check_pod_health "$namespace"; then
-        ((health_issues++))
+        health_issues=$((health_issues + 1))
     fi
     
     # Check service health
     if ! check_service_health "$namespace"; then
-        ((health_issues++))
+        health_issues=$((health_issues + 1))
     fi
     
     # Check GPU allocation
     if ! check_gpu_allocation "$namespace"; then
-        ((health_issues++))
+        health_issues=$((health_issues + 1))
     fi
     
     # Check API endpoint
@@ -379,7 +377,7 @@ comprehensive_health_check() {
     if [[ -n "$service_ip" ]]; then
         if ! curl -s --connect-timeout 10 "http://$service_ip:8000/health" >/dev/null; then
             log_warn "API endpoint health check failed"
-            ((health_issues++))
+            health_issues=$((health_issues + 1))
         else
             log_success "API endpoint is healthy"
         fi
@@ -462,7 +460,7 @@ run_continuous_monitoring() {
         if ! comprehensive_health_check "$namespace"; then
             log_warn "Health check failed, initiating auto-recovery..."
             
-            ((recovery_count++))
+            recovery_count=$((recovery_count + 1))
             
             if execute_auto_recovery "$namespace" "$release_name" "$recovery_count"; then
                 log_success "Auto-recovery successful"

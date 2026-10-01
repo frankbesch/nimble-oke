@@ -1,16 +1,27 @@
-.PHONY: help discover prereqs install verify operate troubleshoot cleanup clean all session-init session-summary session-compare validate validate-quick validate-cost dry-run test-connectivity cost-simulate cost-scenarios cost-optimization budget-check cache-check cache-prewarm cache-stats cache-cleanup log-analyze deploy-parallel predict predict-setup provision-preemptible monitor-preemptible auto-recovery recovery-check recovery-stop recovery-stats region-show region-set region-current region-recommend
+.PHONY: help discover prereqs install verify operate troubleshoot cleanup clean all session-init session-summary session-compare validate validate-quick validate-cost dry-run test-connectivity cost-simulate cost-scenarios cost-optimization budget-check cache-check cache-prewarm cache-stats cache-cleanup log-analyze deploy-parallel predict predict-setup provision-preemptible monitor-preemptible auto-recovery recovery-check recovery-stop recovery-stats region-show region-set region-current region-recommend \
+	provision teardown cleanup-cluster provision-dry-run check-gpu-quota simulate-image-cache pre-deploy-test smoke-test-validate simulate-nim-deployment detect-nim-failures optimize-rapid-iteration nim-smoke-test test-inference validate-deployment status logs \
+	measured-run test lint
 
 SCRIPTS_DIR := scripts
 ENVIRONMENT ?= dev
 CONFIRM_COST ?= no
 DEBUG ?= false
+# Defaults so positional script arguments never shift when a variable is unset.
+# Rates for every shape come from scripts/_lib.sh.
+GPU_SHAPE ?= VM.GPU.A10.1
+GPU_COUNT ?= 1
+GPU_NODE_COUNT ?= 1
+DURATION ?= 5
+NAMESPACE ?= default
+RELEASE_NAME ?= nvidia-nim
+FORCE ?= no
 
 help:
 	@echo "Nimble OKE - Rapid Smoke Testing Platform"
 	@echo ""
 	@echo "Cluster Lifecycle:"
 	@echo "  make provision       → Provision OKE cluster with GPU nodes"
-	@echo "  make teardown        → Teardown entire OKE cluster"
+	@echo "  make teardown        → Teardown entire OKE cluster (the only step that stops GPU billing)"
 	@echo ""
 	@echo "Runbook Flow:"
 	@echo "  make discover        → Discover current OKE cluster state"
@@ -19,11 +30,11 @@ help:
 	@echo "  make verify          → Verify deployment health"
 	@echo "  make operate         → Show operational commands"
 	@echo "  make troubleshoot    → Run troubleshooting checks"
-	@echo "  make cleanup         → Cleanup NIM deployment"
+	@echo "  make cleanup         → Remove the NIM release only (GPU nodes keep billing)"
 	@echo ""
 	@echo "Shortcuts:"
 	@echo "  make all             → Run complete workflow (discover→install→verify)"
-	@echo "  make clean           → Alias for cleanup"
+	@echo "  make clean           → Alias for cleanup (does NOT stop GPU billing)"
 	@echo ""
 	@echo "Region Configuration:"
 	@echo "  make region-show     → Show available regions"
@@ -42,12 +53,12 @@ help:
 	@echo "  make log-analyze     → Run enhanced log analysis"
 	@echo ""
 	@echo "Advanced Deployment:"
-	@echo "  make deploy-parallel → Deploy using parallel pipeline (50% faster)"
+	@echo "  make deploy-parallel → Deploy using parallel pipeline (speed-up is an estimate, not measured)"
 	@echo "  make predict         → Run predictive diagnostics"
 	@echo "  make predict-setup   → Set up predictive monitoring"
 	@echo ""
 	@echo "Cost Optimization:"
-	@echo "  make provision-preemptible → Provision with preemptible instances (50% cost savings)"
+	@echo "  make provision-preemptible → Provision with preemptible instances (50% saving is an unverified estimate)"
 	@echo "  make monitor-preemptible   → Monitor preemptible instance status"
 	@echo ""
 	@echo "Auto-Recovery:"
@@ -70,6 +81,11 @@ help:
 	@echo "  make session-summary → Show current session summary"
 	@echo "  make session-compare → Compare with previous sessions"
 	@echo ""
+	@echo "Measured runs and checks:"
+	@echo "  make measured-run    → Show usage of scripts/run_measured.sh (does not start a run)"
+	@echo "  make test            → Run the run_measured.sh test suites (stubbed, no cloud calls)"
+	@echo "  make lint            → shellcheck all scripts + helm lint the chart"
+	@echo ""
 	@echo "Environment:"
 	@echo "  ENVIRONMENT=$(ENVIRONMENT)"
 	@echo "  CONFIRM_COST=$(CONFIRM_COST)"
@@ -80,8 +96,8 @@ help:
 	@echo "  make discover"
 	@echo "  make install CONFIRM_COST=yes"
 	@echo "  make troubleshoot DEBUG=true"
-	@echo "  make cleanup"
-	@echo "  make teardown"
+	@echo "  make cleanup         # NIM release only; GPU nodes still bill"
+	@echo "  make teardown        # stops GPU billing"
 
 discover:
 	@echo "[NIM-OKE] Running discovery..."
@@ -208,8 +224,8 @@ pre-deploy-test:
 smoke-test-validate:
 	@echo "[NIM-OKE] Validating smoke test readiness..."
 	@DRY_RUN=true $(SCRIPTS_DIR)/pre-execution-validation.sh 5 1
-	@$(SCRIPTS_DIR)/check-gpu-quota.sh VM.GPU.A10.4 $(OCI_REGION)
-	@$(SCRIPTS_DIR)/cost-simulation.sh 5 1 VM.GPU.A10.4 validate
+	@$(SCRIPTS_DIR)/check-gpu-quota.sh $(GPU_SHAPE) $(OCI_REGION)
+	@$(SCRIPTS_DIR)/cost-simulation.sh 5 1 $(GPU_SHAPE) validate
 
 # NIM-specific testing and optimization
 simulate-nim-deployment:
@@ -275,7 +291,9 @@ predict:
 
 predict-setup:
 	@echo "[NIM-OKE] Setting up predictive monitoring..."
-	@$(SCRIPTS_DIR)/predictive-diagnostics.sh && kubectl apply -f /tmp/nim-monitoring-config.yaml || true
+	@# The script applies the monitoring ConfigMap itself when PREDICT_SETUP=yes.
+	@# (The old recipe applied /tmp/nim-monitoring-config.yaml, which nothing wrote.)
+	@PREDICT_SETUP=yes NAMESPACE=$(NAMESPACE) $(SCRIPTS_DIR)/predictive-diagnostics.sh
 
 # Preemptible instance provisioning
 provision-preemptible:
@@ -312,7 +330,7 @@ nim-smoke-test:
 	@echo ""
 	@$(SCRIPTS_DIR)/optimize-rapid-iteration.sh
 	@echo ""
-	@$(SCRIPTS_DIR)/cost-simulation.sh 5 1 VM.GPU.A10.4 validate
+	@$(SCRIPTS_DIR)/cost-simulation.sh 5 1 $(GPU_SHAPE) validate
 
 test-inference:
 	@echo "[NIM-OKE] Testing inference API..."
@@ -329,5 +347,16 @@ status:
 
 logs:
 	@echo "[NIM-OKE] Fetching logs..."
-	@kubectl logs -l app.kubernetes.io/name=nvidia-nim --tail=100 -n default 2>/dev/null || echo "No logs available"
+	@kubectl logs -l app.kubernetes.io/name=nvidia-nim --tail=100 -n $(NAMESPACE) 2>/dev/null || echo "No logs available"
+
+# Measured run: print usage only; starting a run (which bills) is a manual step.
+measured-run:
+	@$(SCRIPTS_DIR)/run_measured.sh --help
+
+test:
+	bash tests/run_measured_test.sh && bash tests/run_measured_reliability_test.sh
+
+lint:
+	shellcheck -x -S warning $(SCRIPTS_DIR)/*.sh setup-env.sh fix-oci-auth.sh
+	helm lint helm --set ngc.apiKey=dummy
 

@@ -64,7 +64,6 @@ run_install_phase() {
     log_info "Installing NIM..."
     
     # Simulate installation with potential delays
-    local install_start=$(date +%s)
     
     # Simulate image pull delay
     log_info "Pulling NVIDIA NIM image..."
@@ -129,7 +128,8 @@ main() {
     run_verify_phase
     
     # Calculate final performance metrics
-    local efficiency_score=$(scripts/session-tracker.sh calculate-performance 2>/dev/null || echo "0")
+    local efficiency_score
+    efficiency_score=$(scripts/session-tracker.sh calculate-performance 2>/dev/null || echo "0")
     
     log_success "Workflow completed with efficiency score: ${efficiency_score}%"
     

@@ -19,11 +19,11 @@
 - ✅ Cost simulation and optimization analysis
 - ✅ Security optimization for NIM compatibility
 - ✅ Comprehensive documentation
-- ✅ Mathematical performance modeling (48min → 12min optimization)
+- ✅ Mathematical performance modeling (48 min → 12 min; estimate (static assumption, not measured))
 - ✅ Failure detection and troubleshooting frameworks
 
 #### What Needs Testing:
-- ⏳ GPU quota approval (CAM-247648)
+- ⏳ GPU quota approval
 - ⏳ Actual cluster provisioning
 - ⏳ Real NIM deployment validation
 - ⏳ Performance timing validation
@@ -31,7 +31,7 @@
 
 #### Key Features:
 - **Simulation Framework**: Complete pre-deployment testing without infrastructure costs
-- **Cost Optimization**: 70% deployment time reduction through caching strategies
+- **Cost Optimization**: caching strategies; the 70% time reduction is an estimate (static assumption, not measured)
 - **Security Optimization**: NIM-compatible security settings
 - **Mathematical Modeling**: Realistic performance and cost projections
 - **Comprehensive Testing**: Failure detection and rapid iteration optimization
@@ -43,7 +43,7 @@
 - Topology spread constraints disabled for single-zone testing
 
 #### Next Steps:
-1. **GPU Quota Approval**: Wait for CAM-247648 approval
+1. **GPU Quota Approval**: Wait for the `gpu-a10-count` limit increase
 2. **Initial Deployment**: Validate all configurations with real infrastructure
 3. **Performance Validation**: Measure actual deployment times vs simulated
 4. **Cost Validation**: Verify actual costs vs projected costs
@@ -70,7 +70,7 @@
 - **v0.1.0-20251013-dev**: First development version (current)
 - **v0.1.0**: First stable version (after GPU quota validation)
 - **v0.2.0**: Performance-validated version (after real deployment testing)
-- **v1.0.0**: Production-ready version (after comprehensive validation)
+- **v1.0.0**: Stable release (after comprehensive validation)
 
 ## Testing Requirements
 

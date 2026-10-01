@@ -17,7 +17,7 @@ Nimble OKE is a platform engineering framework for ultra-fast, cost-efficient sm
 | Principle | Implementation | Benefit |
 |-----------|----------------|---------|
 | **Speed** | Deploy and validate in minutes | Rapid iteration cycles |
-| **Cost-Conscious** | Complete smoke test for ~$62.20 (simulated) | Predictable spending |
+| **Cost-Conscious** | 5-hour smoke test ≈ $10.50 (5 h × $2.10/hr), plus load balancer and block storage | Predictable spending |
 | **Idempotent** | Every operation safe to re-run | No errors on retry |
 | **Fail-Safe** | Automatic cleanup on errors | No resource leaks |
 | **Production Patterns** | Enterprise-grade from day one | Real-world readiness |
@@ -122,7 +122,7 @@ docs/api-examples.md           # API usage examples
 
 | Category | Setting | Purpose |
 |----------|---------|---------|
-| **Security (NIM-Optimized)** | `runAsNonRoot: true` - Non-root execution (UID 1000)<br/>`allowPrivilegeEscalation: false` - No privilege escalation<br/>`capabilities.drop: ALL` - Minimal capabilities<br/>`readOnlyRootFilesystem: false` - Required for NIM temp files<br/>`seccompProfile: disabled` - **Required** for NIM GPU syscall compatibility | Production-ready security |
+| **Security (NIM-Optimized)** | `runAsNonRoot: true` - Non-root execution (UID 1000)<br/>`allowPrivilegeEscalation: false` - No privilege escalation<br/>`capabilities.drop: ALL` - Minimal capabilities<br/>`readOnlyRootFilesystem: false` - Required for NIM temp files<br/>`seccompProfile: disabled` - **Required** for NIM GPU syscall compatibility | Least privilege within NIM constraints |
 | **High Availability** | `topologySpreadConstraints: disabled` - Single-zone dev<br/>`nodeAffinity` - Required GPU node placement<br/>`tolerations` - GPU taint toleration<br/>Optimized health probes - faster detection | Development-optimized HA |
 | **Operations** | `checksum/config` annotation - Auto-restart on changes<br/>Optimized health probes (15s readiness, 45s liveness)<br/>Resource limits (CPU, memory, GPU) | Operational efficiency |
 
@@ -132,12 +132,11 @@ docs/api-examples.md           # API usage examples
 
 | Component | Cost |
 |-----------|------|
-| GPU Node (VM.GPU.A10.4) | $61.20 |
-| OKE Control Plane | $0.50 |
-| ENHANCED Cluster | $0.50 |
-| Storage (200GB PVC) | $0.25 |
-| LoadBalancer | $0.07 |
-| **Total** | **~$62.52** |
+| GPU node (VM.GPU.A10.1, 5 h × $2.00) | $10.00 |
+| OKE enhanced cluster (5 h × $0.10) | $0.50 |
+| Storage (200GB PVC) | not verified here |
+| LoadBalancer | not verified here |
+| **Total** | **$10.50, plus load balancer and block storage** |
 
 ### Cost Optimization Features
 
@@ -151,13 +150,15 @@ docs/api-examples.md           # API usage examples
 
 ### Alternative Scenarios
 
-- **Multiple smoke tests (3x):** ~$43-65
-- **Extended testing (10 hrs):** ~$29
-- **24/7 running:** ~$2,077/month ⚠️
+Each figure is hours × $2.10/hr, plus load balancer and block storage:
+
+- **Multiple smoke tests (3 × 5 h):** $31.50
+- **Extended testing (10 h):** $21.00
+- **24/7 running (730 h):** $1,533/month
 
 ## System Requirements
 
-**VM.GPU.A10.4 shape:** 4× A10 GPU (96GB), 64 OCPUs, 960GB RAM, $12.24/hr - exceeds all NVIDIA NIM requirements.
+**VM.GPU.A10.1 shape (default):** 1× A10 GPU (24 GB), 15 OCPU, 240 GB RAM, $2.00/hr. NVIDIA's support matrix does not list OCI's A10 for this model; it runs under NVIDIA's generic "sufficient memory" configuration (FP16), which is not guaranteed.
 
 **📖 Full requirements:** [docs/setup-prerequisites.md](docs/setup-prerequisites.md)
 
@@ -172,7 +173,7 @@ docs/api-examples.md           # API usage examples
 | **Structured Logging** | [NIM-OKE][LEVEL] format | Parseable output |
 | **Comprehensive Diagnostics** | make troubleshoot | Systematic resolution |
 
-**📚 Complete details:** [README.md - Platform Features](README.md#platform-features)
+**📚 Complete details:** [README.md - Platform Features](README.md#what-it-deploys)
 
 ## Comparison to Original
 
@@ -188,8 +189,8 @@ docs/api-examples.md           # API usage examples
 | **Session Tracking** | None | Cost + duration tracking |
 | **Security** | Basic | NIM-optimized (non-root, capabilities, topology disabled) |
 | **Testing Framework** | None | Complete simulation without infrastructure costs |
-| **Performance Optimization** | None | 70% deployment time reduction (48min → 12min) |
-| **Cost Engineering** | None | 75% cost reduction ($62.52 → $12.44 per iteration) |
+| **Performance Optimization** | None | Caching strategy; 48 min → 12 min is an estimate (static assumption, not measured) |
+| **Cost Engineering** | None | Per-iteration cost model; savings are estimates, not measured |
 
 ## Success Metrics
 
@@ -201,17 +202,17 @@ docs/api-examples.md           # API usage examples
 - API responding
 - cleanup successful
 
-**Performance:**
+**Performance (estimate (static assumption, not measured)):**
 - discovery: <30 seconds
 - prerequisites: <1 minute
 - deployment: 5-10 minutes (cached) or 45-60 minutes (first time)
 - verification: <1 minute
 - cleanup: 1-2 minutes
 
-**Cost (simulated):**
-- smoke test: ~$62.20 (5 hours)
-- hourly: ~$12.44
-- model cache preservation saves $6.00 per re-deployment
+**Cost (from the fact-checked rates):**
+- smoke test: $10.50 (5 hours), plus load balancer and block storage
+- hourly: $2.10, plus load balancer and block storage
+- model cache preservation avoids a repeat model download; the saving is not measured
 
 ## Next Steps
 

@@ -1,20 +1,24 @@
 #!/usr/bin/env bash
 
 # Image pre-caching simulation for Nimble OKE
-# Estimates time and costs for image pre-caching strategies
+# Estimates time and costs for image pre-caching strategies.
+# NOTHING HERE IS MEASURED: sizes, bandwidths, times, and the OCIR storage
+# cost are static assumptions and are printed as ESTIMATE.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/_lib.sh"
 
-readonly NIM_IMAGE="nvcr.io/nvidia/nim/nim_llama2_7b:latest"
-readonly NIM_IMAGE_SIZE_GB=15  # Approximate size
+readonly EST="ESTIMATE (static assumption, not measured)"
+# Deployed image (helm/values.yaml): Llama 3 8B Instruct.
+readonly NIM_IMAGE="nvcr.io/nim/meta/llama3-8b-instruct:1.0.3"
+readonly NIM_IMAGE_SIZE_GB=15  # assumption, not measured
 readonly DEVICE_PLUGIN_IMAGE="nvcr.io/nvidia/k8s-device-plugin:v0.14.1"
 readonly DEVICE_PLUGIN_SIZE_GB=0.5
 
 simulate_image_pull_time() {
-    local image="$1"
+    # $1 = image reference (kept for callers; the estimate uses only size)
     local image_size_gb="$2"
     local bandwidth_mbps="${3:-100}"  # Default 100 Mbps
     
@@ -32,7 +36,7 @@ simulate_image_pull_time() {
 simulate_image_caching_strategies() {
     echo ""
     echo "==============================================================="
-    echo "IMAGE PRE-CACHING SIMULATION"
+    echo "IMAGE PRE-CACHING SIMULATION - $EST"
     echo "==============================================================="
     echo ""
     
@@ -43,7 +47,7 @@ simulate_image_caching_strategies() {
         "500:Very fast connection"
     )
     
-    echo "Image Pull Time Estimates:"
+    echo "Image Pull Time - $EST (sizes ${NIM_IMAGE_SIZE_GB}GB / ${DEVICE_PLUGIN_SIZE_GB}GB, 20% overhead):"
     echo "┌─────────────────────────────────────────────────────────────────────────┐"
     printf "│ %-20s │ %-15s │ %-15s │ %-15s │\n" "Connection Speed" "NIM Image (15GB)" "Device Plugin (0.5GB)" "Total Time"
     echo "├─────────────────────────────────────────────────────────────────────────┤"
@@ -74,7 +78,7 @@ simulate_image_caching_strategies() {
 }
 
 simulate_node_warmup_strategies() {
-    echo "Node Warmup Strategies:"
+    echo "Node Warmup Strategies (times and costs are $EST):"
     echo ""
     
     echo "1. PRE-PULL STRATEGY (Recommended):"
@@ -88,7 +92,7 @@ simulate_node_warmup_strategies() {
     echo "   • Use OCI Container Registry (OCIR)"
     echo "   • Pre-pull to OCIR during setup"
     echo "   • Time: +10-15 minutes setup"
-    echo "   • Cost: ~$0.50 for storage"
+    echo "   • Cost: ~\$0.50 for storage (unverified)"
     echo "   • Benefit: Consistent pull times"
     echo ""
     
@@ -101,7 +105,7 @@ simulate_node_warmup_strategies() {
 }
 
 simulate_deployment_time_impact() {
-    echo "Deployment Time Impact Analysis:"
+    echo "Deployment Time Impact Analysis - $EST:"
     echo ""
     
     local scenarios=(
@@ -125,13 +129,13 @@ simulate_deployment_time_impact() {
 }
 
 recommend_optimization_strategy() {
-    echo "Recommended Optimization Strategy:"
+    echo "Recommended Optimization Strategy (times and costs are $EST):"
     echo ""
     echo "🎯 HYBRID APPROACH:"
     echo ""
     echo "1. IMMEDIATE (No additional time/cost):"
     echo "   • Enable pre-pull in node initialization"
-    echo "   • Use image pull policies: Always"
+    echo "   • Use image pull policy IfNotPresent (Always re-pulls and defeats pre-pulling)"
     echo "   • Add readiness probes with longer initial delay"
     echo ""
     echo "2. SHORT-TERM (+2-3 minutes setup):"
@@ -139,16 +143,15 @@ recommend_optimization_strategy() {
     echo "   • Cache NVIDIA device plugin image"
     echo "   • Use image pull secrets for faster authentication"
     echo ""
-    echo "3. LONG-TERM (+10 minutes, +$0.50):"
+    echo "3. LONG-TERM (+10 minutes, +\$0.50 unverified):"
     echo "   • Set up OCIR mirror for NIM images"
     echo "   • Implement image warming scripts"
     echo "   • Use image pre-caching in CI/CD"
     echo ""
     
-    echo "Expected Results:"
+    echo "Expected Results - $EST:"
     echo "  • Pod startup time: 8min → 2min"
-    echo "  • Deployment reliability: +95%"
-    echo "  • Network dependency: -80%"
+    echo "  • Fewer network-dependent pulls at pod start (not quantified)"
     echo ""
 }
 
@@ -160,7 +163,7 @@ main() {
     simulate_deployment_time_impact
     recommend_optimization_strategy
     
-    log_success "✅ Image caching simulation complete"
+    log_info "Image caching simulation complete (estimates only, nothing measured)"
 }
 
 # Usage

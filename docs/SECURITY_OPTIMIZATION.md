@@ -1,5 +1,9 @@
 # Security Configuration Optimization for NIM Deployment
 
+*Historical working note from October 2025; figures corrected 2026-10-01. See README for current status.*
+
+> **Current state (2026-10-01):** the chart applies no pod hardening. `podSecurityContext` is empty, so the container runs as the image's default user with no fsGroup and no seccomp profile. The container context sets only `readOnlyRootFilesystem: false`. Privilege escalation is allowed and no capabilities are dropped. Hardening is untested with NIM.
+
 ## Overview
 
 This document outlines the security optimizations made to minimize deployment time, costs, and troubleshooting complexity while maintaining appropriate security for NIM deployments.
@@ -49,22 +53,25 @@ topologySpreadConstraints:
 
 **Trade-off**: Faster deployment vs slightly more probe traffic.
 
-## Security Best Practices Maintained
+## Security Settings in the Current Chart
 
-### ✅ Maintained Security Features
+### Applied
 
-1. **Non-root execution**: `runAsNonRoot: true`
-2. **Specific user ID**: `runAsUser: 1000`
-3. **Privilege escalation prevention**: `allowPrivilegeEscalation: false`
-4. **Capability dropping**: `drop: [ALL]`
-5. **GPU node selection**: Specific NVIDIA A10 targeting
-6. **Resource limits**: CPU and memory constraints
-7. **Service account**: Dedicated service account with minimal permissions
+1. **GPU node selection**: `nvidia.com/gpu.present: "true"` (any NVIDIA GPU node)
+2. **Resource limits**: CPU, memory, and GPU limits
+3. **Service account**: dedicated service account
 
-### ⚠️ Security Trade-offs
+### Not Applied (Untested with NIM)
+
+1. **Non-root execution**: `runAsNonRoot` is not set; the image's default user runs
+2. **Privilege escalation prevention**: `allowPrivilegeEscalation: false` is not set
+3. **Capability dropping**: no capabilities are dropped
+4. **Seccomp**: no profile is set
+
+### Trade-offs
 
 1. **Writable root filesystem**: Required for NIM temp files and cache
-2. **Disabled seccomp**: Required for GPU syscalls (temporary)
+2. **No seccomp profile**: chosen to avoid blocking GPU syscalls (untested)
 3. **Disabled topology spread**: Required for single-zone testing
 
 ## Deployment Optimization Impact
@@ -126,12 +133,12 @@ kubectl describe pod <nim-pod>
 # Check applied security context
 kubectl get pod <nim-pod> -o jsonpath='{.spec.securityContext}'
 
-# Verify non-root execution
+# Show the runtime user (the chart does not force non-root)
 kubectl exec <nim-pod> -- id
 ```
 
 ## Conclusion
 
-These optimizations prioritize deployment success and troubleshooting ease while maintaining core security principles. The configuration can be progressively hardened as the deployment matures and requirements become clearer.
+These settings prioritize deployment success and troubleshooting ease. The pod is not hardened. The configuration can be progressively hardened as the deployment matures and requirements become clearer.
 
 **Key Principle**: Start with working deployment, then incrementally enhance security based on actual requirements and constraints.

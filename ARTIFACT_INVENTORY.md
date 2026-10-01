@@ -249,7 +249,6 @@ All artifacts:
 - Documentation complete
 - Legacy removed
 - Tested patterns
-- Production-ready
 
 ## Next Actions
 

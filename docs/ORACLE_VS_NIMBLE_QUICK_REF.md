@@ -1,7 +1,11 @@
 # Oracle Blog vs Nimble OKE - Quick Reference
 
-> **📖 Reading time:** 6 minutes  
-> **⚡ Quick reference** - 1-page decision guide
+> **Reading time:** 6 minutes  
+> **Quick reference** - 1-page decision guide
+
+*Historical working note from October 2025; figures corrected 2026-10-01. See README for current status.*
+
+Statements about the Oracle blog are as of October 2025, not re-verified. Nimble OKE times are estimate (static assumption, not measured).
 
 **1-page decision guide for choosing the right approach**
 
@@ -29,59 +33,51 @@
 
 ---
 
-## ⚡ Quick Comparison
+## Quick Comparison
 
-| Feature | Oracle Blog | Nimble OKE | Winner |
-|---------|-------------|------------|---------|
-| **Setup Time** | 60-90min | 12-48min | 🏆 Nimble |
-| **Cost (5hr test)** | ~$14.42 | ~$14.42 | Tie |
-| **Model Storage** | Object Storage | Block Volume | Oracle (centralized) |
-| **Scalability** | HPA (automatic) | Manual | 🏆 Oracle |
-| **Cost Guards** | None | Built-in | 🏆 Nimble |
-| **Monitoring** | Full (Prom+Graf) | Logs only | 🏆 Oracle |
-| **Idempotency** | Not specified | 100% | 🏆 Nimble |
-| **Cleanup** | Manual | Automatic | 🏆 Nimble |
-| **Optimization** | TensorRT-LLM | Stock NIM | 🏆 Oracle |
+| Feature | Oracle Blog | Nimble OKE |
+|---------|-------------|------------|
+| **Setup Time** | Not re-verified | Not measured yet |
+| **Cost (5hr test)** | Not re-verified | $10.50 (5 h × $2.10), plus LB and storage |
+| **Model Storage** | Object Storage | Block Volume |
+| **Scalability** | HPA (automatic) | Manual |
+| **Cost Guards** | None | Built-in |
+| **Monitoring** | Full (Prom+Graf) | Logs only |
+| **Idempotency** | Not specified | 100% |
+| **Cleanup** | Manual | Automatic on failure |
+| **Optimization** | TensorRT-LLM | Stock NIM |
 
-**Summary:** Oracle wins on production features (monitoring, scalability, optimization). Nimble wins on developer experience (speed, automation, cost control).
+**Summary:** The Oracle blog covers production features (monitoring, scalability, optimization). Nimble OKE covers developer workflow (automation, cost guards).
 
 ---
 
-## 💰 Cost Comparison
+## Cost Comparison
 
 ### Nimble OKE (Current)
 ```
-Hourly: $2.88
-5-hour test: $14.42
-24/7 month: $2,077
+Hourly: $2.10, plus load balancer and block storage
+5-hour test: $10.50 (5 h × $2.10)
+24/7 month: $1,533 (730 h × $2.10)
 
 Components:
-• GPU (A10): $2.62/hr
-• Control plane: $0.10/hr
-• ENHANCED: $0.10/hr
-• Storage (200GB): $0.05/hr
-• LB (10 Mbps): $0.0144/hr
+• GPU (VM.GPU.A10.1): $2.00/hr
+• ENHANCED cluster: $0.10/hr (no separate control-plane charge)
+• Storage and LB: not verified here
 ```
 
 ### Oracle Blog (Production Pattern)
 ```
-Hourly: Similar base + monitoring overhead
-5-hour test: ~$16-18 (with monitoring stack)
-24/7 month: $2,200-2,500 (includes observability)
-
-Additional:
-• Prometheus: ~$0.05/hr
-• Grafana: ~$0.03/hr
-• Object Storage: $0.0255/GB-month
+Hourly: same base + monitoring overhead
+Monitoring and Object Storage costs: not verified here
 ```
 
 ---
 
-## 🔑 Key Differentiators
+## Key Differentiators
 
-| Category | Oracle Blog Wins | Nimble OKE Wins |
+| Category | Oracle Blog Strengths | Nimble OKE Strengths |
 |----------|------------------|-----------------|
-| **Storage** | ✅ Centralized model repository (Object Storage)<br/>✅ Multi-environment model sharing | ✅ 70% faster deployments (PVC caching)<br/>✅ Session cost tracking |
+| **Storage** | ✅ Centralized model repository (Object Storage)<br/>✅ Multi-environment model sharing | ✅ PVC model caching (speedup not measured)<br/>✅ Session cost tracking |
 | **Operations** | ✅ Production observability (metrics, dashboards)<br/>✅ Autoscaling (HPA-based) | ✅ 100% idempotent (safe re-runs)<br/>✅ Automatic cleanup (fail-safe)<br/>✅ Runbook automation (Makefile) |
 | **Performance** | ✅ Performance optimization (TensorRT-LLM) | ✅ Proactive cost guards (prevent surprise bills) |
 
@@ -92,8 +88,8 @@ Additional:
 | Capability | Oracle Blog | Nimble OKE |
 |------------|-------------|------------|
 | **Deployment** |
-| First deployment | ~60min | ~48min |
-| Subsequent deployments | ~60min (no cache) | ~12min (cached) |
+| First deployment | Not re-verified | Not measured yet |
+| Subsequent deployments | Not re-verified | Not measured yet |
 | Helm-based | ✅ | ✅ |
 | Makefile automation | ❌ | ✅ |
 | **Storage** |
@@ -132,10 +128,10 @@ Additional:
 ```bash
 # Fast iteration, cost-controlled testing
 make provision CONFIRM_COST=yes  # 15min
-make install                      # 12-48min
+make install
 make verify                       # 2min
 make cleanup                      # 2min
-# Total: <1 hour, $14.42 for 5hr test
+# Cost: $10.50 for a 5-hour test, plus LB and storage
 ```
 
 **Phase 2: Adopt Oracle Patterns (Gradual)**
@@ -162,9 +158,9 @@ helm upgrade --set model.optimization.tensorrt=true
 | **First-time NIM evaluation** | Nimble OKE | Fast setup, cost guards prevent mistakes, idempotent operations safe to retry |
 | **Multi-environment CI/CD (dev/stage/prod)** | Oracle Blog pattern | Centralized model repository, Object Storage versioning, autoscaling |
 | **Production 24/7 inference service** | Oracle Blog + Nimble automation | Need monitoring, autoscaling, but want Nimble's cleanup/idempotency |
-| **Cost-sensitive POC (<$50 budget)** | Nimble OKE | Time-boxed testing, cost guards, automatic cleanup prevents overspend |
+| **Cost-sensitive POC (small budget)** | Nimble OKE | Time-boxed testing, cost guards, automatic cleanup prevents overspend |
 | **Performance-critical production (low latency)** | Oracle Blog pattern | TensorRT-LLM, quantization, optimization pipeline |
-| **Rapid iteration during development** | Nimble OKE | 70% faster re-deployments via PVC caching, idempotent operations |
+| **Rapid iteration during development** | Nimble OKE | PVC model caching, idempotent operations |
 
 ---
 
@@ -214,12 +210,12 @@ helm install nim ./helm -f values.prod.yaml
 
 ---
 
-## 📊 Performance Expectations
+## Performance Expectations
 
 | Metric | Oracle Blog Pattern | Nimble OKE Pattern |
 |--------|-------------------|-------------------|
-| **First deployment** | ~60min (download from Object Storage) | ~48min (download + cache to PVC) |
-| **Subsequent deployments** | ~60min (no persistent cache) | ~12min (cached models) |
+| **First deployment** | Download from Object Storage | Download + cache to PVC (time not measured) |
+| **Subsequent deployments** | No persistent cache | Cached models (time not measured) |
 | **Inference latency** | Lower (with TensorRT-LLM) | Standard (stock NIM) |
 | **Throughput** | Higher (with optimization) | Standard (stock NIM) |
 
@@ -232,7 +228,7 @@ helm install nim ./helm -f values.prod.yaml
 # Manual Helm deployment
 helm repo add oci https://...
 kubectl create namespace nim
-kubectl create secret docker-registry ngc-secret --docker-server=nvcr.io
+kubectl create secret docker-registry <pull-secret> --docker-server=nvcr.io
 helm install nim oci/nvidia-nim -n nim -f values.yaml
 kubectl wait --for=condition=ready pod -l app=nim --timeout=1200s
 ```
@@ -243,7 +239,8 @@ kubectl wait --for=condition=ready pod -l app=nim --timeout=1200s
 export NGC_API_KEY=nvapi-xxx
 make provision CONFIRM_COST=yes  # Create cluster (once)
 make install                      # Deploy + verify
-make cleanup                      # Remove deployment
+make cleanup                      # Remove NIM release only
+make teardown                     # Delete node pool + cluster (stops GPU billing)
 ```
 
 ---
@@ -273,5 +270,5 @@ make cleanup                      # Remove deployment
 
 ---
 
-**Quick decision:** Dev/test → Nimble OKE | Production → Oracle Blog pattern | Best → Hybrid approach
+**Quick decision:** Dev/test → Nimble OKE | Production → Oracle Blog pattern | Both → Hybrid approach
 

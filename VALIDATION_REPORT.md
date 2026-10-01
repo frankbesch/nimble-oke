@@ -1,5 +1,9 @@
 # Nimble OKE - Validation Report
 
+*Historical working note from October 2025; figures corrected 2026-10-01. See README for current status.*
+
+No run receipt was kept for the results below.
+
 Comprehensive validation of spelling, URLs, and configuration.
 
 ## Summary
@@ -286,6 +290,8 @@ annotations:
 
 ## Performance Metrics
 
+Estimate (static assumption, not measured):
+
 | Operation | Expected Time | Notes |
 |-----------|---------------|-------|
 | `make discover` | <30 seconds | Cluster state query |
@@ -300,15 +306,15 @@ annotations:
 
 ### Smoke Test (5 hours)
 
-| Component | Validated Cost |
+| Component | Cost (rates checked 2026-10-01) |
 |-----------|----------------|
-| VM.GPU.A10.1 | $13.10 |
-| OKE Control | $0.50 |
-| Storage | $0.25 |
-| LoadBalancer | $6.25 |
-| **Total** | **~$14.42** |
+| VM.GPU.A10.1 (5 h × $2.00) | $10.00 |
+| OKE enhanced cluster (5 h × $0.10) | $0.50 |
+| Storage | not verified here |
+| LoadBalancer | not verified here |
+| **Total** | **$10.50, plus load balancer and block storage** |
 
-**Result:** Cost estimates accurate
+**Result:** The October 2025 figures used a wrong GPU rate; corrected above. Not checked against a bill.
 
 ### Guard Behavior
 
@@ -334,6 +340,8 @@ annotations:
 
 ### Quality Score
 
+Self-assessed in October 2025; no receipt.
+
 **Platform Engineering:** 100%  
 **Documentation:** 100%  
 **Security:** 100%  
@@ -354,7 +362,7 @@ All platform engineering features validated:
 - Complete documentation provided
 - Legacy code fully removed
 
-**Recommendation:** Ready for production smoke testing.
+**Recommendation:** Ready for smoke testing.
 
 ---
 

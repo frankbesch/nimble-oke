@@ -1,5 +1,7 @@
 # Nimble OKE - Platform Engineering Verification Report
 
+*Historical working note from October 2025; figures corrected 2026-10-01. See README for current status.*
+
 **Status:** Smoke-Test Ready
 
 ## Executive Summary
@@ -223,7 +225,7 @@ kubectl get nodes \
 - Makefile-driven runbooks
 - Cost guards and safety
 - Idempotent operations
-- Production-grade patterns
+- Operational patterns (guards, cleanup hooks, idempotency)
 - Rapid smoke testing focus
 
 ## Success Criteria - All Met
@@ -239,6 +241,8 @@ kubectl get nodes \
 - All scripts executable and validated
 
 ## Platform Engineering Score
+
+Self-assessed in October 2025; no receipt.
 
 | Category | Score | Details |
 |----------|-------|---------|
@@ -265,7 +269,7 @@ kubectl get nodes \
 1. Test complete workflow: `make all`
 2. Verify cost guards: Try without CONFIRM_COST
 3. Test idempotency: Run `make install` twice
-4. Validate cleanup: Run `make cleanup`
+4. Validate cleanup: Run `make cleanup` (NIM release only), then `make teardown` to stop GPU billing
 5. Review runbook: Read `docs/RUNBOOK.md`
 
 ---

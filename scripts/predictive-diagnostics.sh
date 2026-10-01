@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Predictive Diagnostics Engine for NVIDIA NIM on OKE
 # Proactive pattern detection and prevention recommendations
@@ -10,9 +10,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/_lib.sh"
 
 # Configuration
-NAMESPACE="${NAMESPACE:-nim}"
-NIM_MODEL="${NIM_MODEL:-meta/llama-3.1-8b-instruct}"
-PREDICTION_OUTPUT="/tmp/nim-predictions.json"
+# Same default namespace as deploy.sh and the other runbook scripts.
+NAMESPACE="${NAMESPACE:-default}"
+# Deployed image: nvcr.io/nim/meta/llama3-8b-instruct:1.0.3 (Llama 3 8B Instruct)
+NIM_MODEL="${NIM_MODEL:-meta/llama3-8b-instruct}"
+# Cluster changes (monitoring namespace + ConfigMap) only when asked:
+# `make predict-setup` sets PREDICT_SETUP=yes; `make predict` only reads.
+PREDICT_SETUP="${PREDICT_SETUP:-no}"
+RECOMMENDATIONS_FILE=""
 
 log_info "Predictive Diagnostics Engine initialized"
 log_info "Namespace: $NAMESPACE"
@@ -52,8 +57,15 @@ check_model_compatibility() {
     local system_memory
     local model_memory_requirement
     
-    # Get GPU memory from node capacity
-    gpu_memory=$(kubectl get nodes -l nvidia.com/gpu.present=true -o jsonpath='{.items[0].status.capacity.nvidia\.com/gpu}' | sed 's/GB//' || echo "0")
+    # GPU memory = GPUs on the first GPU node x 24 GB (NVIDIA A10).
+    # (The capacity field is a GPU COUNT, not gigabytes.)
+    local node_gpus
+    if ! node_gpus=$(kubectl get nodes -l nvidia.com/gpu.present=true -o jsonpath='{.items[0].status.capacity.nvidia\.com/gpu}' 2>/dev/null) \
+            || ! [[ "$node_gpus" =~ ^[0-9]+$ ]]; then
+        log_error "Could not read GPU capacity from the cluster (kubectl failed or no GPU node)"
+        return 1
+    fi
+    gpu_memory=$((node_gpus * 24))
     
     # Get system memory from node capacity
     system_memory=$(kubectl get nodes -l nvidia.com/gpu.present=true -o jsonpath='{.items[0].status.capacity.memory}' | sed 's/Ki//' | head -c -2 || echo "0")
@@ -61,11 +73,11 @@ check_model_compatibility() {
     
     # Model memory requirements lookup
     case "$model" in
-        "meta/llama-3.1-8b-instruct")
-            model_memory_requirement=24  # 24GB GPU memory
+        "meta/llama3-8b-instruct")
+            model_memory_requirement=24  # 24GB GPU memory (approximate)
             ;;
-        "meta/llama-3.1-70b-instruct")
-            model_memory_requirement=80  # 80GB GPU memory
+        "meta/llama3-70b-instruct")
+            model_memory_requirement=80  # 80GB GPU memory (approximate)
             ;;
         "meta/codellama-34b-instruct")
             model_memory_requirement=68  # 68GB GPU memory
@@ -105,23 +117,23 @@ suggest_model_alternatives() {
     local requested_model="$1"
     local available_gpu_memory="$2"
     
-    log_info "Suggested alternatives for ${available_gpu_memory}GB GPU memory:"
+    log_info "Suggested alternatives to $requested_model for ${available_gpu_memory}GB GPU memory:"
     
     case "$available_gpu_memory" in
         24)
-            log_info "  ✅ meta/llama-3.1-8b-instruct (requires 24GB)"
-            log_info "  ✅ meta/codellama-7b-instruct (requires 14GB)"
+            log_info "  ✅ meta/llama3-8b-instruct (requires ~24GB)"
+            log_info "  ✅ meta/codellama-7b-instruct (requires ~14GB)"
             ;;
         40)
-            log_info "  ✅ meta/llama-3.1-8b-instruct (requires 24GB)"
-            log_info "  ✅ meta/codellama-34b-instruct (requires 34GB)"
-            log_info "  ❌ meta/llama-3.1-70b-instruct (requires 80GB)"
+            log_info "  ✅ meta/llama3-8b-instruct (requires ~24GB)"
+            log_info "  ✅ meta/codellama-34b-instruct (requires ~34GB)"
+            log_info "  ❌ meta/llama3-70b-instruct (requires ~80GB)"
             ;;
         80)
             log_info "  ✅ All models supported:"
-            log_info "    - meta/llama-3.1-8b-instruct (requires 24GB)"
-            log_info "    - meta/codellama-34b-instruct (requires 34GB)"
-            log_info "    - meta/llama-3.1-70b-instruct (requires 80GB)"
+            log_info "    - meta/llama3-8b-instruct (requires ~24GB)"
+            log_info "    - meta/codellama-34b-instruct (requires ~34GB)"
+            log_info "    - meta/llama3-70b-instruct (requires ~80GB)"
             ;;
         *)
             log_info "  ❓ Unknown GPU memory size, checking compatibility..."
@@ -138,7 +150,7 @@ check_network_connectivity() {
     # Check NGC connectivity
     if ! curl -s --connect-timeout 10 "https://nvcr.io" >/dev/null; then
         log_error "NGC registry connectivity failed"
-        ((connectivity_issues++))
+        connectivity_issues=$((connectivity_issues + 1))
     else
         log_success "NGC registry connectivity verified"
     fi
@@ -147,7 +159,7 @@ check_network_connectivity() {
     if ! curl -s --connect-timeout 10 "https://objectstorage.${OCI_REGION:-us-phoenix-1}.oraclecloud.com" >/dev/null; then
         log_warn "OCI Object Storage connectivity issues detected"
         log_info "This may affect model caching performance"
-        ((connectivity_issues++))
+        connectivity_issues=$((connectivity_issues + 1))
     else
         log_success "OCI Object Storage connectivity verified"
     fi
@@ -159,7 +171,7 @@ check_network_connectivity() {
     if [[ -n "$cluster_ip" ]]; then
         if ! kubectl run test-connectivity --image=busybox --rm -i --restart=Never -- ping -c 3 "$cluster_ip" >/dev/null 2>&1; then
             log_warn "Cluster network connectivity issues detected"
-            ((connectivity_issues++))
+            connectivity_issues=$((connectivity_issues + 1))
         else
             log_success "Cluster network connectivity verified"
         fi
@@ -187,7 +199,7 @@ check_storage_performance() {
     if [[ -z "$storage_class" ]]; then
         log_error "No default storage class found"
         log_info "Required for PVC creation"
-        ((storage_issues++))
+        storage_issues=$((storage_issues + 1))
     else
         log_success "Default storage class: $storage_class"
     fi
@@ -213,7 +225,7 @@ check_storage_performance() {
     if [[ $available_capacity -lt 200 ]]; then
         log_warn "Available storage capacity may be insufficient for model cache (200GB recommended)"
         log_info "Available: ${available_capacity}GB"
-        ((storage_issues++))
+        storage_issues=$((storage_issues + 1))
     else
         log_success "Storage capacity sufficient for model cache"
     fi
@@ -237,10 +249,11 @@ check_ngc_authentication() {
         return 1
     fi
     
-    # Test NGC API authentication
+    # Test NGC API authentication. The header goes to curl on stdin
+    # (-H @-), so the key never appears in argv / ps output.
     local auth_response
-    auth_response=$(curl -s -w "%{http_code}" -o /dev/null \
-        -H "Authorization: Bearer $NGC_API_KEY" \
+    auth_response=$(printf 'Authorization: Bearer %s\n' "$NGC_API_KEY" | curl -s -w "%{http_code}" -o /dev/null \
+        -H @- \
         "https://api.ngc.nvidia.com/v2/auth/verify" 2>/dev/null || echo "000")
     
     case "$auth_response" in
@@ -265,8 +278,8 @@ check_ngc_authentication() {
     
     # Check specific model access
     local model_access_response
-    model_access_response=$(curl -s -w "%{http_code}" -o /dev/null \
-        -H "Authorization: Bearer $NGC_API_KEY" \
+    model_access_response=$(printf 'Authorization: Bearer %s\n' "$NGC_API_KEY" | curl -s -w "%{http_code}" -o /dev/null \
+        -H @- \
         "https://api.ngc.nvidia.com/v2/models/nvidia/$NIM_MODEL" 2>/dev/null || echo "000")
     
     case "$model_access_response" in
@@ -295,23 +308,25 @@ check_cluster_resources() {
     
     # Check GPU node availability
     local gpu_nodes
-    gpu_nodes=$(get_gpu_nodes | wc -l)
-    
+    gpu_nodes=$(get_gpu_count)
+
     if [[ $gpu_nodes -eq 0 ]]; then
-        log_error "No GPU nodes available"
+        log_error "No GPU nodes available (or kubectl failed)"
         log_info "Required for NIM deployment"
-        ((resource_issues++))
+        resource_issues=$((resource_issues + 1))
     else
         log_success "GPU nodes available: $gpu_nodes"
     fi
     
     # Check GPU allocation
     local total_gpus
-    total_gpus=$(kubectl get nodes -l nvidia.com/gpu.present=true -o jsonpath='{.items[*].status.capacity.nvidia\.com/gpu}' | tr ' ' '\n' | wc -l)
+    # Sum the per-node GPU capacities (counting words gave the node count).
+    total_gpus=$(kubectl get nodes -l nvidia.com/gpu.present=true -o jsonpath='{.items[*].status.capacity.nvidia\.com/gpu}' 2>/dev/null \
+        | tr ' ' '\n' | awk '/^[0-9]+$/ { s += $1 } END { print s + 0 }')
     
     if [[ $total_gpus -eq 0 ]]; then
         log_error "No GPUs available for allocation"
-        ((resource_issues++))
+        resource_issues=$((resource_issues + 1))
     else
         log_success "Total GPUs available: $total_gpus"
     fi
@@ -325,12 +340,12 @@ check_cluster_resources() {
     
     if [[ $cpu_requests -lt 4 ]]; then
         log_warn "Low CPU availability: ${cpu_requests} cores (4+ recommended)"
-        ((resource_issues++))
+        resource_issues=$((resource_issues + 1))
     fi
     
     if [[ $memory_requests -lt 32 ]]; then
         log_warn "Low memory availability: ${memory_requests}GB (32GB+ recommended)"
-        ((resource_issues++))
+        resource_issues=$((resource_issues + 1))
     fi
     
     if [[ $resource_issues -gt 0 ]]; then
@@ -346,8 +361,10 @@ check_cluster_resources() {
 generate_prevention_recommendations() {
     log_info "Generating prevention recommendations..."
     
-    local recommendations_file="/tmp/nim-prevention-recommendations.md"
-    
+    local recommendations_file
+    recommendations_file=$(mktemp "${TMPDIR:-/tmp}/nim-prevention-recommendations.XXXXXX") || return 1
+    RECOMMENDATIONS_FILE="$recommendations_file"
+
     cat > "$recommendations_file" << EOF
 # NVIDIA NIM Prevention Recommendations
 
@@ -430,8 +447,8 @@ metadata:
   namespace: $NAMESPACE
 data:
   monitoring.sh: |
-    #!/bin/bash
-    # Basic monitoring script for NIM deployment
+    #!/usr/bin/env bash
+# Basic monitoring script for NIM deployment
     while true; do
       # Check pod status
       kubectl get pods -n $NAMESPACE -l app.kubernetes.io/name=nvidia-nim
@@ -453,19 +470,24 @@ predictive_diagnostics() {
     local failed_checks=0
     local total_checks=6
     
-    # Run all predictive checks
-    check_gpu_driver_version || ((failed_checks++))
-    check_model_compatibility "$NIM_MODEL" || ((failed_checks++))
-    check_network_connectivity || ((failed_checks++))
-    check_storage_performance || ((failed_checks++))
-    check_ngc_authentication || ((failed_checks++))
-    check_cluster_resources || ((failed_checks++))
-    
+    # Run all predictive checks. Counters use x=$((x + 1)): a post-increment of 0 returns 1
+    # and, as the last command of an || list, would trip set -e.
+    check_gpu_driver_version || failed_checks=$((failed_checks + 1))
+    check_model_compatibility "$NIM_MODEL" || failed_checks=$((failed_checks + 1))
+    check_network_connectivity || failed_checks=$((failed_checks + 1))
+    check_storage_performance || failed_checks=$((failed_checks + 1))
+    check_ngc_authentication || failed_checks=$((failed_checks + 1))
+    check_cluster_resources || failed_checks=$((failed_checks + 1))
+
     # Generate recommendations
     generate_prevention_recommendations
-    
-    # Set up monitoring
-    setup_predictive_monitoring
+
+    # Set up monitoring (writes to the cluster) only on request
+    if [[ "$PREDICT_SETUP" == "yes" ]]; then
+        setup_predictive_monitoring
+    else
+        log_info "Skipping monitoring setup (run 'make predict-setup' to create it)"
+    fi
     
     # Summary
     local passed_checks=$((total_checks - failed_checks))
@@ -482,11 +504,11 @@ predictive_diagnostics() {
         return 0
     elif [[ $failed_checks -le 2 ]]; then
         log_warn "Some predictive checks failed - deployment may succeed with warnings"
-        log_info "Review recommendations: /tmp/nim-prevention-recommendations.md"
+        log_info "Review recommendations: $RECOMMENDATIONS_FILE"
         return 0
     else
         log_error "Multiple predictive checks failed - deployment likely to fail"
-        log_info "Review recommendations: /tmp/nim-prevention-recommendations.md"
+        log_info "Review recommendations: $RECOMMENDATIONS_FILE"
         return 1
     fi
 }

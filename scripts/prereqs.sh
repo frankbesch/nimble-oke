@@ -7,8 +7,7 @@ source "${SCRIPT_DIR}/_lib.sh"
 
 check_tool() {
     local tool="$1"
-    local min_version="${2:-}"
-    
+
     if command -v "$tool" &>/dev/null; then
         local version
         version=$("$tool" version --short 2>/dev/null || "$tool" --version 2>/dev/null | head -n1 || echo "unknown")
@@ -76,7 +75,7 @@ check_ngc_credentials() {
 }
 
 check_ngc_model_access() {
-    local model="${NIM_MODEL:-meta/llama-3.1-8b-instruct}"
+    local model="${NIM_MODEL:-meta/llama3-8b-instruct}"
     
     log_info "Verifying NGC model access: $model"
     

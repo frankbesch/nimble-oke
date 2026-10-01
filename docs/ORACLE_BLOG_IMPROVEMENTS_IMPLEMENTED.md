@@ -1,7 +1,11 @@
 # Oracle Blog Comparison - Improvements Implemented
 
-> **📖 Reading time:** 7 minutes  
-> **✅ Implementation log** - Phase 1 corrections completed
+> **Reading time:** 7 minutes  
+> **Implementation log** - Phase 1 corrections completed
+
+*Historical working note from October 2025; figures corrected 2026-10-01. See README for current status.*
+
+Statements about the Oracle blog are as of October 2025, not re-verified.
 
 **Date:** October 14, 2025  
 **Version:** v0.1.0-20251013-dev  
@@ -34,7 +38,7 @@ persistence:
 
 # helm/values.yaml (AFTER)
 model:
-  name: "meta/llama-3.1-8b-instruct"
+  name: "meta/llama3-8b-instruct"
   # Removed unused cache section
 
 persistence:
@@ -47,6 +51,8 @@ persistence:
 kubectl get pvc -n default
 # Should show 200Gi allocation
 ```
+
+**Current state (2026-10-01):** the chart sets `persistence.size: 100Gi`.
 
 **Files Changed:**
 - `helm/values.yaml` (lines 20-26 removed, line 61 updated)
@@ -86,9 +92,7 @@ nodeSelector:
 
 **Issue:** Cost estimates assumed hourly Load Balancer pricing ($1.25/hr).
 
-**Reality:** OCI flexible Load Balancer pricing is bandwidth-based:
-- 10 Mbps shape: **$0.0144/hr** (not $1.25/hr)
-- Bandwidth: $0.0085/GB
+**At the time:** the LB estimate was lowered. Load balancer rates are not verified here.
 
 **Fix Applied:**
 ```bash
@@ -100,19 +104,16 @@ local lb_cost="0.0144"  # 10 Mbps flexible LB (corrected)
 local enhanced="0.10"   # ENHANCED cluster type (previously missing)
 ```
 
-**Impact:**
-- **5-hour smoke test cost:** $15.10 → **$14.42** (-$0.68, 4.5% reduction)
-- More accurate cost projections prevent user confusion
+**Correction (2026-10-01):** the October 2025 GPU rate was wrong, and the cluster fee was counted twice. The October dollar totals were removed.
 
-**Corrected Cost Breakdown:**
+**Current Cost Breakdown:**
 | Component | Hourly Rate | 5-Hour Total |
 |-----------|-------------|--------------|
-| VM.GPU.A10.1 | $2.62/hr | $13.10 |
-| OKE Control Plane | $0.10/hr | $0.50 |
-| ENHANCED Cluster | $0.10/hr | $0.50 |
-| Block Storage (200GB) | $0.05/hr | $0.25 |
-| Load Balancer (10 Mbps) | $0.0144/hr | $0.07 |
-| **Total** | **$2.8744/hr** | **$14.42** |
+| VM.GPU.A10.1 | $2.00/hr | $10.00 |
+| OKE Enhanced Cluster | $0.10/hr | $0.50 |
+| Block Storage | not verified here | — |
+| Load Balancer | not verified here | — |
+| **Total** | **$2.10/hr** | **$10.50**, plus load balancer and block storage |
 
 **Files Changed:**
 - `scripts/_lib.sh` (lines 396-404)
@@ -130,7 +131,7 @@ local enhanced="0.10"   # ENHANCED cluster type (previously missing)
 ```bash
 # scripts/prereqs.sh - New function added
 check_ngc_model_access() {
-    local model="${NIM_MODEL:-meta/llama-3.1-8b-instruct}"
+    local model="${NIM_MODEL:-meta/llama3-8b-instruct}"
     
     log_info "Verifying NGC model access: $model"
     
@@ -178,21 +179,21 @@ Before deployment, verify corrections:
 
 ```bash
 # 1. Verify PVC size
-helm template ./helm | grep -A 5 "kind: PersistentVolumeClaim"
-# Expected: size: 200Gi
+helm template ./helm --set ngc.apiKey=nvapi-xxxx | grep -A 12 "kind: PersistentVolumeClaim"
+# Expected: storage: 100Gi
 
 # 2. Verify nodeSelector
-helm template ./helm | grep -A 3 "nodeSelector:"
+helm template ./helm --set ngc.apiKey=nvapi-xxxx | grep -A 3 "nodeSelector:"
 # Expected: nvidia.com/gpu.present: "true"
 
 # 3. Verify cost calculation
 make discover
-# Expected hourly cost: ~$2.87 (not $3.02)
+# Expected: $2.00/hr GPU + $0.10/hr cluster, plus estimated LB and storage
 
 # 4. Test NGC model access check
 export NGC_API_KEY=nvapi-xxx
 make prereqs
-# Expected: "NGC model access verified: meta/llama-3.1-8b-instruct"
+# Expected: "NGC model access verified: meta/llama3-8b-instruct"
 ```
 
 ---
@@ -229,22 +230,22 @@ make prereqs
 ### Cost Accuracy
 | Metric | Before | After | Improvement |
 |--------|--------|-------|-------------|
-| 5-hour smoke test | $15.10 (4.5% overstated) | $14.42 (accurate) | ✅ Correct pricing |
-| Hourly estimate | $3.02 | $2.87 | ✅ Matches OCI pricing |
-| Load Balancer component | $1.25/hr (wrong) | $0.0144/hr (correct) | ✅ 98.8% cost reduction |
+| 5-hour smoke test | October 2025 figure (wrong GPU rate) | $10.50 + LB and storage | Corrected 2026-10-01 |
+| Hourly estimate | October 2025 figure (wrong GPU rate) | $2.10 + LB and storage | Corrected 2026-10-01 |
+| Load Balancer component | estimate | estimate, not verified here | — |
 
 ### Storage Provisioning
 | Metric | Before | After | Improvement |
 |--------|--------|-------|-------------|
-| PVC size | 50Gi (insufficient) | 200Gi (correct) | ✅ 4× capacity |
-| Model caching | Risk of OOM errors | Sufficient for Llama 3.1 8B | ✅ Deployment success |
+| PVC size | 50Gi (insufficient) | 200Gi at the time; 100Gi now | Larger cache |
+| Model caching | Risk of disk exhaustion | Sized for Llama 3 8B | Not measured |
 
 ### Pre-deployment Validation
 | Check | Before | After | Improvement |
 |-------|--------|-------|-------------|
 | NGC API key format | ✅ Validated | ✅ Validated | No change |
 | NGC model access | ❌ Not checked | ✅ Verified | ✅ Fail-fast detection |
-| Entitlement errors | Discovered at deployment (45min waste) | Detected at prereqs (30sec) | ✅ 90× faster feedback |
+| Entitlement errors | Discovered at deployment | Detected at prereqs | Earlier feedback (timing not measured) |
 
 ### Configuration Consistency
 | Component | Before | After | Improvement |
@@ -265,9 +266,8 @@ make prereqs
 6. `docs/ORACLE_BLOG_IMPROVEMENTS_IMPLEMENTED.md` - **NEW** - This file
 
 ### Cost References Corrected
-- README.md: 4 instances ($15.10 → $14.42)
-- All cost guard messaging now reflects accurate pricing
-- Session cost tracking uses corrected hourly rates
+- README.md: 4 instances at the time
+- Rates corrected again on 2026-10-01 (A10 = $2.00 per GPU-hour)
 
 ---
 
@@ -275,8 +275,8 @@ make prereqs
 
 ### Strengths Incorporated
 1. ✅ **Model access verification** - Fail-fast NGC entitlement checks
-2. ✅ **Accurate cost modeling** - Corrected Load Balancer pricing
-3. ✅ **Flexible GPU selection** - Support A10/A100/H100 without modification
+2. ✅ **Cost modeling** - Revised Load Balancer estimate (rate not verified)
+3. ✅ **Flexible GPU selection** - Selects any node reporting an NVIDIA GPU
 
 ### Oracle Blog Strengths Not Yet Adopted (Roadmap)
 1. ⏳ **Object Storage for models** - Centralized model repository (Phase 2)
@@ -298,10 +298,10 @@ make prereqs
 **Phase 1 Complete:** All critical corrections from Oracle blog analysis implemented.
 
 **Impact:**
-- ✅ More accurate cost projections ($14.42 vs $15.10)
-- ✅ Larger PVC prevents deployment failures (200Gi vs 50Gi)
-- ✅ Consistent GPU node selection across deployment methods
-- ✅ Fail-fast NGC model access validation saves 45min on permission errors
+- Revised cost projections (corrected again 2026-10-01)
+- Larger PVC (200Gi at the time; 100Gi now)
+- Consistent GPU node selection across deployment methods
+- Fail-fast NGC model access check (time saved not measured)
 
 **Next Steps:**
 1. Test all corrections in isolated environment

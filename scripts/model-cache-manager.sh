@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Model Cache Manager for NVIDIA NIM on OKE
 # Provides intelligent model caching with TTL and pre-warming capabilities
@@ -15,7 +15,8 @@ CACHE_TTL_HOURS="${MODEL_CACHE_TTL:-72}"
 PREWARM_ENABLED="${PREWARM_CACHE:-no}"
 
 # Model information
-NIM_MODEL="${NIM_MODEL:-meta/llama-3.1-8b-instruct}"
+# Deployed image: nvcr.io/nim/meta/llama3-8b-instruct:1.0.3 (Llama 3 8B Instruct)
+NIM_MODEL="${NIM_MODEL:-meta/llama3-8b-instruct}"
 MODEL_SIZE_GB="${MODEL_SIZE_GB:-50}"
 
 log_info "Model Cache Manager initialized"
@@ -33,8 +34,14 @@ check_cache_freshness() {
         return 1
     fi
     
-    # Check if cache is within TTL
-    if find "$cache_dir" -type f -mtime -"$CACHE_TTL_HOURS" | grep -q .; then
+    # A cache written by SIMULATE_DOWNLOAD=yes holds empty placeholder files.
+    if [[ -f "$cache_dir/.simulated" ]]; then
+        log_warn "Cache at $cache_dir is SIMULATED (empty placeholder files), not a real model cache"
+        return 1
+    fi
+
+    # Check if cache is within TTL (-mmin: find's -mtime counts days, not hours)
+    if find "$cache_dir" -type f -mmin -"$((CACHE_TTL_HOURS * 60))" | grep -q .; then
         log_success "Cache is fresh (within $CACHE_TTL_HOURS hours): $cache_dir"
         return 0
     else
@@ -48,13 +55,20 @@ estimate_cache_savings() {
     local model="$1"
     local model_size_gb="$2"
     
-    # Estimate download time and cost savings
-    local download_time_minutes=$((model_size_gb * 2))  # ~2 min per GB
-    local cost_savings="1.50"  # $1.50 saved per re-deployment
-    
-    log_info "Cache hit would save:"
-    log_info "  - Download time: ${download_time_minutes} minutes"
-    log_info "  - Cost: \$${cost_savings} per re-deployment"
+    # ~2 min per GB is a static assumption; cost = that time x the hourly
+    # rate from _lib.sh for GPU_SHAPE.
+    local download_time_minutes=$((model_size_gb * 2))
+    local hourly cost_savings
+    if hourly=$(estimate_hourly_cost 1 "${GPU_SHAPE:-$NIM_DEFAULT_GPU_SHAPE}"); then
+        cost_savings=$(format_cost "$(echo "$hourly * $download_time_minutes / 60" | bc -l)")
+        cost_savings="\$${cost_savings}"
+    else
+        cost_savings="rate not verified"
+    fi
+
+    log_info "Cache hit would save (ESTIMATE (static assumption, not measured)):"
+    log_info "  - Download time: ${download_time_minutes} minutes (assumes ~2 min/GB for ${model_size_gb} GB)"
+    log_info "  - Cost: ${cost_savings} per re-deployment"
 }
 
 # Function to download model to cache
@@ -74,30 +88,24 @@ download_model_to_cache() {
         return 1
     fi
     
-    # Download model using NGC CLI or direct download
-    log_info "Starting model download..."
-    local start_time=$(date +%s)
-    
-    # Simulate model download (replace with actual NGC download logic)
-    if [[ "${SIMULATE_DOWNLOAD:-no}" == "yes" ]]; then
-        log_info "Simulating model download..."
-        sleep 10  # Simulate download time
-        touch "$cache_dir/model.bin"
-        touch "$cache_dir/tokenizer.json"
-        touch "$cache_dir/config.json"
-    else
-        # Actual NGC download would go here
-        log_info "NGC download not implemented - using simulation"
-        touch "$cache_dir/model.bin"
-        touch "$cache_dir/tokenizer.json" 
-        touch "$cache_dir/config.json"
+    # A real NGC download is NOT implemented. Without SIMULATE_DOWNLOAD=yes
+    # this fails instead of reporting a download that did not happen.
+    if [[ "${SIMULATE_DOWNLOAD:-no}" != "yes" ]]; then
+        log_error "NGC model download is not implemented in this script; no files were downloaded"
+        log_info "The NIM container downloads the model into its PVC on first start."
+        log_info "Set SIMULATE_DOWNLOAD=yes to create placeholder files for testing only."
+        return 1
     fi
-    
-    local end_time=$(date +%s)
-    local download_time=$((end_time - start_time))
-    
-    log_success "Model download completed in ${download_time} seconds"
-    log_success "Cache created: $cache_dir"
+
+    log_info "SIMULATED download: creating empty placeholder files (no model data)"
+    local start_time end_time
+    start_time=$(date +%s)
+    sleep 10
+    touch "$cache_dir/model.bin" "$cache_dir/tokenizer.json" "$cache_dir/config.json"
+    touch "$cache_dir/.simulated"
+    end_time=$(date +%s)
+
+    log_warn "SIMULATED cache created in $((end_time - start_time)) seconds: $cache_dir (placeholders only)"
     
     # Set cache timestamp
     touch "$cache_dir/.cache_timestamp"
@@ -130,7 +138,8 @@ cleanup_expired_cache() {
     log_info "Cleaning up cache older than $max_age_hours hours"
     
     if [[ -d "$CACHE_BASE_DIR" ]]; then
-        find "$CACHE_BASE_DIR" -type d -mtime +"$max_age_hours" -exec rm -rf {} + 2>/dev/null || true
+        # -mindepth 1 keeps the base directory; -mmin because -mtime counts days.
+        find "$CACHE_BASE_DIR" -mindepth 1 -type d -mmin +"$((max_age_hours * 60))" -exec rm -rf {} + 2>/dev/null || true
         log_success "Expired cache cleanup completed"
     else
         log_info "Cache directory does not exist: $CACHE_BASE_DIR"
@@ -146,9 +155,11 @@ get_cache_stats() {
         return 0
     fi
     
-    local total_size=$(du -sh "$cache_dir" 2>/dev/null | cut -f1 || echo "0")
-    local model_count=$(find "$cache_dir" -maxdepth 1 -type d | wc -l)
-    local oldest_cache=$(find "$cache_dir" -type f -name ".cache_timestamp" -printf '%T@ %p\n' 2>/dev/null | sort -n | head -1 | cut -d' ' -f2- || echo "none")
+    local total_size model_count oldest_cache
+    total_size=$(du -sh "$cache_dir" 2>/dev/null | cut -f1 || echo "0")
+    model_count=$(find "$cache_dir" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')
+    oldest_cache=$(find "$cache_dir" -type f -name ".cache_timestamp" -exec ls -tr {} + 2>/dev/null | head -1 || true)
+    oldest_cache="${oldest_cache:-none}"
     
     log_info "Cache Statistics:"
     log_info "  Total size: $total_size"
@@ -158,7 +169,7 @@ get_cache_stats() {
 
 # Function to manage model cache (main entry point)
 manage_model_cache() {
-    local model="${NIM_MODEL:-meta/llama-3.1-8b-instruct}"
+    local model="$NIM_MODEL"
     local action="${1:-check}"
     
     case "$action" in

@@ -87,8 +87,19 @@ troubleshoot_image_pull() {
             log_error "Pod $pod has image pull issues"
             kubectl describe pod "$pod" -n "$NAMESPACE" | grep -A 5 "Failed to pull image"
             
-            log_info "Check NGC credentials:"
-            kubectl get secret ngc-secret -n "$NAMESPACE" &>/dev/null || log_error "NGC secret not found"
+            # Chart secrets derive from the release fullname
+            # (<fullname>-ngc-registry, <fullname>-ngc-api); select by label.
+            log_info "Check NGC credentials (secrets of release $RELEASE_NAME):"
+            local secrets
+            if ! secrets=$(kubectl get secret -n "$NAMESPACE" \
+                    -l "app.kubernetes.io/instance=$RELEASE_NAME" \
+                    -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.type}{"\n"}{end}'); then
+                log_error "Could not list secrets (kubectl failed)"
+            elif ! echo "$secrets" | grep -q "kubernetes.io/dockerconfigjson"; then
+                log_error "No image pull secret found for release $RELEASE_NAME"
+            else
+                echo "$secrets"
+            fi
             
             return 1
         fi
@@ -217,7 +228,7 @@ main() {
     # Run enhanced log analysis first
     log_info "Running enhanced log analysis..."
     if "${SCRIPT_DIR}/log-analyzer.sh" "$NAMESPACE"; then
-        log_success "Log analysis completed - check /tmp/nim-logs/troubleshooting-report.md"
+        log_success "Log analysis completed (see the report path printed above)"
     else
         log_warn "Log analysis encountered issues, continuing with manual troubleshooting"
     fi
@@ -231,68 +242,43 @@ main() {
     # Run parallel diagnostics for faster results
     log_info "Running parallel diagnostic checks..."
     
-    troubleshoot_pods > "/tmp/nimble-oke-troubleshoot-pods-$$.txt" &
-    local pods_pid=$!
-    
-    troubleshoot_gpu > "/tmp/nimble-oke-troubleshoot-gpu-$$.txt" &
-    local gpu_pid=$!
-    
-    troubleshoot_image_pull > "/tmp/nimble-oke-troubleshoot-image-$$.txt" &
-    local image_pid=$!
-    
-    troubleshoot_service > "/tmp/nimble-oke-troubleshoot-service-$$.txt" &
-    local service_pid=$!
-    
-    troubleshoot_storage > "/tmp/nimble-oke-troubleshoot-storage-$$.txt" &
-    local storage_pid=$!
-    
-    troubleshoot_resources > "/tmp/nimble-oke-troubleshoot-resources-$$.txt" &
-    local resources_pid=$!
-    
-    troubleshoot_network > "/tmp/nimble-oke-troubleshoot-network-$$.txt" &
-    local network_pid=$!
-    
-    # Wait for all diagnostics to complete
-    wait $pods_pid $gpu_pid $image_pid $service_pid $storage_pid $resources_pid $network_pid
-    
+    local work_dir
+    work_dir=$(mktemp -d "${TMPDIR:-/tmp}/nimble-oke-troubleshoot.XXXXXX")
+    # shellcheck disable=SC2064  # expand work_dir now
+    trap "rm -rf '$work_dir'" EXIT
+
+    local checks=(pods gpu image_pull service storage resources network)
+    local titles=("1. Pod Status" "2. GPU Resources" "3. Image Pull" "4. Service" "5. Storage" "6. Resource Allocation" "7. Network")
+    local pids=() i
+    for i in "${!checks[@]}"; do
+        "troubleshoot_${checks[$i]}" > "$work_dir/${checks[$i]}.txt" 2>&1 &
+        pids+=("$!")
+    done
+
+    # Wait for each check separately; a failed check is reported, not fatal.
+    local failed=0
+    for i in "${!checks[@]}"; do
+        wait "${pids[$i]}" || failed=$((failed + 1))
+    done
+
     # Display results
-    echo ""
-    echo "=== 1. Pod Status ==="
-    cat "/tmp/nimble-oke-troubleshoot-pods-$$.txt"
-    
-    echo ""
-    echo "=== 2. GPU Resources ==="
-    cat "/tmp/nimble-oke-troubleshoot-gpu-$$.txt"
-    
-    echo ""
-    echo "=== 3. Image Pull ==="
-    cat "/tmp/nimble-oke-troubleshoot-image-$$.txt"
-    
-    echo ""
-    echo "=== 4. Service ==="
-    cat "/tmp/nimble-oke-troubleshoot-service-$$.txt"
-    
-    echo ""
-    echo "=== 5. Storage ==="
-    cat "/tmp/nimble-oke-troubleshoot-storage-$$.txt"
-    
-    echo ""
-    echo "=== 6. Resource Allocation ==="
-    cat "/tmp/nimble-oke-troubleshoot-resources-$$.txt"
-    
-    echo ""
-    echo "=== 7. Network ==="
-    cat "/tmp/nimble-oke-troubleshoot-network-$$.txt"
+    for i in "${!checks[@]}"; do
+        echo ""
+        echo "=== ${titles[$i]} ==="
+        cat "$work_dir/${checks[$i]}.txt"
+    done
     
     echo ""
     echo "=== 8. Recent Events ==="
-    kubectl get events -n "$NAMESPACE" --sort-by='.lastTimestamp' | tail -20
-    
-    # Cleanup temp files
-    rm -f "/tmp/nimble-oke-troubleshoot-"*.txt
+    kubectl get events -n "$NAMESPACE" --sort-by='.lastTimestamp' | tail -20 || log_warn "Could not list events"
     
     echo ""
-    log_success "Troubleshooting complete (parallel execution)"
+    if [[ "$failed" -gt 0 ]]; then
+        log_warn "Troubleshooting complete: $failed of ${#checks[@]} checks reported problems (see above)"
+    else
+        log_success "Troubleshooting complete: all ${#checks[@]} checks passed"
+    fi
+    log_info "Reminder: 'make cleanup' removes the NIM release only; 'make teardown' stops GPU billing."
     log_info "For detailed logs, run: kubectl logs -n $NAMESPACE -l app.kubernetes.io/name=nvidia-nim -f"
 }
 

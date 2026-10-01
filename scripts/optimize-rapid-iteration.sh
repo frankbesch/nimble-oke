@@ -1,17 +1,34 @@
 #!/usr/bin/env bash
 
 # Rapid iteration optimization for NIM smoke testing
-# Focuses on minimizing deployment time and maximizing reliability
+# Focuses on minimizing deployment time and maximizing reliability.
+# NOTHING HERE IS MEASURED: phase times and savings are static assumptions,
+# printed as ESTIMATE. Costs multiply those times by the _lib.sh rates.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/_lib.sh"
 
+readonly EST="ESTIMATE (static assumption, not measured)"
+readonly OPT_GPU_SHAPE="${GPU_SHAPE:-$NIM_DEFAULT_GPU_SHAPE}"
+BASELINE_MINUTES=0
+OPTIMIZED_MINUTES=0
+
+# Cost (USD) of N minutes on 1 node of OPT_GPU_SHAPE, or "rate not verified".
+cost_for_minutes() {
+    local hourly
+    if hourly=$(estimate_hourly_cost 1 "$OPT_GPU_SHAPE" 2>/dev/null); then
+        echo "\$$(format_cost "$(echo "$hourly * $1 / 60" | bc -l)")"
+    else
+        echo "rate not verified"
+    fi
+}
+
 analyze_deployment_bottlenecks() {
     log_info "=== Analyzing Deployment Bottlenecks ==="
     
-    echo "NIM Deployment Time Analysis:"
+    echo "NIM Deployment Time Analysis - $EST:"
     echo ""
     
     # Time breakdown for typical NIM deployment
@@ -38,13 +55,14 @@ analyze_deployment_bottlenecks() {
     
     echo "└─────────────────────────────────────────────────────────────────────────┘"
     echo ""
-    echo "Total baseline time: ${total_time} minutes"
+    BASELINE_MINUTES=$total_time
+    echo "Total baseline time: ${total_time} minutes - $EST"
     echo ""
 }
 
 recommend_iteration_strategies() {
-    log_info "=== Rapid Iteration Strategies ==="
-    
+    log_info "=== Rapid Iteration Strategies (savings are $EST) ==="
+
     echo "1. IMAGE PRE-CACHING (Saves 15 minutes):"
     echo "   • Pre-pull NIM images during cluster setup"
     echo "   • Use OCIR mirror for consistent pull times"
@@ -79,7 +97,7 @@ recommend_iteration_strategies() {
 simulate_optimized_deployment() {
     log_info "=== Optimized Deployment Simulation ==="
     
-    echo "Optimized NIM Deployment Timeline:"
+    echo "Optimized NIM Deployment Timeline - $EST:"
     echo ""
     
     # Optimized time breakdown
@@ -106,53 +124,55 @@ simulate_optimized_deployment() {
     
     echo "└─────────────────────────────────────────────────────────────────────────┘"
     echo ""
-    echo "Optimized total time: ${total_optimized} minutes"
+    OPTIMIZED_MINUTES=$total_optimized
+    echo "Optimized total time: ${total_optimized} minutes - $EST"
     echo ""
-    
-    # Calculate improvement
-    local baseline_time=48
+
+    # Improvement vs the estimated baseline from analyze_deployment_bottlenecks
+    local baseline_time="$BASELINE_MINUTES"
     local improvement
     improvement=$(echo "scale=1; (($baseline_time - $total_optimized) / $baseline_time) * 100" | bc -l)
-    
-    echo "Improvement: $(printf "%.1f" "$improvement")% faster"
-    echo "Time saved: $((baseline_time - total_optimized)) minutes"
+
+    echo "Improvement: $(printf "%.1f" "$improvement")% faster - $EST"
+    echo "Time saved: $((baseline_time - total_optimized)) minutes - $EST"
     echo ""
 }
 
 recommend_cost_optimization() {
     log_info "=== Cost Optimization for Rapid Iteration ==="
     
-    echo "Cost Optimization Strategies:"
+    echo "Cost Optimization Strategies (not quantified):"
     echo ""
-    
-    echo "1. SMART CLEANUP (Saves \$2-3 per iteration):"
+
+    echo "1. SMART CLEANUP:"
     echo "   • Use KEEP_CACHE=yes for model PVCs"
     echo "   • Preserve NGC secrets between deployments"
     echo "   • Keep LoadBalancer during short breaks"
+    echo "   • Note: 'make cleanup' removes only the NIM release; GPU nodes keep billing until 'make teardown'"
     echo ""
     
-    echo "2. NODE REUSE (Saves \$5-8 per iteration):"
+    echo "2. NODE REUSE (avoids repeat node provisioning; nodes bill while idle):"
     echo "   • Keep GPU nodes running between tests"
     echo "   • Use node pools with minimum size 1"
     echo "   • Implement node warming scripts"
     echo ""
     
-    echo "3. EFFICIENT TESTING (Saves \$3-5 per iteration):"
+    echo "3. EFFICIENT TESTING:"
     echo "   • Run multiple tests in same session"
     echo "   • Batch configuration changes"
     echo "   • Use dry-run validation extensively"
     echo ""
     
-    echo "4. RESOURCE RIGHT-SIZING (Saves \$1-2 per iteration):"
-    echo "   • Use minimal GPU shapes for smoke tests"
+    echo "4. RESOURCE RIGHT-SIZING:"
+    echo "   • Use the smallest GPU shape (VM.GPU.A10.1) for smoke tests"
     echo "   • Optimize memory requests"
     echo "   • Use flexible LoadBalancer shapes"
     echo ""
     
-    echo "Cost Impact:"
-    echo "  • Baseline smoke test: \$11"
-    echo "  • Optimized iteration: \$3-5"
-    echo "  • Savings per iteration: \$6-8"
+    echo "Cost Impact (1 x $OPT_GPU_SHAPE, rates from _lib.sh; durations are $EST):"
+    echo "  • Baseline run (${BASELINE_MINUTES} min): $(cost_for_minutes "$BASELINE_MINUTES")"
+    echo "  • Optimized iteration (${OPTIMIZED_MINUTES} min): $(cost_for_minutes "$OPTIMIZED_MINUTES")"
+    echo "  • Idle GPU node, per hour between iterations: $(cost_for_minutes 60)"
     echo ""
 }
 
@@ -163,40 +183,36 @@ generate_iteration_workflow() {
     echo "==============================================================="
     echo ""
     
-    echo "1. INITIAL SETUP (One-time, 30 minutes):"
+    echo "1. INITIAL SETUP (one-time, ~30 minutes - $EST):"
     echo "   make provision CONFIRM_COST=yes"
     echo "   make pre-deploy-test"
     echo "   make install"
     echo "   # Enable caching and warming"
     echo ""
     
-    echo "2. RAPID ITERATION CYCLE (2-5 minutes each):"
+    echo "2. RAPID ITERATION CYCLE (~2-5 minutes each - $EST):"
     echo "   # Make changes to values.yaml"
     echo "   make install  # Updates deployment"
     echo "   make verify   # Quick health check"
     echo "   # Test your changes"
     echo ""
     
-    echo "3. BATCH TESTING (10-15 minutes):"
-    echo "   # Run multiple configurations"
-    echo "   make install GPU_COUNT=1"
-    echo "   make verify"
-    echo "   make install GPU_COUNT=2"
+    echo "3. BATCH TESTING (~10-15 minutes - $EST):"
+    echo "   # Run multiple configurations: edit helm/values.yaml, then"
+    echo "   make install"
     echo "   make verify"
     echo "   # Compare results"
     echo ""
     
-    echo "4. CLEANUP (When done, 2 minutes):"
-    echo "   make cleanup KEEP_CACHE=yes  # Preserve model cache"
-    echo "   # Or full cleanup:"
-    echo "   make teardown"
+    echo "4. CLEANUP (when done):"
+    echo "   make cleanup KEEP_CACHE=yes  # Removes the NIM release, keeps the model PVC; GPU nodes STILL bill"
+    echo "   make teardown                # Deletes the cluster; the only step that stops GPU billing"
     echo ""
     
-    echo "Expected Results:"
-    echo "  • Initial setup: 30 minutes"
-    echo "  • Each iteration: 2-5 minutes"
-    echo "  • Cost per iteration: \$3-5"
-    echo "  • Reliability: 95%+ success rate"
+    echo "Expected Results - $EST:"
+    echo "  • Initial setup: ~30 minutes"
+    echo "  • Each iteration: ~2-5 minutes"
+    echo "  • Cost per 5-minute iteration: $(cost_for_minutes 5) (plus idle node time between iterations)"
     echo ""
 }
 
@@ -210,7 +226,7 @@ main() {
     recommend_cost_optimization
     generate_iteration_workflow
     
-    log_success "✅ Rapid iteration optimization analysis complete"
+    log_info "Rapid iteration analysis complete (estimates only, nothing measured)"
 }
 
 # Usage

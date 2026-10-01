@@ -1,0 +1,24 @@
+#!/bin/bash
+# Stub oci for tests/run_measured_*.sh and tests/pane_close_check.sh.
+# Never touches the network.
+#   STUB_CLUSTER=present  cluster list reports one live cluster (default absent)
+#   STUB_GPU_AVAILABLE    value for `limits resource-availability get` (default 1)
+echo "oci $*" >> "${STUB_LOG:-/dev/null}"
+case "$*" in
+  "ce cluster list"*"| [0]"*)   # oci_find_cluster_id form: one id or nothing
+    [[ "${STUB_CLUSTER:-absent}" == "present" ]] && echo "ocid1.cluster.oc1..stubcluster"
+    ;;
+  "ce cluster list"*)
+    if [[ "${STUB_CLUSTER:-absent}" == "present" ]]; then
+      echo '["ocid1.cluster.oc1..stubcluster"]'
+    else
+      echo '[]'
+    fi
+    ;;
+  "ce node-pool list"*) echo '[]' ;;
+  "iam region list"*) echo '{"data":[]}' ;;
+  "iam availability-domain list"*) echo "Stub:PHX-AD-1" ;;
+  "limits resource-availability get"*) echo "${STUB_GPU_AVAILABLE:-1}" ;;
+  *) : ;;
+esac
+exit 0

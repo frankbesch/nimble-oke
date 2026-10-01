@@ -171,10 +171,9 @@ make validate
 
 ## Cost Implications
 
-**No cost difference:**
-- OCI charges same rates across US regions
-- us-chicago-1: $2.62/hour for VM.GPU.A10.1
-- us-phoenix-1: $2.62/hour for VM.GPU.A10.1
+**No cost difference** (regional uniformity as of October 2025, not re-verified):
+- VM.GPU.A10.1: $2.00/hour (Oracle price list, part B95909, checked 2026-10-01)
+- OKE enhanced cluster: $0.10/hour
 
 **Benefits of Phoenix:**
 - Better GPU availability
@@ -237,8 +236,10 @@ oci ce cluster list \
 # Remove all contexts and start fresh
 rm -f ~/.kube/config
 
-# After provisioning Phoenix cluster:
-make configure-kubectl
+# After provisioning Phoenix cluster
+# (make provision already writes this kubeconfig):
+oci ce cluster create-kubeconfig --cluster-id <cluster-ocid> \
+    --file ~/.kube/config --region us-phoenix-1
 ```
 
 ### Region Not Switching
@@ -291,13 +292,15 @@ oci iam region-subscription list
 
 ## Region Comparison
 
+*Latency, availability, and shape rows are as of October 2025, not re-verified.*
+
 | Feature | Chicago (us-chicago-1) | Phoenix (us-phoenix-1) |
 |---------|----------------------|----------------------|
 | **Latency from Austin** | ~40-50ms | ~30-35ms |
 | **GPU Availability** | Limited | Excellent |
 | **Availability Domains** | 1 | 3 |
 | **GPU Shapes Available** | A10.1, GPU3.x | A10.1, GPU3.x, H100 |
-| **Pricing (A10.1)** | $2.62/hour | $2.62/hour |
+| **Pricing (A10.1)** | $2.00/hour | $2.00/hour |
 | **Network Performance** | Good | Excellent |
 | **Recommended for Austin** | ❌ No | ✅ Yes |
 

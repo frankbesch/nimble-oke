@@ -6,10 +6,12 @@
 
 Nimble OKE's enhanced testing framework addresses the most common challenges in NIM deployment:
 
+All times, percentages, and savings in this guide are an estimate (static assumption, not measured). No measured run is committed yet; receipts will live in [docs/runs/](runs/).
+
 - **48-minute baseline** → **12-minute optimized** deployment
-- **$11 baseline cost** → **$3-5 per iteration** with caching
+- **$10.50 baseline cost** (5 h × $2.10, plus load balancer and block storage) → lower per-iteration cost with caching
 - **70% time reduction** through pre-caching and optimization
-- **95%+ reliability** through comprehensive failure detection
+- **95%+ reliability** through failure detection
 
 ---
 
@@ -20,7 +22,7 @@ Nimble OKE's enhanced testing framework addresses the most common challenges in 
 - **Solution:** Pre-pull simulation, OCIR mirroring, authentication caching
 - **Impact:** 15-minute time savings per iteration
 
-### **2. Model Download Timeouts (16GB Llama 3.1 8B)**
+### **2. Model Download Timeouts (16GB Llama 3 8B)**
 - **Problem:** 10-minute model downloads, storage space issues
 - **Solution:** PVC-based caching, KEEP_CACHE optimization
 - **Impact:** 273x faster subsequent deployments
@@ -99,11 +101,10 @@ make nim-smoke-test
 ### **Cost Optimization**
 | Strategy | Savings per Iteration | Impact |
 |----------|----------------------|---------|
-| Smart Cleanup | $2-3 | Preserve model cache |
-| Node Reuse | $5-8 | Keep nodes warm |
-| Efficient Testing | $3-5 | Batch operations |
-| Resource Right-sizing | $1-2 | Minimal GPU shapes |
-| **Total** | **$6-8** | **70% cost reduction** |
+| Smart Cleanup | not measured | Preserve model cache |
+| Node Reuse | not measured | Keep nodes warm (GPU billing continues) |
+| Efficient Testing | not measured | Batch operations |
+| Resource Right-sizing | not measured | Minimal GPU shapes |
 
 ---
 
@@ -112,7 +113,7 @@ make nim-smoke-test
 ### **1. Image Pre-Caching**
 ```bash
 # Pre-pull NIM images during cluster setup
-kubectl create secret docker-registry ngc-secret \
+kubectl create secret docker-registry nim-prepull \
   --docker-server=nvcr.io \
   --docker-username='$oauthtoken' \
   --docker-password='<NGC_API_KEY>'
@@ -192,8 +193,8 @@ make verify
 
 ### **Cleanup (When done, 2 minutes)**
 ```bash
-make cleanup KEEP_CACHE=yes  # Preserve model cache
-# Or full cleanup:
+make cleanup KEEP_CACHE=yes  # Removes the NIM release only; GPU billing continues
+# Delete node pool + cluster (stops GPU billing):
 make teardown
 ```
 
@@ -204,14 +205,12 @@ make teardown
 ### **Performance Metrics**
 - **Initial setup:** 30 minutes
 - **Each iteration:** 2-5 minutes
-- **Cost per iteration:** $3-5
+- **Cost per iteration:** not measured
 - **Reliability:** 95%+ success rate
 
 ### **Cost Efficiency**
-- **Baseline smoke test:** $11
-- **Optimized iteration:** $3-5
-- **Savings per iteration:** $6-8
-- **ROI:** Break-even after 2 iterations
+- **Baseline smoke test:** $10.50 (5 h × $2.10), plus load balancer and block storage
+- **Optimized iteration:** not measured
 
 ### **Reliability Improvements**
 - **Early failure detection:** Prevents 48-minute failed deployments

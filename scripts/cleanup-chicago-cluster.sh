@@ -23,7 +23,12 @@ cleanup_chicago_oke_cluster() {
         --region "$CHICAGO_REGION" \
         --lifecycle-state ACTIVE \
         --query 'data[*].{id:id,name:name}' \
-        --output json 2>/dev/null || echo "[]")
+        --output json 2>/dev/null) || {
+        # A failed list is an error, not "no clusters".
+        log_error "Could not list OKE clusters in $CHICAGO_REGION (oci ce cluster list failed)"
+        return 1
+    }
+    [[ -n "$clusters" ]] || clusters="[]"
     
     local cluster_count
     cluster_count=$(echo "$clusters" | jq '. | length')
@@ -48,7 +53,11 @@ cleanup_chicago_oke_cluster() {
             --cluster-id "$cluster_id" \
             --region "$CHICAGO_REGION" \
             --query 'data[*].id' \
-            --output json 2>/dev/null || echo "[]")
+            --output json 2>/dev/null) || {
+            log_error "  Could not list node pools for $cluster_name; skipping this cluster"
+            continue
+        }
+        [[ -n "$node_pools" ]] || node_pools="[]"
         
         echo "$node_pools" | jq -r '.[]' | while read -r pool_id; do
             if [[ -n "$pool_id" ]]; then
@@ -66,13 +75,15 @@ cleanup_chicago_oke_cluster() {
         
         # Delete cluster
         log_info "  Deleting OKE cluster: $cluster_id"
-        oci ce cluster delete \
-            --cluster-id "$cluster_id" \
-            --region "$CHICAGO_REGION" \
-            --force \
-            2>/dev/null || log_warn "    Failed to delete cluster (may already be deleted)"
-        
-        log_success "  Cluster deletion initiated: $cluster_name"
+        if oci ce cluster delete \
+                --cluster-id "$cluster_id" \
+                --region "$CHICAGO_REGION" \
+                --force \
+                2>/dev/null; then
+            log_success "  Cluster deletion initiated: $cluster_name"
+        else
+            log_error "  Cluster delete call FAILED for $cluster_name; it may still be billing - check the console"
+        fi
     done
     
     log_info "Cluster deletion is asynchronous - resources will be removed in background"

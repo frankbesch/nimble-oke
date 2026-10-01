@@ -79,39 +79,36 @@ main() {
     
     echo ""
     echo "=== Cost Estimation ==="
-    local gpu_count
-    gpu_count=$(get_gpu_count)
-    
-    if [[ "$gpu_count" != "0" ]]; then
-        local hourly_cost
-        hourly_cost=$(estimate_hourly_cost "$gpu_count")
-        local daily_cost
-        daily_cost=$(echo "$hourly_cost * 24" | bc -l)
-        local monthly_cost
-        monthly_cost=$(echo "$hourly_cost * 24 * 30" | bc -l)
-        
-        echo "Current cluster cost (with $gpu_count GPU node(s)):"
-        echo "  Hourly: \$$(format_cost "$hourly_cost")"
-        echo "  Daily: \$$(format_cost "$daily_cost")"
-        echo "  Monthly (if running 24/7): \$$(format_cost "$monthly_cost")"
-        
-        # Cost warning based on today's learnings
-        if (( $(echo "$hourly_cost > 5" | bc -l) )); then
-            echo ""
-            echo "⚠️  COST WARNING: High hourly cost detected"
-            echo "   Consider emergency cleanup if deployment fails"
-            echo "   Previous session: 2,582+ pods created, \$20+ cost"
+    # get_gpu_count counts GPU NODES. Rates come from _lib.sh for the node
+    # shape (read from the node label, else GPU_SHAPE, else VM.GPU.A10.1).
+    local node_count shape hourly_cost
+    node_count=$(get_gpu_count)
+    shape="${GPU_SHAPE:-$NIM_DEFAULT_GPU_SHAPE}"
+    if [[ "$node_count" != "0" ]]; then
+        local first_node label_shape
+        first_node=$(get_gpu_nodes | awk '{print $1}')
+        label_shape=$(kubectl get node "$first_node" -o jsonpath='{.metadata.labels.node\.kubernetes\.io/instance-type}' 2>/dev/null || true)
+        [[ -n "$label_shape" ]] && shape="$label_shape"
+    fi
+
+    local shown_nodes="$node_count"
+    [[ "$node_count" == "0" ]] && shown_nodes=1
+    if hourly_cost=$(estimate_hourly_cost "$shown_nodes" "$shape" 2>/dev/null); then
+        if [[ "$node_count" != "0" ]]; then
+            echo "Estimated cluster cost ($node_count x $shape, rates from _lib.sh):"
+        else
+            echo "No GPU nodes currently provisioned"
+            echo "Estimated cost for 1 x $shape (rates from _lib.sh):"
         fi
+        echo "  Hourly: \$$(format_cost "$hourly_cost")"
+        echo "  5-hour test: \$$(format_cost "$(echo "$hourly_cost * 5" | bc -l)")"
+        echo "  Daily (if running 24/7): \$$(format_cost "$(echo "$hourly_cost * 24" | bc -l)")"
+        echo "  (GPU and enhanced-cluster rates verified; LB and storage are estimates)"
     else
-        echo "No GPU nodes currently provisioned"
-        echo "Estimated cost for VM.GPU.A10.2 (2 GPUs):"
-        echo "  Hourly: \$6.62 (VM.GPU.A10.2 + 5TB boot volume)"
-        echo "  5-hour test: ~\$33.10"
-        echo ""
-        echo "⚠️  LESSONS LEARNED:"
-        echo "   - NIM requires 5TB+ boot volume for model caching"
-        echo "   - Single pod strategy prevents rolling update issues"
-        echo "   - Persistence disabled eliminates volume conflicts"
+        echo "Shape $shape: rate not verified (no Oracle rate in _lib.sh)"
+    fi
+    if [[ "$node_count" != "0" ]]; then
+        echo "  GPU nodes bill until 'make teardown'; 'make cleanup' removes only the NIM release."
     fi
     
     echo ""
@@ -123,7 +120,6 @@ main() {
     if [[ "$pod_count" -gt 1 ]]; then
         echo "⚠️  WARNING: Multiple pods detected (expected: 1)"
         echo "   This may indicate rolling update issues"
-        echo "   Previous session: 2,582+ pods created"
     fi
     
     echo ""

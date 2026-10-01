@@ -56,7 +56,7 @@ make discover
 [NIM-OKE][INFO] Discovering OKE cluster state...
 
 === Cluster Information ===
-Kubernetes Version: v1.28.2
+Kubernetes Version: v1.34.1
 Total Nodes: 1
 GPU Nodes: 1
 Default StorageClass: oci-bv
@@ -68,9 +68,9 @@ Node: oke-cxxxxxxx-xxxxx
 
 === Cost Estimation ===
 Current cluster cost (with 1 GPU node(s)):
-  Hourly: $1.85
-  Daily: $44.40
-  Monthly (if running 24/7): $1,332.00
+  Hourly: $2.10
+  Daily: $50.40
+  Monthly (if running 24/7): $1,533.00
 
 [NIM-OKE][SUCCESS] Discovery complete
 ```
@@ -124,7 +124,7 @@ make prereqs
 [NIM-OKE][INFO] Checking prerequisites...
 
 === Required Tools ===
-[NIM-OKE][SUCCESS] kubectl: installed (v1.28.2)
+[NIM-OKE][SUCCESS] kubectl: installed (v1.34.1)
 [NIM-OKE][SUCCESS] helm: installed (v3.12.0)
 [NIM-OKE][SUCCESS] oci: installed (3.30.0)
 [NIM-OKE][SUCCESS] jq: installed (1.6)
@@ -173,11 +173,11 @@ Before deployment, cost guard evaluates:
 ```bash
 ENVIRONMENT=dev
 COST_THRESHOLD_USD=5
-Estimated cost: $12 for 5 hours
+Estimated cost: $10.50 for 5 hours
 
 # If cost > threshold OR environment == production:
 [NIM-OKE][WARN] Cost guard triggered for: NIM deployment
-[NIM-OKE][WARN] Estimated cost: $12.00
+[NIM-OKE][WARN] Estimated cost: $10.50
 [NIM-OKE][WARN] Environment: dev
 [NIM-OKE][ERROR] Cost exceeds threshold ($5)
 [NIM-OKE][INFO] To proceed: export CONFIRM_COST=yes
@@ -224,7 +224,7 @@ cleanup_on_failure() {
 [NIM-OKE][INFO] Running prerequisites check...
 [NIM-OKE][SUCCESS] All critical prerequisites met
 [NIM-OKE][INFO] Estimating deployment cost...
-[NIM-OKE][INFO] Estimated cost for 5-hour deployment: $12.00
+[NIM-OKE][INFO] Estimated cost for 5-hour deployment: $10.50
 [NIM-OKE][INFO] Cost confirmed, proceeding...
 [NIM-OKE][INFO] Deploying NIM with Helm...
 [NIM-OKE][INFO] Waiting for pods to be ready...
@@ -438,8 +438,15 @@ KEEP_CACHE=yes make cleanup
 # Force cleanup without confirmation
 FORCE=yes make cleanup
 
-# Cleanup + full cluster teardown
+# Delete node pool + cluster (alias of make teardown)
 make cleanup-cluster
+```
+
+`make cleanup` removes the NIM release only. GPU billing continues until `make teardown` (or `make cleanup-cluster`) deletes the node pool and cluster.
+
+```bash
+# Stop GPU billing
+make teardown
 ```
 
 ### Verification
@@ -451,7 +458,7 @@ After cleanup:
 [NIM-OKE][SUCCESS] Cleanup complete - no NIM resources remain
 
 [NIM-OKE][INFO] Session duration: 4.50 hours
-[NIM-OKE][INFO] Estimated cost: $8.33
+[NIM-OKE][INFO] Estimated cost: $9.45
 
 [NIM-OKE][SUCCESS] NIM cleanup complete
 ```
@@ -471,7 +478,7 @@ make cleanup
 
 ```bash
 $ make install
-[NIM-OKE][INFO] Estimated cost for 5-hour deployment: $4.50
+[NIM-OKE][INFO] Estimated cost for 2-hour deployment: $4.20
 # Proceeds without prompt (under $5 threshold)
 ```
 
@@ -622,7 +629,7 @@ make install 2>/dev/null                # Suppress logs
    cost=$(echo "$elapsed_hours * $hourly_cost" | bc)
    
    [NIM-OKE][INFO] Session duration: 4.50 hours
-   [NIM-OKE][INFO] Estimated cost: $8.33
+   [NIM-OKE][INFO] Estimated cost: $9.45
    ```
 
 3. Timestamp removed after cost display
@@ -702,7 +709,7 @@ export OCI_REGION=us-phoenix-1
 
 # 2. Discover current state
 make discover
-# Output: Cluster ready, 1 GPU node, cost: $1.85/hr
+# Output: Cluster ready, 1 GPU node, cost: $2.10/hr plus LB and storage estimates
 
 # 3. Check prerequisites
 make prereqs
@@ -727,11 +734,14 @@ make operate
 
 # 8. Cleanup
 make cleanup
-# Output: Cleanup complete, session cost: $8.33
+# Output: Cleanup complete, session cost: $9.45 (4.5 h × $2.10)
+
+# 9. Stop GPU billing (make cleanup removes the NIM release only)
+make teardown
 ```
 
-Total time: ~5 hours including model download
-Total cost: ~$9-12
+Total time: ~5 hours including model download (estimate (static assumption, not measured))
+Total cost: $10.50 for 5 hours (5 h × $2.10), plus load balancer and block storage
 
 ### Scenario: Re-deployment with Cached Model
 
@@ -744,10 +754,10 @@ KEEP_CACHE=yes make cleanup  # Preserve PVC
 # Second deployment (faster)
 make install
 # Model already cached in PVC
-# Deployment ready in ~5 minutes instead of 45
+# Deployment ready faster (5 vs 45 minutes is an estimate, not measured)
 ```
 
-Cost savings: ~$1.50 per re-deployment (no model download time)
+Cost savings: shorter GPU time per re-deployment (not measured)
 
 ## Advanced Operations
 

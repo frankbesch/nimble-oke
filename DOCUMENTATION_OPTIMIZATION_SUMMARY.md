@@ -1,5 +1,7 @@
 # Documentation Optimization Summary
 
+*Historical working note from October 2025; figures corrected 2026-10-01. See README for current status.*
+
 > **📖 Reading time:** 3 minutes  
 > **📊 Impact report** - Redundancy removal and compression results
 
