@@ -1055,6 +1055,12 @@ on_exit() {
 default_preflight() {
   local t gpus need eff ad_out ad avail img lim_cid cid k8s opts fail=0
   local cfg="${RUNNER_OKE_CONFIG:-${SCRIPT_DIR}/oke-optimized-config.sh}"
+  echo "check: OCI_COMPARTMENT_ID is a full OCID"
+  if [[ ! "${OCI_COMPARTMENT_ID}" =~ ^ocid1\.(compartment|tenancy)\.[a-z0-9]+\.[a-z0-9-]*\.[a-z0-9-]{4,}$ ]]; then
+    echo "FAIL: OCI_COMPARTMENT_ID is not a full compartment OCID (length ${#OCI_COMPARTMENT_ID}). A placeholder such as 'ocid1.compartment...' in a shell profile causes this; export the real OCID in this shell."
+    return 1
+  fi
+  echo "ok: OCI_COMPARTMENT_ID is a full OCID"
   echo "check: required tools"
   for t in oci kubectl helm jq python3 curl bc; do
     command -v "${t}" >/dev/null 2>&1 || { echo "FAIL: required tool not found: ${t}"; fail=1; }
