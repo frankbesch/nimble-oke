@@ -104,7 +104,14 @@ check_objects() {
         if [[ -z "$DG_ID" ]]; then
             MISSING="${MISSING}dynamic group '$DG_NAME' (rule: $MATCHING_RULE)"$'\n'
         else
-            got=$(printf '%s' "$out" | jq -r --arg id "$DG_ID" '.data[] | select(.id == $id) | .["matching-rule"] // ""' | norm)
+            # The list response can carry a null matching-rule (seen live
+            # 2026-10-01), so read the rule with a get and fall back to the list.
+            got=$(oci iam dynamic-group get --dynamic-group-id "$DG_ID" \
+                    --query 'data."matching-rule"' --raw-output 2>/dev/null) || got=""
+            if [[ -z "$got" || "$got" == "null" ]]; then
+                got=$(printf '%s' "$out" | jq -r --arg id "$DG_ID" '.data[] | select(.id == $id) | .["matching-rule"] // ""')
+            fi
+            got=$(printf '%s' "$got" | norm)
             want=$(printf '%s' "$MATCHING_RULE" | norm)
             if [[ "$got" != "$want" ]]; then
                 MISSING="${MISSING}dynamic group '$DG_NAME' exists ($DG_ID) but its rule is not: $MATCHING_RULE"$'\n'
