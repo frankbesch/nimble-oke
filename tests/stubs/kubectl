@@ -57,6 +57,16 @@ if [[ -n "${STUB_AS_DIR:-}" ]]; then
       exit 0 ;;
   esac
 fi
+# NIM pod phase query from the runner's ready probe (fixed mode):
+#   STUB_POD_PENDING_POLLS=N with STUB_POD_COUNTER=FILE -> Pending for the first N polls
+if [[ "$*" == "get pods "*".status.phase"* ]]; then
+  n=0
+  if [[ -n "${STUB_POD_COUNTER:-}" ]]; then
+    n=$(( $(cat "${STUB_POD_COUNTER}" 2>/dev/null || echo 0) + 1 )); echo "${n}" > "${STUB_POD_COUNTER}"
+  fi
+  if [[ -n "${STUB_POD_COUNTER:-}" && "${n}" -le "${STUB_POD_PENDING_POLLS:-0}" ]]; then echo "Pending"; else echo "Running"; fi
+  exit 0
+fi
 case "${1:-}" in
   version) echo '{"serverVersion":{"gitVersion":"v1.34.1-stub"}}' ;;
   port-forward)

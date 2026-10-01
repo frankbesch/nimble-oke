@@ -55,8 +55,10 @@ Rates are Oracle list prices, read from Oracle's price list on 2026-10-01.
 | `VM.GPU.A10.2` (two GPUs) | $4.17 per hour |
 | `BM.GPU.A10.4` (four GPUs, bare metal) | $8.17 per hour |
 
-The load balancer and block storage add a small amount. This repository does
-not verify those two rates, so the scripts label them as estimates.
+The scripts print about $2.24 per hour for the default shape. That figure
+adds estimates for block storage and a load balancer, which this repository
+does not verify and labels as estimates. The chart's Service is ClusterIP, so
+no load balancer is created.
 
 One table in [scripts/_lib.sh](scripts/_lib.sh) holds every rate. An unknown
 shape is an error, not a default price.
@@ -81,8 +83,15 @@ Details: [docs/setup-prerequisites.md](docs/setup-prerequisites.md).
 
 ```bash
 export OCI_COMPARTMENT_ID=ocid1.compartment.oc1..your-compartment
-export NGC_API_KEY=nvapi-xxxxxxxxxxxxxxxxxxxx
 export OCI_REGION=us-phoenix-1
+```
+
+Keep the NGC key in a file that only you can read, and export it from there.
+Typing the key on a command line puts it in shell history.
+
+```bash
+chmod 600 ~/.ngc-key
+export NGC_API_KEY="$(cat ~/.ngc-key)"
 ```
 
 | Step | Command | Bills |
@@ -106,8 +115,11 @@ check that nothing is left.
 
 ```bash
 export OCI_COMPARTMENT_ID=ocid1.compartment.oc1..your-compartment
-scripts/run_measured.sh --key-file ~/.ngc-key docs/runs/out
+scripts/run_measured.sh --key-file ~/.ngc-key docs/runs/2026-10-01-fixed
 ```
+
+The key file must have mode 600 or 400. The output directory must be new or
+empty.
 
 A free check of access, quota, and configuration, with nothing created:
 
@@ -134,7 +146,7 @@ scripts/setup-autoscaler-iam.sh --apply
 
 ```bash
 scripts/run_measured.sh --autoscale --preflight-only /tmp/preflight
-scripts/run_measured.sh --autoscale docs/runs/out
+scripts/run_measured.sh --autoscale --key-file ~/.ngc-key docs/runs/2026-10-01-autoscale
 ```
 
 The receipt records the seconds from pod Pending to GPU node Ready, the
@@ -149,7 +161,7 @@ the upstream autoscaler code supports it. The measured run is the test.
 
 The runner is built to end with the cluster deleted:
 
-- A trap runs teardown once on success, failure, Ctrl-C, `TERM`, and `HUP`.
+- A trap runs teardown on success, failure, Ctrl-C, `TERM`, and `HUP`, and retries it until the deletes are confirmed.
 - Each step has a hard timeout. Preflight refuses to start if the watchdog limit is shorter than the step timeouts combined.
 - A watchdog runs in its own session, outside the terminal's process tree.
   It starts before anything billable exists. It takes over teardown if the
@@ -237,7 +249,7 @@ Their figures were corrected in October 2026.
 - The NVIDIA device plugin is pinned at v0.14.0 and has not been re-tested against newer releases.
 - The scripts are tested on bash 3.2. Bash 5 is exercised only in CI.
 - Autoscaling is limited to one GPU node and is unproven until a receipt is committed.
-- The watchdog runs on the machine that starts the run. If that machine loses power, nothing tears the cluster down.
+- The watchdog runs on the machine that starts the run. If that machine loses power or sleeps with the lid closed, nothing tears the cluster down until it wakes.
 
 ## References
 

@@ -357,6 +357,6 @@ test:
 	bash tests/run_measured_test.sh && bash tests/run_measured_reliability_test.sh && bash tests/run_measured_autoscale_test.sh && bash tests/live_path_test.sh
 
 lint:
-	shellcheck -x -S warning $(SCRIPTS_DIR)/*.sh setup-env.sh fix-oci-auth.sh
+	shellcheck -x -S warning $(SCRIPTS_DIR)/*.sh setup-env.sh fix-oci-auth.sh tests/*.sh
 	helm lint helm --set ngc.apiKey=dummy
 

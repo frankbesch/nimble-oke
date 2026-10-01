@@ -68,7 +68,7 @@ Node: oke-cxxxxxxx-xxxxx
 
 === Cost Estimation ===
 Current cluster cost (with 1 GPU node(s)):
-  Hourly: $2.10
+  Hourly: $2.17
   Daily: $50.40
   Monthly (if running 24/7): $1,533.00
 
@@ -709,7 +709,7 @@ export OCI_REGION=us-phoenix-1
 
 # 2. Discover current state
 make discover
-# Output: Cluster ready, 1 GPU node, cost: $2.10/hr plus LB and storage estimates
+# Output: Cluster ready, 1 GPU node, cost: $2.17/hr plus LB and storage estimates
 
 # 3. Check prerequisites
 make prereqs

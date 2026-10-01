@@ -376,7 +376,28 @@ grep -q "^fake_bench --url http://127.0.0.1:${pf_port} --out " "${CALLS_LOG}" ||
 grep -q "NIM_LOCAL_PORT ${busy} is in use" "${O}/runner.log" || pass=false
 receipt_ok "${O}" || pass=false
 [[ -z "$(wd_alive "${O}")" ]] || pass=false
+hr="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["hourly_rate_usd"])' "${O}/summary.json" 2>/dev/null || echo none)"
+want_hr="$(bash -c 'source "$1/scripts/_lib.sh" >/dev/null 2>&1; set +e; estimate_hourly_cost 1 VM.GPU.A10.1' _ "${REPO_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}" 2>/dev/null | tail -1)"
+python3 -c 'import sys; sys.exit(0 if abs(float(sys.argv[1])-float(sys.argv[2]))<1e-6 else 1)' "${hr}" "${want_hr}" 2>/dev/null || { pass=false; echo "  hourly_rate_usd=${hr} want=${want_hr}"; }
 report R13 "${pass}" "rc=${rc} busy=${busy} forwarded=${pf_port} | ${pf_line} | $(grep '^fake_bench' "${CALLS_LOG}")" "${O}"
+
+# --- R19: pod still Pending -> ready waits, starts no port-forward, then passes once Running ---
+reset
+O="${TMP_DIR}/outR19"
+export STUB_PF_SERVE=1 READY_TIMEOUT_SEC=60 STUB_POD_PENDING_POLLS=4 STUB_POD_COUNTER="${TMP_DIR}/r19-pod-polls"
+export FAKE_PROVISION_INFO=1 NIMBLE_CLUSTER_INFO="${TMP_DIR}/r19-cluster-info.txt"
+set +e; env -u RUNNER_READY "${RUNNER}" "${O}" > "${TMP_DIR}/r19.out" 2>&1; rc=$?; set -e
+export READY_TIMEOUT_SEC=3
+unset STUB_POD_PENDING_POLLS STUB_POD_COUNTER
+waits="$(grep -c 'NIM pod not Running yet' "${O}/ready.log" 2>/dev/null || true)"
+pass=true
+[[ "${rc}" -eq 0 ]] || pass=false
+[[ "${waits}" -ge 4 ]] || pass=false
+if grep -q "exited at once" "${O}/ready.log" "${O}/runner.log" 2>/dev/null; then pass=false; fi
+[[ "$(grep -c '^kubectl .*port-forward' "${STUB_LOG}")" -eq 1 ]] || pass=false
+[[ "$(count bench)" -eq 1 && "$(count teardown)" -eq 1 ]] || pass=false
+[[ -z "$(wd_alive "${O}")" ]] || pass=false
+report R19 "${pass}" "rc=${rc} pending_waits=${waits} port_forwards=$(grep -c '^kubectl .*port-forward' "${STUB_LOG}") bench_calls=$(count bench)" "${O}"
 
 # --- R14: port-forward dies at once -> ready fails fast (not after READY_TIMEOUT_SEC) ---
 reset

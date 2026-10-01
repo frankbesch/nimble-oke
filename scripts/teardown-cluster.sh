@@ -22,7 +22,7 @@ POSSIBLE_ORPHAN_VOLUMES=""
 calculate_total_cost() {
     if [[ -f "$INFO_FILE" ]]; then
         local start_time
-        start_time=$(stat -f %m "$INFO_FILE" 2>/dev/null || stat -c %Y "$INFO_FILE" 2>/dev/null || echo "0")
+        start_time=$(stat -c %Y "$INFO_FILE" 2>/dev/null || stat -f %m "$INFO_FILE" 2>/dev/null || echo "0")
 
         if [[ "$start_time" != "0" ]]; then
             local current_time

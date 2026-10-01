@@ -256,11 +256,11 @@ pass=true
 grep -q '^fake_provision_env AUTOSCALE=0 ' "${CALLS_LOG}" || pass=false
 [[ "$(count iam_check)" -eq 0 ]] || pass=false
 ! grep -q 'autoscale result' "${O}/receipt.md" || pass=false
-grep -q '^- System pool (USD): [0-9.]* at 0.074/h (included above)$' "${O}/receipt.md" || pass=false
+grep -q '^- of which system pool (USD): [0-9.]* at 0.074/h$' "${O}/receipt.md" || pass=false
 grep -q '^- Estimated cost (USD): [0-9.]*$' "${O}/receipt.md" || pass=false
 python3 -c 'import json,sys; s=json.load(open(sys.argv[1])); assert "autoscale" not in s and s["autoscale_mode"] is False and s["system_pool_hourly_usd"]==0.074, s' "${O}/summary.json" || pass=false
 ! grep -q '^kubectl .*scale deployment' "${STUB_LOG}" || pass=false
-report U8 "${pass}" "rc=${rc} order=[${order% }] | $(grep '^- System pool' "${O}/receipt.md")" "${O}"
+report U8 "${pass}" "rc=${rc} order=[${order% }] | $(grep '^- of which system pool' "${O}/receipt.md")" "${O}"
 
 # --- U9: deploy.sh with AUTOSCALE=1 against stubs ---
 reset U9

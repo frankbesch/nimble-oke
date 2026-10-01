@@ -140,7 +140,8 @@ unset NGC_API_KEY NGC_CLI_API_KEY
 # only). Its contents go into a non-exported variable and are never logged.
 if [[ -n "${KEY_FILE}" ]]; then
   [[ -f "${KEY_FILE}" ]] || { echo "ERROR: --key-file ${KEY_FILE}: not a regular file" >&2; exit 2; }
-  kf_mode="$(stat -f %Lp "${KEY_FILE}" 2>/dev/null || stat -c %a "${KEY_FILE}" 2>/dev/null || echo unknown)"
+  # GNU stat first: on Linux `stat -f` means --file-system and prints garbage.
+  kf_mode="$(stat -c %a "${KEY_FILE}" 2>/dev/null || stat -f %Lp "${KEY_FILE}" 2>/dev/null || echo unknown)"
   case "${kf_mode}" in
     600|400) ;;
     *) echo "ERROR: --key-file ${KEY_FILE} has mode ${kf_mode}; it must be 600 or 400 (chmod 600 ${KEY_FILE})" >&2
@@ -520,10 +521,12 @@ verify_clean() {
   [[ "${n}" == "0" ]] || return 1
   cid="$(info_get CLUSTER_ID)"
   if [[ -n "${cid}" ]]; then
-    echo "$(ts) oci ce node-pool list --cluster-id <recorded cluster>"
-    out="$(oci ce node-pool list --compartment-id "${OCI_COMPARTMENT_ID}" --cluster-id "${cid}" --all \
+    # List by compartment and filter here: a list scoped to a deleted cluster
+    # may answer 404, which would read as "cannot confirm" on every clean run.
+    echo "$(ts) oci ce node-pool list (compartment), filtered to the recorded cluster"
+    out="$(oci ce node-pool list --compartment-id "${OCI_COMPARTMENT_ID}" --all \
             --region "${OCI_REGION}" \
-            --query "data[?\"lifecycle-state\"!='DELETED'].id" --raw-output)" \
+            --query "data[?\"cluster-id\"=='${cid}' && \"lifecycle-state\"!='DELETED'].id" --raw-output)" \
       || { echo "node-pool list FAILED: cannot confirm"; return 1; }
     n="$(printf '%s' "${out}" | json_len)" || { echo "node-pool list output unparseable"; return 1; }
     echo "non-DELETED node pools in the recorded cluster: ${n}"
@@ -693,10 +696,8 @@ hooks = [h for h in E.get("S_HOOKS", "").split(",") if h]
 def usd(rate, sec):
     return round(rate * sec / 3600.0, 4) if (rate is not None and sec is not None) else None
 sys_cost = usd(sys_rate, cost_secs)
-if hourly is not None and sys_rate is not None:
-    total_hourly = round(hourly + sys_rate, 4)
-else:
-    total_hourly = hourly
+# estimate_hourly_cost already includes the system pool and the cluster fee.
+total_hourly = hourly
 est_cost = usd(total_hourly, cost_secs)
 cost_note = ("rate from scripts/_lib.sh estimate_hourly_cost: GPU and enhanced-cluster rates verified there; "
              "LB and storage are estimates (unverified); plus the CPU system pool at %s USD/h (%s)"
@@ -869,7 +870,7 @@ if AS is not None:
     L.append("- Cluster fee (USD): %s at %s/h" % (fmt(cs["cluster_fee"]), fmt(cl_rate)))
 else:
     L.append("- Hourly rate (USD): %s" % fmt(total_hourly))
-    L.append("- System pool (USD): %s at %s/h (included above)" % (fmt(sys_cost), fmt(sys_rate)))
+    L.append("- of which system pool (USD): %s at %s/h" % (fmt(sys_cost), fmt(sys_rate)))
 L.append("- Estimated cost (USD): %s" % fmt(s["estimated_cost_usd"]))
 L.append("- Rate basis: %s" % s["cost_note"])
 L += ["", "## Bench", ""]
@@ -1190,8 +1191,17 @@ as_event_msg() {  # last message of event reason $2 in file $1 (default table: N
 
 # Returns 0 ready, 1 not ready yet, 2 the port-forward exited right after start.
 default_ready_probe() {
-  local code i
+  local code i phases
   if ! is_running "${PF_PID}"; then
+    # kubectl port-forward exits at once while the pod is not Running (volume
+    # attach, image pull). That is "not ready yet", not a port-forward failure.
+    phases="$(kubectl ${KCTX_ARGS[@]+"${KCTX_ARGS[@]}"} get pods -n "${NIM_NAMESPACE}" \
+                -l "app.kubernetes.io/instance=${NIM_RELEASE}" \
+                -o jsonpath='{range .items[*]}{.status.phase}{"\n"}{end}' 2>/dev/null || true)"
+    if ! printf '%s\n' "${phases}" | grep -q '^Running'; then
+      echo "$(ts) NIM pod not Running yet (phases: $(printf '%s' "${phases}" | tr '\n' ' ')); waiting"
+      return 1
+    fi
     # exec in a subshell: $! is kubectl itself, so stop_running_step finds it.
     ( exec kubectl ${KCTX_ARGS[@]+"${KCTX_ARGS[@]}"} port-forward -n "${NIM_NAMESPACE}" \
         "svc/${NIM_RELEASE}" "${LOCAL_PORT}:8000" < /dev/null >> "${OUT_DIR}/port-forward.log" 2>&1 ) &
