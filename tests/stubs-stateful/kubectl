@@ -2,6 +2,9 @@
 # Stateful offline stand-in for kubectl (tests/live_path_test.sh). No cluster.
 # The "kubeconfig" at $KUBECONFIG is a TSV: context, cluster, user, cluster OCID;
 # its current context is in "$KUBECONFIG.current". Node state lives in $SIM_STATE.
+# Knobs: SIM_DNS=pending   kube-dns (CoreDNS) pods never become Ready
+#        SIM_PV_STUCK=1    PVs survive their PVC's deletion (CSI never deletes them)
+# PersistentVolumes: "$SIM_STATE/pvs", TSV name, volumeHandle, bound PVC ("-" if none).
 set -u
 st="${SIM_STATE:?}"
 printf 'kubectl %s\n' "$*" >> "${SIM_LOG:?}"
@@ -60,8 +63,33 @@ case "$a" in
       [ "${SIM_GPU:-after-apply}" = after-apply ] && node_up && echo 1 > "$st/node.gpu"
       echo "daemonset.apps/nvidia-device-plugin-daemonset created" ;;
 
-  "-n default get pvc "*) : ;;
+  "-n kube-system get pods -l k8s-app=kube-dns "*)
+      ctx_ok || exit 1
+      if [ "${SIM_DNS:-ready}" = pending ]; then printf 'coredns-sim\tFalse\n'; else printf 'coredns-sim\tTrue\n'; fi ;;
+  "get pods -n kube-system -o wide")
+      ctx_ok || exit 1
+      if [ "${SIM_DNS:-ready}" = pending ]; then st_dns=Pending; else st_dns=Running; fi
+      printf 'NAME          READY   STATUS    NODE\ncoredns-sim   0/1     %s   <none>\n' "$st_dns" ;;
+  "describe pods -n kube-system -l k8s-app=kube-dns")
+      ctx_ok || exit 1
+      printf 'Name: coredns-sim\nTolerations: CriticalAddonsOnly op=Exists\nEvents:\n  Warning  FailedScheduling  0/1 nodes are available: 1 node(s) had untolerated taint {nvidia.com/gpu: present}\n' ;;
+  "get nodes -o custom-columns=NAME:.metadata.name,TAINTS:.spec.taints")
+      ctx_ok || exit 1
+      printf 'NAME         TAINTS\ngpu-node-1   [map[effect:NoSchedule key:nvidia.com/gpu value:present]]\n' ;;
+
+  "-n default get pvc "*)
+      [ -f "$st/pvs" ] && awk -F'\t' '$3 != "-" {printf "%s ", $1}' "$st/pvs" ;;
+  "-n default delete pvc "*)
+      if [ -f "$st/pvs" ]; then
+          if [ -n "${SIM_PV_STUCK:-}" ]; then
+              awk -F'\t' -v OFS='\t' '{$3 = "-"; print}' "$st/pvs" > "$st/pvs.tmp" && mv "$st/pvs.tmp" "$st/pvs"
+          else
+              : > "$st/pvs"   # reclaim policy Delete: the CSI driver deletes the PVs
+          fi
+      fi ;;
   "-n default delete "*) : ;;
+  "get pv -o jsonpath="*)
+      [ -f "$st/pvs" ] && awk -F'\t' 'NF >= 2 {printf "%s\t%s\n", $1, $2}' "$st/pvs" ;;
   "wait --for=delete "*) : ;;
   "get svc -A "*) : ;;
 

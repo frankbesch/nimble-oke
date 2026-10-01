@@ -9,6 +9,12 @@
 #   SIM_GET_AUTH_FAIL=KIND   `ce KIND get` answers 401 NotAuthenticated
 #   SIM_GPU=after-apply|preinstalled|never   (node allocatable nvidia.com/gpu)
 #   SIM_EPH_INITIAL=36Gi     node ephemeral-storage before oci-growfs
+#   SIM_RESOURCE_REGION=R    the simulated resources live in region R: a call
+#                            whose effective region (--region, else
+#                            OCI_CLI_REGION) differs gets 404 on get/delete and
+#                            an empty list, as the real CLI would
+# Every call is also logged with its region to "$SIM_LOG.env":
+#   OCI_CLI_REGION=<env> eff=<effective region> oci <argv>
 set -u
 st="${SIM_STATE:?}"
 printf 'oci %s\n' "$*" >> "${SIM_LOG:?}"
@@ -21,6 +27,8 @@ arg() {  # arg FLAG "$@" -> value after FLAG
     done
     return 1
 }
+eff_region=$(arg --region "$@") || eff_region="${OCI_CLI_REGION:-profile-default}"
+printf 'OCI_CLI_REGION=%s eff=%s oci %s\n' "${OCI_CLI_REGION:-}" "$eff_region" "$*" >> "${SIM_LOG}.env"
 has() { local want="$1"; shift; for a in "$@"; do [ "$a" = "$want" ] && return 0; done; return 1; }
 notfound() {
     printf 'ServiceError:\n{\n    "code": "NotAuthorizedOrNotFound",\n    "message": "Authorization failed or requested resource not found.",\n    "status": 404\n}\n' >&2
@@ -44,6 +52,16 @@ IGW=ocid1.internetgateway.oc1.phx.sim
 RT=ocid1.routetable.oc1.phx.sim
 CL=ocid1.cluster.oc1.phx.sim
 NP=ocid1.nodepool.oc1.phx.sim
+
+if [ -n "${SIM_RESOURCE_REGION:-}" ] && [ "$eff_region" != "$SIM_RESOURCE_REGION" ]; then
+    case "$1 $2 $3" in
+      "ce cluster get"|"ce node-pool get"|"ce cluster delete"|"ce node-pool delete"|"network vcn get"|"network "*" delete")
+          notfound ;;
+      "ce cluster list"|"ce node-pool list")
+          case "$*" in *'| [0]'*) : ;; *) echo '[]' ;; esac
+          exit 0 ;;
+    esac
+fi
 
 case "$1 $2 $3" in
   "iam region list") echo '{"data":[]}' ;;

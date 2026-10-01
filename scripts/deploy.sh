@@ -8,23 +8,16 @@ source "${SCRIPT_DIR}/_lib.sh"
 readonly HELM_CHART_DIR="${SCRIPT_DIR}/../helm"
 readonly RELEASE_NAME="nvidia-nim"
 readonly NAMESPACE="default"
-readonly DEPLOY_TIMEOUT=1200
+# Helm --wait bound (and the pod-ready wait after it). It must exceed the
+# chart's startup-probe window (helm/values.yaml startupProbe: 10 s x 120 =
+# 1200 s), because that window starts only once the image is pulled and the
+# 100Gi block volume is attached; 1800 s leaves 600 s for pull and attach.
+# The runner's deploy step cap (DEPLOY_STEP_TIMEOUT_SEC, 2400) sits above it.
+readonly DEPLOY_TIMEOUT=1800
 readonly NIM_SELECTOR="app.kubernetes.io/instance=${RELEASE_NAME}"
 
-# Kube context pin: provision-cluster.sh records KUBE_CONTEXT=<name> in
-# cluster-info.txt. When present, every kubectl/helm call made by this script
-# (including the _lib.sh helpers it calls) targets that context. The user's
-# current-context is never changed. No KUBE_CONTEXT line: behaviour unchanged.
-# NIMBLE_CLUSTER_INFO overrides the file path (tests only).
-NIMBLE_CLUSTER_INFO="${NIMBLE_CLUSTER_INFO:-${SCRIPT_DIR}/cluster-info.txt}"
-KUBE_CONTEXT_PIN=""
-if [[ -f "$NIMBLE_CLUSTER_INFO" ]]; then
-    KUBE_CONTEXT_PIN="$(sed -n 's/^KUBE_CONTEXT=//p' "$NIMBLE_CLUSTER_INFO" | tail -1)"
-fi
-if [[ -n "$KUBE_CONTEXT_PIN" ]]; then
-    export HELM_KUBECONTEXT="$KUBE_CONTEXT_PIN"
-    kubectl() { command kubectl --context "$KUBE_CONTEXT_PIN" "$@"; }
-fi
+# Kube context pin and per-request kubectl timeout (scripts/_lib.sh).
+nimble_pin_kube_context
 
 # The NGC key never touches disk and never appears in argv: ngc_values_yaml
 # prints it with the printf builtin into a pipe, and helm reads that pipe as
@@ -71,6 +64,12 @@ capture_failure_diagnostics() {
     done
     echo "--- kubectl get pvc ---"
     kubectl get pvc -n "$NAMESPACE" 2>&1 || true
+    # Cluster DNS: a Pending CoreDNS (e.g. every node a tainted GPU node)
+    # leaves NIM unable to download its model.
+    echo "--- kubectl get pods -n kube-system -o wide ---"
+    kubectl get pods -n kube-system -o wide 2>&1 || true
+    echo "--- node taints ---"
+    kubectl get nodes -o 'custom-columns=NAME:.metadata.name,TAINTS:.spec.taints' 2>&1 || true
     echo "===== END NIM FAILURE DIAGNOSTICS ====="
 }
 

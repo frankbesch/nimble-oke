@@ -815,6 +815,55 @@ kube_contexts_for_cluster() {
         -o jsonpath='{range .contexts[*]}{.name}{"\t"}{.context.cluster}{"\t"}{.context.user}{"\n"}{end}' 2>/dev/null)
 }
 
+# Per-request bound for kubectl calls that make one API round trip, so a
+# hung API server cannot stall a deadline loop (overridable; tests shorten it).
+NIMBLE_KUBECTL_REQUEST_TIMEOUT="${NIMBLE_KUBECTL_REQUEST_TIMEOUT:-30s}"
+
+# True if a kubectl argv streams or carries its own bound (wait, port-forward,
+# logs -f, rollout status, exec/attach, --watch, delete --wait=true): such
+# calls must not get --request-timeout, which would cut them off.
+nimble_kubectl_self_bounded() {
+    local a
+    for a in "$@"; do
+        case "$a" in
+            wait|port-forward|attach|exec|proxy|rollout|-f|--follow|--follow=true|-w|--watch|--watch=true|--wait=true)
+                return 0 ;;
+        esac
+    done
+    return 1
+}
+
+# kubectl with the recorded context (if any) and a per-request timeout.
+nimble_kubectl() {
+    local pre=()
+    if [[ -n "${KUBE_CONTEXT_PIN:-}" ]]; then
+        pre+=(--context "$KUBE_CONTEXT_PIN")
+    fi
+    if ! nimble_kubectl_self_bounded "$@"; then
+        pre+=("--request-timeout=${NIMBLE_KUBECTL_REQUEST_TIMEOUT}")
+    fi
+    command kubectl ${pre[@]+"${pre[@]}"} "$@"
+}
+
+# Kube context pin: provision-cluster.sh records KUBE_CONTEXT=<name> in
+# cluster-info.txt. When present, every kubectl/helm call made by the caller
+# (including the _lib.sh helpers it calls) targets that context; helm through
+# HELM_KUBECONTEXT. The user's current-context is never changed. Every
+# one-round-trip kubectl call also gets --request-timeout (see above), with or
+# without a pin. NIMBLE_CLUSTER_INFO overrides the file path (tests only).
+# Sets KUBE_CONTEXT_PIN ("" if none) and defines a kubectl() wrapper.
+nimble_pin_kube_context() {
+    local info="${NIMBLE_CLUSTER_INFO:-${SCRIPT_DIR:-.}/cluster-info.txt}"
+    KUBE_CONTEXT_PIN=""
+    if [[ -f "$info" ]]; then
+        KUBE_CONTEXT_PIN="$(sed -n 's/^KUBE_CONTEXT=//p' "$info" | tail -1)"
+    fi
+    if [[ -n "$KUBE_CONTEXT_PIN" ]]; then
+        export HELM_KUBECONTEXT="$KUBE_CONTEXT_PIN"
+    fi
+    kubectl() { nimble_kubectl "$@"; }
+}
+
 check_namespace_exists() {
     local namespace="$1"
     kubectl get namespace "$namespace" &>/dev/null

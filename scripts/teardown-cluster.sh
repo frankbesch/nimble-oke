@@ -10,6 +10,14 @@ readonly NIM_RELEASE_NAME="${NIM_RELEASE_NAME:-nvidia-nim}"
 readonly NIM_NAMESPACE="${NIM_NAMESPACE:-default}"
 readonly NIM_SELECTOR="app.kubernetes.io/instance=${NIM_RELEASE_NAME}"
 readonly PV_DELETE_TIMEOUT="${PV_DELETE_TIMEOUT:-300}"
+readonly PV_POLL_SEC="${PV_POLL_SEC:-5}"
+# Storage class of the NIM model cache (helm/values.yaml persistence.storageClass).
+readonly PV_STORAGE_CLASS="${PV_STORAGE_CLASS:-oci-bv}"
+# Per-request bound for one-round-trip kubectl calls (not wait/delete --wait).
+readonly KUBECTL_REQUEST_TIMEOUT="${NIMBLE_KUBECTL_REQUEST_TIMEOUT:-30s}"
+
+# Block volume OCIDs (CSI volumeHandle) of PVs that outlived the wait.
+POSSIBLE_ORPHAN_VOLUMES=""
 
 calculate_total_cost() {
     if [[ -f "$INFO_FILE" ]]; then
@@ -75,14 +83,25 @@ cleanup_nim_k8s_resources() {
     fi
 
     local k=(kubectl --context "$KUBE_CTX" -n "$NIM_NAMESPACE")
-    local ok="yes" releases pv_names svc_left
+    local kq=(kubectl --context "$KUBE_CTX" --request-timeout="$KUBECTL_REQUEST_TIMEOUT")
+    local ok="yes" releases pv_names svc_left pv_table
 
-    # PV names must be read before the PVCs go away.
-    if ! pv_names=$("${k[@]}" get pvc -l "$NIM_SELECTOR" -o jsonpath='{.items[*].spec.volumeName}'); then
+    # PV names must be read before the PVCs go away: those bound to this
+    # release's PVCs, plus EVERY ${PV_STORAGE_CLASS} PV in the cluster. A failed
+    # deploy deletes its PVC with --wait=false, so the PV (and its block
+    # volume) can still exist with no PVC left to name it.
+    if ! pv_names=$("${kq[@]}" -n "$NIM_NAMESPACE" get pvc -l "$NIM_SELECTOR" -o jsonpath='{.items[*].spec.volumeName}'); then
         log_error "Could not list NIM PVCs"
         ok="no"
         pv_names=""
     fi
+    if pv_table=$(list_storage_class_pvs); then
+        pv_names="$pv_names $(printf '%s\n' "$pv_table" | cut -f1 | tr '\n' ' ')"
+    else
+        log_error "Could not list ${PV_STORAGE_CLASS} PersistentVolumes"
+        ok="no"
+    fi
+    pv_names=$(printf '%s\n' $pv_names | awk 'NF && !seen[$0]++' | tr '\n' ' ')
 
     if ! releases=$(helm --kube-context "$KUBE_CTX" list -n "$NIM_NAMESPACE" -a -q --filter "^${NIM_RELEASE_NAME}\$"); then
         log_error "Could not list Helm releases"
@@ -114,19 +133,10 @@ cleanup_nim_k8s_resources() {
         ok="no"
     fi
 
-    local pv
-    for pv in $pv_names; do
-        log_info "Waiting for PersistentVolume $pv (block volume) to be released..."
-        if kubectl --context "$KUBE_CTX" wait --for=delete "pv/$pv" --timeout="${PV_DELETE_TIMEOUT}s"; then
-            log_success "PersistentVolume $pv deleted"
-        else
-            log_error "PersistentVolume $pv still exists; its OCI Block Volume may be orphaned"
-            ok="no"
-        fi
-    done
+    wait_pvs_gone $pv_names || ok="no"
 
     # Anything else that would orphan a cloud load balancer.
-    if svc_left=$(kubectl --context "$KUBE_CTX" get svc -A \
+    if svc_left=$("${kq[@]}" get svc -A \
         -o jsonpath='{range .items[?(@.spec.type=="LoadBalancer")]}{.metadata.namespace}/{.metadata.name}{" "}{end}'); then
         if [[ -n "${svc_left// /}" ]]; then
             log_warn "Other LoadBalancer Services remain and their OCI Load Balancers may be orphaned: $svc_left"
@@ -138,6 +148,48 @@ cleanup_nim_k8s_resources() {
     fi
 
     [[ "$ok" == "yes" ]]
+}
+
+# "name<TAB>volumeHandle" for every PV of PV_STORAGE_CLASS (KUBE_CTX).
+list_storage_class_pvs() {
+    kubectl --context "$KUBE_CTX" --request-timeout="$KUBECTL_REQUEST_TIMEOUT" get pv \
+        -o jsonpath="{range .items[?(@.spec.storageClassName==\"${PV_STORAGE_CLASS}\")]}{.metadata.name}{\"\\t\"}{.spec.csi.volumeHandle}{\"\\n\"}{end}"
+}
+
+# Wait (bounded by PV_DELETE_TIMEOUT) until none of the named PVs exists.
+# PVs left at the deadline: their CSI volumeHandle (the block volume OCID)
+# goes to POSSIBLE_ORPHAN_VOLUMES and the function returns non-zero.
+wait_pvs_gone() {
+    local want="$*" deadline table left pv handle
+    [[ -n "${want// /}" ]] || { log_info "No ${PV_STORAGE_CLASS} PersistentVolumes to wait for"; return 0; }
+    log_info "Waiting up to ${PV_DELETE_TIMEOUT}s for PersistentVolume(s) to be deleted: $want"
+    deadline=$(( $(date +%s) + PV_DELETE_TIMEOUT ))
+    while :; do
+        left=""
+        if table=$(list_storage_class_pvs); then
+            for pv in $want; do
+                if printf '%s\n' "$table" | cut -f1 | grep -Fqx -- "$pv"; then
+                    left="$left $pv"
+                fi
+            done
+        else
+            left=" $want"   # cannot list: never "gone when unsure"
+            table=""
+        fi
+        if [[ -z "${left// /}" ]]; then
+            log_success "PersistentVolume(s) deleted: $want"
+            return 0
+        fi
+        if (( $(date +%s) >= deadline )); then
+            for pv in $left; do
+                handle=$(printf '%s\n' "$table" | awk -F'\t' -v p="$pv" '$1 == p {print $2; exit}')
+                log_error "POSSIBLE ORPHAN: PersistentVolume $pv still exists after ${PV_DELETE_TIMEOUT}s; block volume ${handle:-<volumeHandle unknown>}"
+                POSSIBLE_ORPHAN_VOLUMES="${POSSIBLE_ORPHAN_VOLUMES:+$POSSIBLE_ORPHAN_VOLUMES }${handle:-pv/$pv}"
+            done
+            return 1
+        fi
+        sleep "$PV_POLL_SEC"
+    done
 }
 
 # Delete a subnet, security list or VCN and wait for TERMINATED.
@@ -292,10 +344,23 @@ main() {
         exit 1
     fi
 
-    local env_compartment="${OCI_COMPARTMENT_ID:-}"
+    local env_compartment="${OCI_COMPARTMENT_ID:-}" env_region="${OCI_REGION:-}"
     # shellcheck disable=SC1090
     source "$INFO_FILE"
     OCI_COMPARTMENT_ID="${OCI_COMPARTMENT_ID:-$env_compartment}"
+    # _lib.sh set OCI_CLI_REGION from the environment before the record was
+    # read. Target the region the resources were created in: a wrong region
+    # answers 404, which would read as "already deleted".
+    if [[ -n "${REGION:-}" ]]; then
+        if [[ -n "$env_region" && "$env_region" != "$REGION" ]]; then
+            die "REGION MISMATCH: OCI_REGION=$env_region but $INFO_FILE records REGION=$REGION; nothing was deleted. Unset OCI_REGION or set it to $REGION and re-run."
+        fi
+        export OCI_CLI_REGION="$REGION"
+        export OCI_REGION="$REGION"
+        log_info "Targeting region $REGION (recorded in $INFO_FILE)"
+    else
+        log_warn "No REGION recorded in $INFO_FILE; using OCI_CLI_REGION=${OCI_CLI_REGION:-unset}"
+    fi
     if [[ -z "$OCI_COMPARTMENT_ID" ]]; then
         die "OCI_COMPARTMENT_ID is not in $INFO_FILE or the environment; export it and re-run"
     fi
@@ -345,11 +410,25 @@ main() {
     esac
 
     log_info "Deleting node pool..."
+    # A node pool found by NAME is deleted only inside this project's cluster
+    # (recorded or name-resolved CLUSTER_ID). With no such cluster, a pool
+    # with that name belongs to someone else: report it, never delete it.
     if [[ -z "${NODE_POOL_ID:-}" && -n "${NODE_POOL_NAME:-}" ]]; then
-        if ! NODE_POOL_ID=$(oci_find_node_pool_id "$OCI_COMPARTMENT_ID" "$NODE_POOL_NAME" "${CLUSTER_ID:-}"); then
-            log_error "Node pool lookup by name failed"
-            NODE_POOL_ID=""
-            np_ok="no"
+        if [[ -n "${CLUSTER_ID:-}" ]]; then
+            if ! NODE_POOL_ID=$(oci_find_node_pool_id "$OCI_COMPARTMENT_ID" "$NODE_POOL_NAME" "$CLUSTER_ID"); then
+                log_error "Node pool lookup by name failed"
+                NODE_POOL_ID=""
+                np_ok="no"
+            fi
+        else
+            local foreign_np=""
+            if ! foreign_np=$(oci_find_node_pool_id "$OCI_COMPARTMENT_ID" "$NODE_POOL_NAME"); then
+                log_error "Node pool lookup by name failed"
+                np_ok="no"
+            elif [[ -n "$foreign_np" ]]; then
+                log_error "A node pool named $NODE_POOL_NAME exists ($foreign_np), but no cluster of this project is recorded or found; NOT deleting it (it may belong to someone else). Check it in the OCI Console."
+                np_ok="no"
+            fi
         fi
     fi
     if [[ -n "${NODE_POOL_ID:-}" ]]; then
@@ -416,6 +495,13 @@ main() {
     if [[ "$k8s_ok" != "yes" || "$net_ok" != "yes" ]]; then
         if [[ "$k8s_ok" != "yes" ]]; then
             log_error "Kubernetes-owned block volumes or load balancers may be orphaned (see warnings above)"
+        fi
+        if [[ -n "$POSSIBLE_ORPHAN_VOLUMES" ]]; then
+            local vol
+            for vol in $POSSIBLE_ORPHAN_VOLUMES; do
+                log_error "POSSIBLE ORPHAN block volume: $vol"
+                log_error "  check: oci bv volume get --volume-id $vol --region ${OCI_CLI_REGION:-}"
+            done
         fi
         if [[ "$net_ok" != "yes" ]]; then
             log_error "Network cleanup incomplete (subnets, gateway or VCN remain)"

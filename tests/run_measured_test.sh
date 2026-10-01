@@ -9,6 +9,10 @@
 #   R1 also: receipt.md (no OCIDs/IPs) and kube context pinning
 #   R13 busy NIM_LOCAL_PORT -> free port, passed to bench   R14 port-forward dies -> fast fail
 #   P1 bc / curl missing -> preflight FAIL   D3 pinned Kubernetes version not offered
+#   R15 --key-file (mode 644 refused, 600 accepted, key never in files/argv)
+#   R16 the runner's own oci calls target OCI_REGION (OCI_CLI_REGION exported)
+#   R17 WATCHDOG_SEC below the step-budget sum -> preflight fails (ALLOW_SHORT_WATCHDOG=yes proceeds)
+#   R18 a step past its hard timeout is stopped and teardown runs
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -37,6 +41,9 @@ export OCI_COMPARTMENT_ID="ocid1.compartment.oc1..testfake"
 export NGC_API_KEY="test-key-not-real"
 export POLL_SEC=1 READY_TIMEOUT_SEC=3 WATCHDOG_SEC=600 CLEANUP_RETRY_SEC=2
 export TEARDOWN_RETRY_PAUSE_SEC=1 STEP_STOP_WAIT_SEC=5
+# Step caps short enough that their sum (60+60+3+60 = 183) fits WATCHDOG_SEC=600.
+export PROVISION_STEP_TIMEOUT_SEC=60 DEPLOY_STEP_TIMEOUT_SEC=60 BENCH_STEP_TIMEOUT_SEC=60
+export STUB_ENV_LOG="${TMP_DIR}/stub_env.log"
 
 mkfake() {  # $1 name, $2 body (after logging the call)
   { echo '#!/bin/bash'; echo "echo \"$1 \$*\" >> \"\${CALLS_LOG}\""; echo "$2"; } > "${FAKE_DIR}/$1"
@@ -83,7 +90,9 @@ reset() {
   : > "${STUB_LOG}"; : > "${CALLS_LOG}"
   unset FAKE_PREFLIGHT_EXIT FAKE_PROVISION_SLEEP FAKE_PROVISION_EXIT FAKE_DEPLOY_LEAK \
         FAKE_DEPLOY_SLEEP FAKE_DEPLOY_EXIT FAKE_READY_EXIT FAKE_BENCH_EXIT FAKE_TEARDOWN_EXIT \
-        FAKE_PROVISION_INFO NIMBLE_CLUSTER_INFO NIM_LOCAL_PORT STUB_PF_EXIT STUB_PF_SERVE STUB_K8S_VERSIONS
+        FAKE_PROVISION_INFO NIMBLE_CLUSTER_INFO NIM_LOCAL_PORT STUB_PF_EXIT STUB_PF_SERVE STUB_K8S_VERSIONS \
+        ALLOW_SHORT_WATCHDOG OCI_REGION OCI_CLI_REGION
+  : > "${STUB_ENV_LOG}"
   export STUB_CLUSTER=absent
 }
 count() { grep -c "^fake_$1" "${CALLS_LOG}" 2>/dev/null || true; }
@@ -440,6 +449,95 @@ grep -q "^FAIL: Kubernetes v[0-9.]* (pinned in provision-cluster.sh) is not offe
 grep -q '^oci ce cluster-options get --cluster-option-id all' "${STUB_LOG}" || pass=false
 no_side_effects "${O}" || pass=false
 report D3 "${pass}" "rc=${rc} | $(grep -m1 '^FAIL' "${O}/preflight.log")" "${O}"
+
+# --- R15: --key-file: mode 644 refused; mode 600 accepted; key never in OUT_DIR or argv ---
+reset
+KF="${TMP_DIR}/ngc.key"
+# Unique per run: no ancestor process argv can contain it by accident.
+KF_KEY="kf$$x$(date +%s)xdummy"
+printf '%s\n' "${KF_KEY}" > "${KF}"
+chmod 644 "${KF}"
+O="${TMP_DIR}/outR15a"
+set +e; env -u NGC_API_KEY "${RUNNER}" --key-file "${KF}" "${O}" > "${TMP_DIR}/r15a.out" 2>&1; rc=$?; set -e
+pass=true
+[[ "${rc}" -eq 2 ]] || pass=false
+grep -q "has mode 644; it must be 600 or 400" "${TMP_DIR}/r15a.out" || pass=false
+[[ ! -e "${O}" && "$(count provision)" -eq 0 ]] || pass=false
+report R15a "${pass}" "rc=${rc} | $(head -1 "${TMP_DIR}/r15a.out")" "${O}"
+reset
+chmod 600 "${KF}"
+O="${TMP_DIR}/outR15b"
+export FAKE_DEPLOY_LEAK=1 FAKE_DEPLOY_SLEEP=3
+PS_LOG="${TMP_DIR}/ps_samples15.txt"; : > "${PS_LOG}"
+env -u NGC_API_KEY "${RUNNER}" --key-file "${KF}" "${O}" > "${TMP_DIR}/r15b.out" 2>&1 &
+r15=$!
+samples=0
+while kill -0 "${r15}" 2>/dev/null; do
+  ps -A -ww -o pid= -o command= >> "${PS_LOG}" 2>/dev/null || true
+  samples=$((samples + 1)); sleep 0.2
+done
+set +e; wait "${r15}"; rc=$?; set -e
+file_hits="$(grep -rl -e "${KF_KEY}" "${O}" "${TMP_DIR}/r15b.out" || true)"
+argv_hits="$(grep -c -e "${KF_KEY}" "${PS_LOG}" || true)"
+redacted="$(grep -c 'REDACTED' "${O}/deploy.log" || true)"
+pass=true
+[[ "${rc}" -eq 0 ]] || pass=false
+[[ -z "${file_hits}" && "${argv_hits}" -eq 0 ]] || pass=false
+[[ "${redacted}" -ge 4 && "$(count deploy)" -eq 1 ]] || pass=false
+report R15b "${pass}" "rc=${rc} files_with_key=[${file_hits}] ps_samples=${samples} argv_lines_with_key=${argv_hits} redacted_lines=${redacted} (deploy received the key from the file)" "${O}"
+
+# --- R16: the runner's own oci calls see OCI_CLI_REGION == OCI_REGION ---
+reset
+O="${TMP_DIR}/outR16"
+export FAKE_PROVISION_INFO=1 NIMBLE_CLUSTER_INFO="${TMP_DIR}/r16-cluster-info.txt"
+set +e; OCI_REGION=us-ashburn-1 OCI_CLI_REGION=eu-frankfurt-1 "${RUNNER}" "${O}" > "${TMP_DIR}/r16.out" 2>&1; rc=$?; set -e
+own="$(grep -c '^OCI_CLI_REGION=us-ashburn-1 oci ce .* list .*--region us-ashburn-1' "${STUB_ENV_LOG}" || true)"
+other="$(grep -vc '^OCI_CLI_REGION=us-ashburn-1 ' "${STUB_ENV_LOG}" || true)"
+pass=true
+[[ "${rc}" -eq 0 ]] || pass=false
+[[ "${own}" -ge 2 && "${other}" -eq 0 ]] || pass=false
+report R16 "${pass}" "rc=${rc} verify-clean oci calls with OCI_CLI_REGION=us-ashburn-1 and --region us-ashburn-1: ${own}; calls with another OCI_CLI_REGION: ${other}" "${O}"
+sed 's/^/    /' "${STUB_ENV_LOG}"
+
+# --- R17: WATCHDOG_SEC below the step-budget sum (183) ---
+reset
+O="${TMP_DIR}/outR17a"
+set +e; WATCHDOG_SEC=100 "${RUNNER}" "${O}" > "${TMP_DIR}/r17a.out" 2>&1; rc=$?; set -e
+pass=true
+[[ "${rc}" -eq 1 ]] || pass=false
+grep -q '^FAIL: WATCHDOG_SEC 100 is smaller than the step-budget sum 183' "${O}/preflight.log" || pass=false
+[[ "$(count provision)" -eq 0 && "$(count preflight)" -eq 0 && ! -f "${O}/watchdog.pid" ]] || pass=false
+report R17a "${pass}" "rc=${rc} | $(grep -m1 '^FAIL' "${O}/preflight.log")" "${O}"
+reset
+O="${TMP_DIR}/outR17b"
+set +e; WATCHDOG_SEC=100 ALLOW_SHORT_WATCHDOG=yes "${RUNNER}" "${O}" > "${TMP_DIR}/r17b.out" 2>&1; rc=$?; set -e
+pass=true
+[[ "${rc}" -eq 0 && "$(count provision)" -eq 1 && "$(count bench)" -eq 1 ]] || pass=false
+grep -q '^WARNING: WATCHDOG_SEC 100 is smaller than the step-budget sum 183; proceeding' "${O}/preflight.log" || pass=false
+report R17b "${pass}" "rc=${rc} | $(grep -m1 '^WARNING' "${O}/preflight.log")" "${O}"
+reset
+O="${TMP_DIR}/outR17c"
+set +e; env -u WATCHDOG_SEC -u READY_TIMEOUT_SEC -u PROVISION_STEP_TIMEOUT_SEC -u DEPLOY_STEP_TIMEOUT_SEC \
+  -u BENCH_STEP_TIMEOUT_SEC "${RUNNER}" --preflight-only "${O}" > "${TMP_DIR}/r17c.out" 2>&1; rc=$?; set -e
+pass=true
+[[ "${rc}" -eq 0 ]] || pass=false
+grep -q '= 8700s; WATCHDOG_SEC=9000s$' "${O}/preflight.log" || pass=false
+report R17c "${pass}" "rc=${rc} defaults | $(grep -m1 '^step budgets' "${O}/preflight.log")" "${O}"
+
+# --- R18: deploy past its hard timeout -> stopped, teardown runs ---
+reset
+O="${TMP_DIR}/outR18"
+export FAKE_PROVISION_INFO=1 NIMBLE_CLUSTER_INFO="${TMP_DIR}/r18-cluster-info.txt" FAKE_DEPLOY_SLEEP=60
+t0=$(date +%s)
+set +e; DEPLOY_STEP_TIMEOUT_SEC=2 "${RUNNER}" "${O}" > "${TMP_DIR}/r18.out" 2>&1; rc=$?; set -e
+el=$(( $(date +%s) - t0 ))
+pass=true
+[[ "${rc}" -eq 1 && "${el}" -lt 30 ]] || pass=false
+grep -q 'step deploy exceeded its hard timeout of 2s' "${O}/runner.log" || pass=false
+grep -q '^PHASE deploy END [0-9]* rc=124$' "${O}/phases.log" || pass=false
+[[ "$(count teardown)" -ge 1 && "$(count ready)" -eq 0 ]] || pass=false
+! pgrep -f "sleep 60" >/dev/null 2>&1 || pass=false
+report R18 "${pass}" "rc=${rc} elapsed=${el}s teardown_calls=$(count teardown) | $(grep -m1 'hard timeout' "${O}/runner.log" | cut -d' ' -f2-)" "${O}"
 
 if [[ "${FAIL}" -ne 0 ]]; then echo "RESULT: FAIL"; exit 1; fi
 echo "RESULT: all passed"

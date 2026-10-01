@@ -84,11 +84,16 @@ check "kubeconfig written to \$KUBECONFIG" grep -q -- "create-kubeconfig .*--fil
 check "KUBE_CONTEXT=context-csim" grep -q '^KUBE_CONTEXT=context-csim$' "$INFO"
 check "post-kubeconfig kubectl node calls pinned with --context" \
     bash -c '! grep "^kubectl " "$1" | grep -v "^kubectl config " | grep -vq -- "--context context-csim"' _ "$CASE/argv.log"
-check "growfs step ran" grep -q '^kubectl --context context-csim -n kube-system run nimble-growfs-.*oci-growfs' "$CASE/argv.log"
+check "growfs step ran" grep -q '^kubectl --context context-csim --request-timeout=30s -n kube-system run nimble-growfs-.*oci-growfs' "$CASE/argv.log"
 check "kubelet restart ran after growfs" grep -q 'run nimble-restart-kubelet-.*systemctl' "$CASE/argv.log"
 check "ephemeral storage reported grown" grep -q 'ephemeral-storage now 476Gi' "$CASE/prov.out"
-check "device plugin applied (no GPU before)" grep -q '^kubectl --context context-csim apply -f .*nvidia-device-plugin.yml' "$CASE/argv.log"
+check "device plugin applied (no GPU before)" grep -q '^kubectl --context context-csim --request-timeout=30s apply -f .*nvidia-device-plugin.yml' "$CASE/argv.log"
 check "allocatable-GPU wait passed" grep -q 'GPU check passed: node allocatable nvidia.com/gpu=1' "$CASE/prov.out"
+check "DNS gate passed (Ready kube-dns pod)" grep -q 'DNS check passed: 1 Ready kube-dns pod' "$CASE/prov.out"
+check "DNS gate runs after the GPU check" \
+    lt "$(grep -n 'GPU check passed' "$CASE/prov.out" | cut -d: -f1)" "$(grep -n 'DNS check passed' "$CASE/prov.out" | cut -d: -f1)"
+check "deadline-loop kubectl calls carry --request-timeout=30s" \
+    grep -q '^kubectl --context context-csim --request-timeout=30s get nodes -l ' "$CASE/argv.log"
 check "other kube context untouched" grep -q "^other-ctx	other-cluster	other-user	$OTHER_CLUSTER" "$KCFG"
 
 echo "== L2 teardown after L1"
@@ -216,6 +221,84 @@ check "teardown rc 0 (rc=$RC)" test "$RC" -eq 0
 check "subnets and security lists deleted" bash -c 'grep -q "^oci network subnet delete" "$1" && grep -q "^oci network security-list delete" "$1"' _ "$CASE/argv.log"
 check "VCN, gateway, route rules untouched" bash -c '! grep -Eq "^oci network (vcn delete|internet-gateway delete|route-table update)" "$1"' _ "$CASE/argv.log"
 check "VCN still exists in the simulation" test -f "$CASE/state/vcn"
+
+echo "== L9 cluster DNS never Ready -> provision fails loudly with evidence"
+new_case l9
+t0=$(date +%s)
+provision prov.out SIM_DNS=pending DNS_READY_TIMEOUT=3
+t1=$(date +%s)
+check "provision rc non-zero (rc=$RC)" test "$RC" -ne 0
+check "fails with DNS CHECK FAILED" grep -q 'DNS CHECK FAILED: no Ready kube-dns (CoreDNS) pod after 3s' "$CASE/prov.out"
+check "evidence: kube-system pods -o wide (Pending)" grep -q 'coredns-sim   0/1     Pending' "$CASE/prov.out"
+check "evidence: describe of the DNS pods (taint vs toleration)" grep -q 'untolerated taint {nvidia.com/gpu: present}' "$CASE/prov.out"
+check "evidence: node taints" grep -q 'key:nvidia.com/gpu' "$CASE/prov.out"
+check "within the shortened timeout ($((t1 - t0))s < 30s)" test $((t1 - t0)) -lt 30
+check "no completion message" bash -c '! grep -q "provisioning complete" "$1"' _ "$CASE/prov.out"
+
+echo "== L10 teardown in a shell whose default region differs: targets the recorded region"
+new_case l10
+provision prov.out OCI_REGION=us-ashburn-1 SIM_RESOURCE_REGION=us-ashburn-1
+check "provision rc 0 (rc=$RC)" test "$RC" -eq 0
+check "REGION=us-ashburn-1 recorded" grep -q '^REGION=us-ashburn-1$' "$INFO"
+: > "$CASE/argv.log"; : > "$CASE/argv.log.env"
+# New shell: OCI_REGION unset (so _lib.sh defaults to us-phoenix-1), ambient OCI_CLI_REGION also other.
+teardown td.out SIM_RESOURCE_REGION=us-ashburn-1 OCI_CLI_REGION=eu-frankfurt-1
+check "teardown rc 0 (rc=$RC)" test "$RC" -eq 0
+[[ $RC -eq 0 ]] || show_tail td.out
+check "node-pool delete ran with OCI_CLI_REGION=us-ashburn-1" \
+    grep -q '^OCI_CLI_REGION=us-ashburn-1 eff=us-ashburn-1 oci ce node-pool delete' "$CASE/argv.log.env"
+check "cluster delete ran with OCI_CLI_REGION=us-ashburn-1" \
+    grep -q '^OCI_CLI_REGION=us-ashburn-1 eff=us-ashburn-1 oci ce cluster delete' "$CASE/argv.log.env"
+check "no oci call targeted another region" bash -c '! grep -v " eff=us-ashburn-1 " "$1" | grep -q .' _ "$CASE/argv.log.env"
+check "resources really deleted (no 404 shortcut)" bash -c 'grep -qx DELETED "$1/cluster" && grep -qx DELETED "$1/np" && ! grep -q "NOTFOUND" "$2"' _ "$CASE/state" "$CASE/td.out"
+
+echo "== L10b OCI_REGION conflicts with the recorded REGION -> refuse, never report clean"
+new_case l10b
+provision prov.out OCI_REGION=us-ashburn-1 SIM_RESOURCE_REGION=us-ashburn-1
+: > "$CASE/argv.log"; : > "$CASE/argv.log.env"
+teardown td.out SIM_RESOURCE_REGION=us-ashburn-1 OCI_REGION=us-phoenix-1
+check "teardown rc non-zero (rc=$RC)" test "$RC" -ne 0
+check "says REGION MISMATCH" grep -q 'REGION MISMATCH: OCI_REGION=us-phoenix-1 but .* records REGION=us-ashburn-1' "$CASE/td.out"
+check "no oci call made" test ! -s "$CASE/argv.log.env"
+check "no success wording" bash -c '! grep -Eq "Teardown complete|confirmed deleted|already deleted" "$1"' _ "$CASE/td.out"
+check "cluster-info.txt kept" test -f "$INFO"
+check "simulated cluster still ACTIVE" grep -qx ACTIVE "$CASE/state/cluster"
+
+echo "== L11 PV left by a failed deploy (PVC already gone) never deletes -> exit 2 with its volume OCID"
+new_case l11
+provision prov.out
+printf 'pvc-orphan\tocid1.volume.oc1.phx.orphan\t-\n' > "$CASE/state/pvs"
+: > "$CASE/argv.log"
+teardown td.out SIM_PV_STUCK=1 PV_DELETE_TIMEOUT=2 PV_POLL_SEC=1
+check "teardown rc 2 (rc=$RC)" test "$RC" -eq 2
+check "PV with no PVC was collected (get pv before node-pool delete)" \
+    lt "$(line_of 'kubectl .*get pv -o jsonpath=')" "$(line_of 'oci ce node-pool delete')"
+check "possible orphan reports the volumeHandle" grep -q 'POSSIBLE ORPHAN: PersistentVolume pvc-orphan .*block volume ocid1.volume.oc1.phx.orphan' "$CASE/td.out"
+check "final orphan list names the volume" grep -q 'POSSIBLE ORPHAN block volume: ocid1.volume.oc1.phx.orphan' "$CASE/td.out"
+check "GPU node pool and cluster still deleted" bash -c 'grep -qx DELETED "$1/np" && grep -qx DELETED "$1/cluster"' _ "$CASE/state"
+check "cluster-info.txt kept" test -f "$INFO"
+
+echo "== L11b bound and released oci-bv PVs deleted after the PVC delete -> clean"
+new_case l11b
+provision prov.out
+printf 'pvc-bound\tocid1.volume.oc1.phx.bound\tnvidia-nim-cache\npvc-released\tocid1.volume.oc1.phx.rel\t-\n' > "$CASE/state/pvs"
+: > "$CASE/argv.log"
+teardown td.out PV_DELETE_TIMEOUT=5 PV_POLL_SEC=1
+check "teardown rc 0 (rc=$RC)" test "$RC" -eq 0
+[[ $RC -eq 0 ]] || show_tail td.out
+check "waited for both PVs" grep -q 'PersistentVolume(s) deleted: pvc-bound pvc-released' "$CASE/td.out"
+check "PVC delete before node-pool delete" lt "$(line_of 'delete pvc ')" "$(line_of 'oci ce node-pool delete')"
+check "cluster-info.txt removed" test ! -f "$INFO"
+
+echo "== L12 no cluster recorded or found, but a node pool with the project's name exists -> not deleted"
+new_case l12
+printf 'OCI_COMPARTMENT_ID=ocid1.compartment.oc1..sim\nREGION=us-phoenix-1\nCLUSTER_NAME=nimble-oke-cluster\nNODE_POOL_NAME=gpu-node-pool\n' > "$INFO"
+echo ACTIVE > "$CASE/state/np"   # someone else's pool, no cluster of ours
+teardown td.out
+check "teardown rc non-zero (rc=$RC)" test "$RC" -ne 0
+check "reports the foreign pool, not deleting" grep -q 'NOT deleting it (it may belong to someone else)' "$CASE/td.out"
+check "no node-pool delete issued" bash -c '! grep -q "^oci ce node-pool delete" "$1"' _ "$CASE/argv.log"
+check "foreign pool still ACTIVE" grep -qx ACTIVE "$CASE/state/np"
 
 # L8 deploy: added after deploy.sh settles
 

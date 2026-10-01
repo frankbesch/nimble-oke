@@ -58,8 +58,9 @@ service:
 env:
   - name: NIM_CACHE_PATH
     value: "/model-cache"
-  - name: NIM_MODEL_PROFILE
-    value: "auto"
+  # NIM_MODEL_PROFILE is deliberately not set: profile selection is left to
+  # NIM's default (with the variable absent, NIM picks a profile for the GPU).
+  # A wrong profile id would crash-loop the container.
 
 persistence:
   enabled: true  # ENABLED to bypass ephemeral storage limits

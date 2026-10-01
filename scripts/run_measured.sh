@@ -6,14 +6,21 @@
 # It produces a timed receipt that an NVIDIA NIM container served inference,
 # and it ALWAYS tries to tear the paid resources down.
 #
-# Usage: OCI_COMPARTMENT_ID=... NGC_API_KEY=... scripts/run_measured.sh OUT_DIR
+# Usage: export NGC_API_KEY first (e.g. `read -rs NGC_API_KEY; export NGC_API_KEY`),
+#        then: OCI_COMPARTMENT_ID=... scripts/run_measured.sh OUT_DIR
+#    or: OCI_COMPARTMENT_ID=... scripts/run_measured.sh --key-file PATH OUT_DIR
 #        OCI_COMPARTMENT_ID=... scripts/run_measured.sh --preflight-only OUT_DIR
+# Never put the key on the command line (shell history, ps).
 #
 # SPENDS REAL MONEY: provision-cluster.sh creates an ENHANCED OKE cluster and
 # a GPU node pool. Teardown runs from an EXIT trap on every exit path
 # (success, step failure, INT, TERM, HUP) with signals ignored, and an
 # out-of-tree watchdog (own session, started before anything billable)
 # takes over if the runner is killed outright or overruns WATCHDOG_SEC.
+# Each step has its own hard timeout (PROVISION_STEP_TIMEOUT_SEC,
+# DEPLOY_STEP_TIMEOUT_SEC, READY_TIMEOUT_SEC, BENCH_STEP_TIMEOUT_SEC); a step
+# past it is stopped and teardown runs. Preflight fails if WATCHDOG_SEC is
+# below their sum, unless ALLOW_SHORT_WATCHDOG=yes.
 #
 # Exit codes:
 #   0      bench succeeded AND teardown confirmed clean
@@ -48,18 +55,27 @@ cd "${REPO_ROOT}"
 
 usage() {
   cat <<'EOF'
-Usage: OCI_COMPARTMENT_ID=... NGC_API_KEY=... scripts/run_measured.sh OUT_DIR
+Usage: export NGC_API_KEY beforehand (read -rs NGC_API_KEY; export NGC_API_KEY), then
+         OCI_COMPARTMENT_ID=... scripts/run_measured.sh OUT_DIR
+       OCI_COMPARTMENT_ID=... scripts/run_measured.sh --key-file PATH OUT_DIR
        OCI_COMPARTMENT_ID=... scripts/run_measured.sh --preflight-only OUT_DIR
+  Never type the key on the command line: it lands in shell history and ps.
   OUT_DIR           new or empty directory for logs, phases.log and summary.json
+  --key-file PATH   read the NGC key from PATH (mode 600 or 400; first line used);
+                    overrides NGC_API_KEY; the contents are never logged
   --preflight-only  run only the no-cost preflight checks (real oci calls, read-only);
                     writes preflight.log and phases.log, starts no watchdog, creates
                     nothing, exits with the preflight status; NGC_API_KEY optional
 
-Env (required): OCI_COMPARTMENT_ID, NGC_API_KEY (NGC_CLI_API_KEY accepted)
-Env (optional): OCI_REGION (us-phoenix-1), OKE_GPU_SHAPE (VM.GPU.A10.1),
+Env (required): OCI_COMPARTMENT_ID, NGC_API_KEY (NGC_CLI_API_KEY accepted) or --key-file
+Env (optional): OCI_REGION (us-phoenix-1; also exported as OCI_CLI_REGION),
+  OKE_GPU_SHAPE (VM.GPU.A10.1),
   NODE_COUNT (1), CLUSTER_NAME (nimble-oke-cluster), OCI_TENANCY_OCID (for the
-  GPU limit query; default OCI_COMPARTMENT_ID), WATCHDOG_SEC (5400),
-  READY_TIMEOUT_SEC (1800), POLL_SEC (15), CLEANUP_RETRY_SEC (1800),
+  GPU limit query; default OCI_COMPARTMENT_ID), WATCHDOG_SEC (9000; must be >=
+  the step-budget sum below unless ALLOW_SHORT_WATCHDOG=yes),
+  PROVISION_STEP_TIMEOUT_SEC (3600), DEPLOY_STEP_TIMEOUT_SEC (2400),
+  READY_TIMEOUT_SEC (1800), BENCH_STEP_TIMEOUT_SEC (900),
+  POLL_SEC (15), CLEANUP_RETRY_SEC (1800),
   TEARDOWN_RETRY_PAUSE_SEC (30), STEP_STOP_WAIT_SEC (900),
   NIM_LOCAL_PORT (empty: a free local port; a busy port is replaced by a free one)
 Tools: oci kubectl helm jq python3 curl bc (macOS: caffeinate, if present, keeps
@@ -71,10 +87,16 @@ OUT_DIR=""
 WATCHDOG_MODE=0
 WD_MAIN_PID=""
 PREFLIGHT_ONLY=0
+KEY_FILE=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -h|--help) usage; exit 0 ;;
     --preflight-only) PREFLIGHT_ONLY=1 ;;
+    --key-file)
+      KEY_FILE="${2:-}"
+      [[ -n "${KEY_FILE}" ]] || { usage >&2; exit 2; }
+      shift
+      ;;
     --watchdog-for)
       # Internal: the runner re-invokes itself in its own session as the
       # out-of-tree watchdog for runner pid $2.
@@ -97,7 +119,22 @@ done
 # the deploy step (and its redaction filter) ever sees it.
 NGC_KEY_VALUE="${NGC_API_KEY:-${NGC_CLI_API_KEY:-}}"
 unset NGC_API_KEY NGC_CLI_API_KEY
-[[ "${WATCHDOG_MODE}" == "1" ]] && NGC_KEY_VALUE=""
+[[ "${WATCHDOG_MODE}" == "1" ]] && { NGC_KEY_VALUE=""; KEY_FILE=""; }
+# --key-file: the file must be a regular file with mode 600 or 400 (owner
+# only). Its contents go into a non-exported variable and are never logged.
+if [[ -n "${KEY_FILE}" ]]; then
+  [[ -f "${KEY_FILE}" ]] || { echo "ERROR: --key-file ${KEY_FILE}: not a regular file" >&2; exit 2; }
+  kf_mode="$(stat -f %Lp "${KEY_FILE}" 2>/dev/null || stat -c %a "${KEY_FILE}" 2>/dev/null || echo unknown)"
+  case "${kf_mode}" in
+    600|400) ;;
+    *) echo "ERROR: --key-file ${KEY_FILE} has mode ${kf_mode}; it must be 600 or 400 (chmod 600 ${KEY_FILE})" >&2
+       exit 2 ;;
+  esac
+  IFS= read -r NGC_KEY_VALUE < "${KEY_FILE}" || true
+  NGC_KEY_VALUE="${NGC_KEY_VALUE%$'\r'}"
+  [[ -n "${NGC_KEY_VALUE}" ]] || { echo "ERROR: --key-file ${KEY_FILE} is empty" >&2; exit 2; }
+  unset kf_mode
+fi
 
 if [[ "${WATCHDOG_MODE}" != "1" && -d "${OUT_DIR}" && -n "$(ls -A "${OUT_DIR}" 2>/dev/null)" ]]; then
   echo "ERROR: OUT_DIR ${OUT_DIR} is not empty; use a new directory per run" >&2
@@ -113,8 +150,13 @@ CLUSTER_NAME="${CLUSTER_NAME:-nimble-oke-cluster}"
 NODE_POOL_NAME="gpu-node-pool"            # fixed in provision-cluster.sh
 NIM_RELEASE="nvidia-nim"                  # fixed in deploy.sh; chart fullname == release
 NIM_NAMESPACE="default"                   # fixed in deploy.sh
-WATCHDOG_SEC="${WATCHDOG_SEC:-5400}"
+WATCHDOG_SEC="${WATCHDOG_SEC:-9000}"
+# Hard per-step caps. Their sum must fit inside WATCHDOG_SEC (preflight check).
+PROVISION_STEP_TIMEOUT_SEC="${PROVISION_STEP_TIMEOUT_SEC:-3600}"
+DEPLOY_STEP_TIMEOUT_SEC="${DEPLOY_STEP_TIMEOUT_SEC:-2400}"
 READY_TIMEOUT_SEC="${READY_TIMEOUT_SEC:-1800}"
+BENCH_STEP_TIMEOUT_SEC="${BENCH_STEP_TIMEOUT_SEC:-900}"
+ALLOW_SHORT_WATCHDOG="${ALLOW_SHORT_WATCHDOG:-no}"
 POLL_SEC="${POLL_SEC:-15}"
 CLEANUP_RETRY_SEC="${CLEANUP_RETRY_SEC:-1800}"
 TEARDOWN_RETRY_PAUSE_SEC="${TEARDOWN_RETRY_PAUSE_SEC:-30}"
@@ -124,12 +166,18 @@ NIM_LOCAL_PORT="${NIM_LOCAL_PORT:-}"
 [[ -z "${NIM_LOCAL_PORT}" || "${NIM_LOCAL_PORT}" =~ ^[0-9]+$ ]] \
   || { echo "ERROR: NIM_LOCAL_PORT must be empty or a port number" >&2; exit 2; }
 for v in NODE_COUNT WATCHDOG_SEC READY_TIMEOUT_SEC POLL_SEC CLEANUP_RETRY_SEC \
-         TEARDOWN_RETRY_PAUSE_SEC STEP_STOP_WAIT_SEC CLEANUP_LOCK_WAIT_SEC; do
+         TEARDOWN_RETRY_PAUSE_SEC STEP_STOP_WAIT_SEC CLEANUP_LOCK_WAIT_SEC \
+         PROVISION_STEP_TIMEOUT_SEC DEPLOY_STEP_TIMEOUT_SEC BENCH_STEP_TIMEOUT_SEC; do
   [[ "${!v}" =~ ^[0-9]+$ ]] || { echo "ERROR: ${v} must be a non-negative integer" >&2; exit 2; }
 done
-export OCI_REGION OKE_GPU_SHAPE NODE_COUNT CLUSTER_NAME WATCHDOG_SEC READY_TIMEOUT_SEC \
+STEP_BUDGET_SUM=$(( PROVISION_STEP_TIMEOUT_SEC + DEPLOY_STEP_TIMEOUT_SEC + READY_TIMEOUT_SEC + BENCH_STEP_TIMEOUT_SEC ))
+# Every oci call (the runner's own and its children's) targets OCI_REGION, not
+# the CLI profile's region; the OCI CLI reads OCI_CLI_REGION.
+OCI_CLI_REGION="${OCI_REGION}"
+export OCI_REGION OCI_CLI_REGION OKE_GPU_SHAPE NODE_COUNT CLUSTER_NAME WATCHDOG_SEC READY_TIMEOUT_SEC \
        POLL_SEC CLEANUP_RETRY_SEC TEARDOWN_RETRY_PAUSE_SEC STEP_STOP_WAIT_SEC \
-       CLEANUP_LOCK_WAIT_SEC NIM_LOCAL_PORT
+       CLEANUP_LOCK_WAIT_SEC NIM_LOCAL_PORT PROVISION_STEP_TIMEOUT_SEC \
+       DEPLOY_STEP_TIMEOUT_SEC BENCH_STEP_TIMEOUT_SEC ALLOW_SHORT_WATCHDOG
 
 INFO_FILE="${SCRIPT_DIR}/cluster-info.txt"   # written by provision, read by teardown
 if [[ -n "${RUNNER_PROVISION:-}" && -n "${NIMBLE_CLUSTER_INFO:-}" ]]; then
@@ -327,11 +375,15 @@ for line in sys.stdin.buffer:
 '
 
 STEP_PID=""
+STEP_TIMEOUT=0   # hard cap in seconds for the next run_step (0 = none)
 # run_step NAME CMD [ARGS...]: run CMD in the background (so a signal to the
 # runner is handled at once, not after a 20-minute step), stdin /dev/null,
 # output appended to OUT_DIR/NAME.log; wait for it and return its status.
+# With STEP_TIMEOUT > 0 the step tree is stopped after that many seconds and
+# run_step returns 124.
 run_step() {
-  local name="$1" rc=0
+  local name="$1" rc=0 limit="${STEP_TIMEOUT}" t0 timed_out=0
+  STEP_TIMEOUT=0
   shift
   local log="${OUT_DIR}/${name}.log"
   case "${name}" in
@@ -351,7 +403,21 @@ run_step() {
   esac
   STEP_PID=$!
   echo "${STEP_PID} ${name}" > "${STEP_PID_FILE}"
+  if (( limit > 0 )); then
+    t0="$(now)"
+    while is_running "${STEP_PID}"; do
+      if (( $(now) - t0 >= limit )); then
+        timed_out=1
+        note "step ${name} exceeded its hard timeout of ${limit}s; stopping it"
+        echo "$(ts) RUNNER: step ${name} exceeded its hard timeout of ${limit}s; stopped" >> "${log}"
+        stop_tree "${STEP_PID}" "${STEP_STOP_WAIT_SEC}" "timeout: step ${name}"
+        break
+      fi
+      isleep 1
+    done
+  fi
   wait "${STEP_PID}" || rc=$?
+  [[ "${timed_out}" == "1" ]] && rc=124
   STEP_PID=""
   rm -f "${STEP_PID_FILE}"
   [[ "${name}" == "deploy" ]] && remove_deploy_tmp
@@ -393,6 +459,7 @@ verify_clean() {
   local out n cid
   echo "$(ts) oci ce cluster list --name ${CLUSTER_NAME}"
   out="$(oci ce cluster list --compartment-id "${OCI_COMPARTMENT_ID}" --name "${CLUSTER_NAME}" --all \
+          --region "${OCI_REGION}" \
           --query "data[?\"lifecycle-state\"!='DELETED'].id" --raw-output)" \
     || { echo "cluster list FAILED: cannot confirm"; return 1; }
   n="$(printf '%s' "${out}" | json_len)" || { echo "cluster list output unparseable"; return 1; }
@@ -402,6 +469,7 @@ verify_clean() {
   if [[ -n "${cid}" ]]; then
     echo "$(ts) oci ce node-pool list --cluster-id <recorded cluster>"
     out="$(oci ce node-pool list --compartment-id "${OCI_COMPARTMENT_ID}" --cluster-id "${cid}" --all \
+            --region "${OCI_REGION}" \
             --query "data[?\"lifecycle-state\"!='DELETED'].id" --raw-output)" \
       || { echo "node-pool list FAILED: cannot confirm"; return 1; }
     n="$(printf '%s' "${out}" | json_len)" || { echo "node-pool list output unparseable"; return 1; }
@@ -459,18 +527,18 @@ manual_commands() {
   local cid npid
   cid="$(info_get CLUSTER_ID)"
   npid="$(info_get NODE_POOL_ID)"
-  echo "Delete the GPU node pool first, then the cluster (OCI CLI):"
-  echo "  oci ce node-pool list --compartment-id \"\$OCI_COMPARTMENT_ID\" --name ${NODE_POOL_NAME}"
-  echo "  oci ce node-pool delete --node-pool-id ${npid:-<NODE_POOL_OCID>} --force --wait-for-state SUCCEEDED --wait-for-state FAILED"
-  echo "  oci ce cluster list --compartment-id \"\$OCI_COMPARTMENT_ID\" --name ${CLUSTER_NAME}"
-  echo "  oci ce cluster delete --cluster-id ${cid:-<CLUSTER_OCID>} --force --wait-for-state SUCCEEDED --wait-for-state FAILED"
-  echo "Then remove the network and leftovers: FORCE=yes scripts/teardown-cluster.sh"
+  echo "Delete the GPU node pool first, then the cluster (OCI CLI, region ${OCI_REGION}):"
+  echo "  oci ce node-pool list --compartment-id \"\$OCI_COMPARTMENT_ID\" --name ${NODE_POOL_NAME} --region ${OCI_REGION}"
+  echo "  oci ce node-pool delete --node-pool-id ${npid:-<NODE_POOL_OCID>} --region ${OCI_REGION} --force --wait-for-state SUCCEEDED --wait-for-state FAILED"
+  echo "  oci ce cluster list --compartment-id \"\$OCI_COMPARTMENT_ID\" --name ${CLUSTER_NAME} --region ${OCI_REGION}"
+  echo "  oci ce cluster delete --cluster-id ${cid:-<CLUSTER_OCID>} --region ${OCI_REGION} --force --wait-for-state SUCCEEDED --wait-for-state FAILED"
+  echo "Then remove the network and leftovers: OCI_REGION=${OCI_REGION} FORCE=yes scripts/teardown-cluster.sh"
 }
 partial_commands() {
   echo "GPU node pool and cluster are deleted (GPU billing stopped). Check for orphans:"
-  echo "  oci bv volume list --compartment-id \"\$OCI_COMPARTMENT_ID\" --lifecycle-state AVAILABLE"
-  echo "  oci lb load-balancer list --compartment-id \"\$OCI_COMPARTMENT_ID\""
-  echo "  oci network vcn list --compartment-id \"\$OCI_COMPARTMENT_ID\" --display-name nimble-oke-vcn"
+  echo "  oci bv volume list --region ${OCI_REGION} --compartment-id \"\$OCI_COMPARTMENT_ID\" --lifecycle-state AVAILABLE"
+  echo "  oci lb load-balancer list --region ${OCI_REGION} --compartment-id \"\$OCI_COMPARTMENT_ID\""
+  echo "  oci network vcn list --region ${OCI_REGION} --compartment-id \"\$OCI_COMPARTMENT_ID\" --display-name nimble-oke-vcn"
   echo "scripts/cluster-info.txt is kept; re-run: FORCE=yes scripts/teardown-cluster.sh"
 }
 
@@ -912,6 +980,22 @@ default_ready_probe() {
 
 isleep() { sleep "$1" & wait $! || true; }   # interruptible by trapped signals
 
+# Step budgets vs the watchdog deadline: a slow but healthy run must not be
+# torn down mid-step by the watchdog. Prints the sum; non-zero if too short.
+watchdog_budget_check() {
+  echo "step budgets: provision ${PROVISION_STEP_TIMEOUT_SEC}s + deploy ${DEPLOY_STEP_TIMEOUT_SEC}s + ready ${READY_TIMEOUT_SEC}s + bench ${BENCH_STEP_TIMEOUT_SEC}s = ${STEP_BUDGET_SUM}s; WATCHDOG_SEC=${WATCHDOG_SEC}s"
+  if (( WATCHDOG_SEC >= STEP_BUDGET_SUM )); then
+    echo "ok: WATCHDOG_SEC ${WATCHDOG_SEC} >= step-budget sum ${STEP_BUDGET_SUM}"
+    return 0
+  fi
+  if [[ "${ALLOW_SHORT_WATCHDOG}" == "yes" ]]; then
+    echo "WARNING: WATCHDOG_SEC ${WATCHDOG_SEC} is smaller than the step-budget sum ${STEP_BUDGET_SUM}; proceeding (ALLOW_SHORT_WATCHDOG=yes)"
+    return 0
+  fi
+  echo "FAIL: WATCHDOG_SEC ${WATCHDOG_SEC} is smaller than the step-budget sum ${STEP_BUDGET_SUM}; the watchdog would stop a slow healthy run. Raise WATCHDOG_SEC to at least ${STEP_BUDGET_SUM}, lower the step timeouts, or set ALLOW_SHORT_WATCHDOG=yes"
+  return 1
+}
+
 # ------------------------------------------------------------------ main
 if [[ "${PREFLIGHT_ONLY}" == "1" ]]; then
   # No watchdog, no provision/deploy/teardown: nothing billable can exist.
@@ -925,6 +1009,11 @@ if [[ "${PREFLIGHT_ONLY}" == "1" ]]; then
   if [[ -z "${OCI_COMPARTMENT_ID:-}" ]]; then
     echo "FAIL: OCI_COMPARTMENT_ID must be set" >> "${OUT_DIR}/preflight.log"
     note "preflight FAILED: OCI_COMPARTMENT_ID must be set"
+    phase preflight END 1
+    exit 1
+  fi
+  if ! watchdog_budget_check >> "${OUT_DIR}/preflight.log" 2>&1; then
+    note "preflight FAILED: WATCHDOG_SEC ${WATCHDOG_SEC} < step-budget sum ${STEP_BUDGET_SUM} (see preflight.log)"
     phase preflight END 1
     exit 1
   fi
@@ -951,6 +1040,12 @@ if [[ -z "${OCI_COMPARTMENT_ID:-}" || -z "${NGC_KEY_VALUE}" ]]; then
   phase preflight END 1
   exit 1
 fi
+if ! watchdog_budget_check >> "${OUT_DIR}/preflight.log" 2>&1; then
+  note "preflight FAILED: WATCHDOG_SEC ${WATCHDOG_SEC} < step-budget sum ${STEP_BUDGET_SUM} (see preflight.log); nothing created"
+  phase preflight END 1
+  exit 1
+fi
+note "step-budget sum ${STEP_BUDGET_SUM}s; watchdog deadline ${WATCHDOG_SEC}s"
 pf_rc=0
 run_step preflight "${RUNNER_PREFLIGHT:-default_preflight}" || pf_rc=$?
 if [[ "${pf_rc}" != "0" ]]; then
@@ -985,8 +1080,10 @@ phase preflight END 0
 now > "${PROVISION_STARTED}"
 phase provision START 0
 rc=0
+STEP_TIMEOUT="${PROVISION_STEP_TIMEOUT_SEC}"
 run_step provision "${RUNNER_PROVISION:-${SCRIPT_DIR}/provision-cluster.sh}" || rc=$?
 phase provision END "${rc}"
+[[ "${rc}" == "124" ]] && note "provision stopped at its ${PROVISION_STEP_TIMEOUT_SEC}s hard timeout"
 if [[ -f "${INFO_FILE}" ]]; then
   grep -E '^(CLUSTER_ID|NODE_POOL_ID|GPU_SHAPE|KUBE_CONTEXT)=' "${INFO_FILE}" > "${OUT_DIR}/.oke_ids" 2>/dev/null || true
 fi
@@ -998,9 +1095,11 @@ kubectl ${KCTX_ARGS[@]+"${KCTX_ARGS[@]}"} version -o json --request-timeout=20s 
 
 phase deploy START 0
 rc=0
+STEP_TIMEOUT="${DEPLOY_STEP_TIMEOUT_SEC}"
 run_step deploy "${RUNNER_DEPLOY:-${SCRIPT_DIR}/deploy.sh}" || rc=$?
 NGC_KEY_VALUE=""   # deploy consumed it; nothing later may inherit it
 phase deploy END "${rc}"
+[[ "${rc}" == "124" ]] && note "deploy stopped at its ${DEPLOY_STEP_TIMEOUT_SEC}s hard timeout"
 [[ "${rc}" == "0" ]] || { note "deploy FAILED (see deploy.log)"; exit 1; }
 
 phase ready START 0
@@ -1048,6 +1147,7 @@ phase ready END 0
 
 phase bench START 0
 rc=0
+STEP_TIMEOUT="${BENCH_STEP_TIMEOUT_SEC}"
 if [[ -n "${RUNNER_BENCH:-}" ]]; then
   run_step bench "${RUNNER_BENCH}" --url "http://127.0.0.1:${LOCAL_PORT}" --out "${OUT_DIR}/bench.json" || rc=$?
 else
@@ -1059,6 +1159,7 @@ if [[ "${rc}" == "0" ]] && ! python3 -m json.tool "${OUT_DIR}/bench.json" >/dev/
   rc=1
 fi
 phase bench END "${rc}"
+[[ "${rc}" == "124" ]] && note "bench stopped at its ${BENCH_STEP_TIMEOUT_SEC}s hard timeout"
 [[ "${rc}" == "0" ]] || { note "bench FAILED (see bench.log)"; exit 1; }
 
 RUN_OK=1

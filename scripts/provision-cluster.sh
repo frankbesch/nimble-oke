@@ -22,7 +22,9 @@ readonly WORKER_SECLIST_NAME="nimble-oke-seclist-workers"
 # 0.0.0.0/0 is a short-lived smoke-test default only; set your own IP/32 for
 # anything that stays up longer than a test run.
 readonly API_ALLOWED_CIDR="${API_ALLOWED_CIDR:-0.0.0.0/0}"
-# The Helm chart's nodeSelector/affinity require this label on GPU nodes.
+# Label set on the GPU node pool (--initial-node-labels); the node waits below
+# select GPU nodes by it. The Helm chart no longer requires it (it schedules
+# on the nvidia.com/gpu resource request).
 readonly GPU_NODE_LABEL_KEY="nvidia.com/gpu.present"
 # Post-Ready steps (NVIDIA OKE guide: grow the root filesystem, then confirm
 # the node advertises allocatable nvidia.com/gpu). Timeouts in seconds.
@@ -32,6 +34,8 @@ readonly GROWFS_IMAGE="${GROWFS_IMAGE:-docker.io/library/oraclelinux:8}"
 readonly NODE_READY_TIMEOUT="${NODE_READY_TIMEOUT:-1200}"
 readonly GROWFS_TIMEOUT="${GROWFS_TIMEOUT:-600}"
 readonly GPU_ALLOCATABLE_TIMEOUT="${GPU_ALLOCATABLE_TIMEOUT:-900}"
+# Cluster DNS gate: at least one Ready kube-dns (CoreDNS) pod in kube-system.
+readonly DNS_READY_TIMEOUT="${DNS_READY_TIMEOUT:-600}"
 readonly POLL_INTERVAL="${POLL_INTERVAL:-15}"
 readonly INFO_FILE="${SCRIPT_DIR}/cluster-info.txt"
 # Pinned device-plugin release. Do not bump without testing.
@@ -230,7 +234,11 @@ quantity_to_gib() {
 }
 
 # kubectl pinned to this cluster's context (set after create-kubeconfig).
+# KCTL adds a per-request timeout so a hung API call cannot stall the deadline
+# loops; KCTL_STREAM (no request timeout) is for `wait` and `logs`, which
+# carry their own bounds.
 KCTL=(kubectl)
+KCTL_STREAM=(kubectl)
 
 # Wait until NODE_COUNT GPU-labelled nodes exist and all are Ready.
 wait_gpu_nodes_ready() {
@@ -270,11 +278,11 @@ run_node_pod() {
     log_info "Running $purpose on $node: $*"
     "${KCTL[@]}" -n kube-system run "$pod" --image="$GROWFS_IMAGE" --restart=Never \
         --overrides="$overrides" >/dev/null || return 1
-    "${KCTL[@]}" -n kube-system wait --for=jsonpath='{.status.phase}'=Succeeded "pod/$pod" \
+    "${KCTL_STREAM[@]}" -n kube-system wait --for=jsonpath='{.status.phase}'=Succeeded "pod/$pod" \
         --timeout="${GROWFS_TIMEOUT}s" >/dev/null || rc=1
     if [[ $rc -ne 0 ]]; then
         log_error "$purpose pod $pod did not succeed; its logs follow"
-        "${KCTL[@]}" -n kube-system logs "$pod" >&2 || true
+        "${KCTL_STREAM[@]}" -n kube-system logs "$pod" >&2 || true
     fi
     "${KCTL[@]}" -n kube-system delete pod "$pod" --ignore-not-found --wait=false >/dev/null 2>&1 \
         || log_warn "Could not delete helper pod kube-system/$pod; delete it by hand"
@@ -290,7 +298,8 @@ node_ephemeral() {
 }
 
 # N3: with a large boot volume the root filesystem stays ~35 GB until
-# oci-growfs runs; the chart requests 100Gi ephemeral storage. Idempotent:
+# oci-growfs runs; the chart requests 20Gi ephemeral storage (limit 200Gi,
+# helm/values.yaml) and the kubelet needs headroom above that. Idempotent:
 # a node already above MIN_EPHEMERAL_STORAGE is skipped.
 ensure_ephemeral_storage() {
     if [[ "$SKIP_GROWFS" == "yes" ]]; then
@@ -362,6 +371,41 @@ ensure_gpu_allocatable() {
         gpus=$(gpu_allocatable_max) || gpus=0
     done
     log_success "GPU check passed: node allocatable nvidia.com/gpu=$gpus"
+}
+
+# Ready kube-dns pods in kube-system (0 if the list fails).
+dns_ready_count() {
+    local out
+    out=$("${KCTL[@]}" -n kube-system get pods -l k8s-app=kube-dns \
+        -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}' \
+        2>/dev/null) || out=""
+    printf '%s\n' "$out" | awk -F'\t' '$2 == "True" {r++} END {print r + 0}'
+}
+
+# Cluster DNS gate: NIM resolves the NGC endpoints through CoreDNS. If every
+# node is a tainted GPU node, CoreDNS can stay Pending and the model download
+# fails 20 minutes later with no evidence; fail here instead, with evidence.
+ensure_cluster_dns() {
+    local deadline n
+    deadline=$(( $(date +%s) + DNS_READY_TIMEOUT ))
+    while :; do
+        n=$(dns_ready_count)
+        if (( n >= 1 )); then
+            log_success "DNS check passed: $n Ready kube-dns pod(s) in kube-system"
+            return 0
+        fi
+        if (( $(date +%s) >= deadline )); then
+            log_error "No Ready kube-dns pod in kube-system after ${DNS_READY_TIMEOUT}s; evidence follows"
+            echo "--- kubectl get pods -n kube-system -o wide ---" >&2
+            "${KCTL[@]}" get pods -n kube-system -o wide >&2 || true
+            echo "--- kubectl describe pods -n kube-system -l k8s-app=kube-dns (tolerations, events) ---" >&2
+            "${KCTL[@]}" describe pods -n kube-system -l k8s-app=kube-dns >&2 || true
+            echo "--- node taints ---" >&2
+            "${KCTL[@]}" get nodes -o 'custom-columns=NAME:.metadata.name,TAINTS:.spec.taints' >&2 || true
+            die "DNS CHECK FAILED: no Ready kube-dns (CoreDNS) pod after ${DNS_READY_TIMEOUT}s; NIM could not download its model. Check node taints vs CoreDNS tolerations above. The cluster is billing; fix and re-run, or run 'make teardown'."
+        fi
+        sleep "$POLL_INTERVAL"
+    done
 }
 
 cleanup_on_failure() {
@@ -718,15 +762,17 @@ main() {
     [[ -n "$kube_ctx" ]] || die "No kubeconfig context found for cluster $cluster_id in $kubeconfig_file. The cluster is billing; re-run or run 'make teardown'."
     record_info KUBE_CONTEXT "$kube_ctx"
     log_info "kubectl context for this cluster: $kube_ctx (recorded as KUBE_CONTEXT)"
-    KCTL=(kubectl --context "$kube_ctx")
+    KCTL=(kubectl --context "$kube_ctx" --request-timeout=30s)
+    KCTL_STREAM=(kubectl --context "$kube_ctx")
 
-    "${KCTL[@]}" --request-timeout=20s cluster-info &>/dev/null \
+    "${KCTL[@]}" cluster-info &>/dev/null \
         || die "Cluster API unreachable via context $kube_ctx. The cluster is billing; re-run or run 'make teardown'."
 
     log_info "Waiting for GPU node(s) to register and become Ready..."
     wait_gpu_nodes_ready
     ensure_ephemeral_storage
     ensure_gpu_allocatable
+    ensure_cluster_dns
 
     log_success "OKE cluster provisioning complete!"
     echo ""

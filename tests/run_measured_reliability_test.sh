@@ -36,6 +36,8 @@ export OCI_COMPARTMENT_ID="ocid1.compartment.oc1..testfake"
 export NGC_API_KEY="test-key-not-real"
 export POLL_SEC=1 READY_TIMEOUT_SEC=3 WATCHDOG_SEC=600 CLEANUP_RETRY_SEC=2
 export TEARDOWN_RETRY_PAUSE_SEC=1 STEP_STOP_WAIT_SEC=5
+# Step caps short enough that their sum (243) fits WATCHDOG_SEC=600.
+export PROVISION_STEP_TIMEOUT_SEC=60 DEPLOY_STEP_TIMEOUT_SEC=120 BENCH_STEP_TIMEOUT_SEC=60
 
 mkfake() {
   { echo '#!/bin/bash'; echo "echo \"$1 \$*\" >> \"\${CALLS_LOG}\""; echo "$2"; } > "${FAKE_DIR}/$1"
@@ -138,6 +140,9 @@ pass=true
 [[ "${rc}" -ne 0 ]] || pass=false
 echo "${r7_out}" | grep -q "oci ce node-pool delete --node-pool-id" || pass=false
 echo "${r7_out}" | grep -q "oci ce cluster delete --cluster-id" || pass=false
+# The manual commands name the region explicitly (V1): OCI_REGION default us-phoenix-1.
+echo "${r7_out}" | grep -q "oci ce node-pool delete --node-pool-id .* --region us-phoenix-1 " || pass=false
+echo "${r7_out}" | grep -q "oci ce cluster delete --cluster-id .* --region us-phoenix-1 " || pass=false
 echo "${r7_out}" | grep -q "WATCHDOG LEFT ARMED" || pass=false
 [[ ! -f "${O}/.watchdog_stop" ]] || pass=false
 wdpid="$(cat "${O}/watchdog.pid" 2>/dev/null || true)"
@@ -156,7 +161,7 @@ fi
 # --- W1: watchdog deadline (WATCHDOG_SEC=3) during a long deploy -> TERM to runner -> rc 143, teardown once ---
 reset
 O="${TMP_DIR}/outW1"
-set +e; WATCHDOG_SEC=3 "${RUNNER}" "${O}" > "${TMP_DIR}/W1.out" 2>&1; rc=$?; set -e
+set +e; WATCHDOG_SEC=3 ALLOW_SHORT_WATCHDOG=yes "${RUNNER}" "${O}" > "${TMP_DIR}/W1.out" 2>&1; rc=$?; set -e
 sleep 2
 pass=true
 [[ "${rc}" -eq 143 ]] || pass=false
