@@ -140,8 +140,28 @@ confirm_typed() {  # $1 compartment name, $2 action words
     [[ "$reply" == "$1" ]]
 }
 
+# IAM writes are accepted only in the tenancy's home region (live run
+# 2026-10-01: 403 NotAllowed, "Please go to your home region ORD"). Reads in
+# another region can lag behind a write. So every call here targets the home
+# region. IAM_HOME_REGION overrides the lookup.
+use_home_region() {
+    local tenancy home="${IAM_HOME_REGION:-}"
+    if [[ -z "$home" ]]; then
+        tenancy=$(tenancy_id) || return 0
+        home=$(oci iam region-subscription list --tenancy-id "$tenancy" \
+            --query 'data[?"is-home-region"]."region-name" | [0]' --raw-output 2>/dev/null) || home=""
+    fi
+    if [[ -n "$home" && "$home" != "null" ]]; then
+        export OCI_CLI_REGION="$home"
+        say "IAM calls target the home region: $home"
+    else
+        say "could not determine the home region; using the profile's region"
+    fi
+}
+
 main() {
     local name where
+    [[ "$mode" == "--print" ]] || use_home_region
     if ! name=$(compartment_name); then
         if [[ "$mode" == "--print" ]]; then
             name="${COMPARTMENT_NAME:-<compartment-name>}"
