@@ -1,22 +1,13 @@
 # NIM Deployment Configuration
-# Meta Llama 3.1 8B Instruct on OKE
+# Meta Llama 3 8B Instruct (image nim/meta/llama3-8b-instruct:1.0.3) on OKE
 
 replicaCount: 1
 
-# Pod Limiter Configuration - TEMPORARILY DISABLED for stability
-podLimiter:
-  enabled: false  # Disabled for initial deployment stability
-  maxFailedPods: 3
-  maxPendingPods: 2
-  cleanupInterval: "5m"
-  # Rolling update strategy - CRITICAL: maxSurge=0 prevents pod explosion
-  rollingUpdate:
-    maxSurge: 0
-    maxUnavailable: 1
-
-# Deployment Strategy - Use Recreate to prevent eviction loops
+# Deployment strategy - always rendered by templates/deployment.yaml.
+# Recreate stops the old pod before the new one starts. A single GPU and a
+# ReadWriteOnce PVC cannot be held by two pods at once.
 strategy:
-  type: Recreate  # Prevents rolling update issues with storage-intensive workloads
+  type: Recreate
 
 image:
   registry: nvcr.io
@@ -24,11 +15,16 @@ image:
   tag: "1.0.3"
   pullPolicy: IfNotPresent
 
-imagePullSecrets:
-  - name: ngc-secret
+# Extra, pre-existing pull secrets only. The chart always adds its own NGC
+# pull secret, named "<release fullname>-ngc-registry".
+imagePullSecrets: []
 
+# The chart renders two Secrets from ngc.apiKey:
+#   <release fullname>-ngc-api       (Opaque, key NGC_API_KEY, read by the container)
+#   <release fullname>-ngc-registry  (dockerconfigjson, used to pull from nvcr.io)
+# ngc.apiKey is required; rendering fails without it.
 ngc:
-  apiKey: "MnZ0a2k0ZzlyamhjMjFramloczczdmRxMm86MWYxN2JmZTQtY2M5OS00Y2U5LThiYTUtYmU0ODYZOGE2ODM1"
+  apiKey: "" # supplied at install time: --set ngc.apiKey=$NGC_API_KEY or a values file kept out of git
   registry: nvcr.io
   username: "$oauthtoken"
 
@@ -46,12 +42,6 @@ resources:
     cpu: "4"
     ephemeral-storage: "100Gi"  # Updated to 100Gi for NIM model loading
 
-# Model-specific configuration
-model:
-  name: "meta/llama3-8b-instruct"
-  ngcAPISecret: "ngc-api"
-  sizeGB: 50  # Model size for cache planning
-
 service:
   type: ClusterIP  # Cost optimization - use port-forward for testing
   port: 8000
@@ -60,16 +50,13 @@ service:
   annotations:
     # LoadBalancer annotations removed for cost savings
 
+# Extra container env. NGC_API_KEY is added by the template from the
+# "<release fullname>-ngc-api" Secret; do not repeat it here.
 env:
   - name: NIM_CACHE_PATH
     value: "/model-cache"
   - name: NIM_MODEL_PROFILE
     value: "auto"
-  - name: NGC_API_KEY
-    valueFrom:
-      secretKeyRef:
-        name: nvidia-nim-ngc-api
-        key: NGC_API_KEY
 
 persistence:
   enabled: true  # ENABLED to bypass ephemeral storage limits
@@ -78,23 +65,27 @@ persistence:
   size: 100Gi  # Sufficient for NIM model storage
   mountPath: /model-cache
 
-# Security Context - SIMPLIFIED for initial deployment
-podSecurityContext:
-  runAsNonRoot: false  # Disabled for NIM GPU compatibility
-  runAsUser: 0         # Root user required for NIM GPU access
-  fsGroup: 0           # Root group required for NIM GPU access
-  # seccompProfile: disabled - REQUIRED for NIM GPU compatibility
+# Security context - NOT HARDENED.
+# Pod level: nothing is set. The container runs as the image's default user,
+# with no fsGroup and no seccomp profile. This is the configuration the
+# deployment has actually run with. (Earlier values listed runAsNonRoot: false,
+# runAsUser: 0 and fsGroup: 0, but the old template dropped them because they
+# are falsy, so they were never applied.) The template renders this map as-is,
+# so any key set here, including runAsUser: 0, is applied.
+podSecurityContext: {}
 
+# Container level: only readOnlyRootFilesystem: false is applied (NIM writes
+# temp files). Privilege escalation is allowed and no capabilities are dropped.
+# Hardening (allowPrivilegeEscalation: false, capabilities.drop: [ALL],
+# seccompProfile: RuntimeDefault, runAsNonRoot: true) is untested with NIM.
 securityContext:
-  # allowPrivilegeEscalation: false  # Temporarily disabled for NIM compatibility
-  # capabilities:                    # Temporarily disabled for NIM compatibility
-  #   drop:
-  #     - ALL
-  readOnlyRootFilesystem: false  # NIM requires writable filesystem for temp files and cache
+  readOnlyRootFilesystem: false
 
 nodeSelector:
   nvidia.com/gpu.present: "true"  # Flexible GPU selection (any NVIDIA GPU)
-  # VM.GPU.A10.2 provides 2x NVIDIA A10 GPUs (~$6.12/hour)
+  # Oracle list price is $2.00 per A10 GPU-hour:
+  #   VM.GPU.A10.1 (1x A10) = $2.00/hour; VM.GPU.A10.2 (2x A10) = $4.00/hour.
+  #   The 4-GPU A10 shape is bare metal: BM.GPU.A10.4.
 
 tolerations:
   - key: nvidia.com/gpu
@@ -121,12 +112,14 @@ topologySpreadConstraints:
   whenUnsatisfiable: ScheduleAnyway  # Allow scheduling even if constraints can't be met
   # TODO: Enable for production multi-zone deployments
 
-# Health Probes - Enhanced with startupProbe for NIM model loading
+# Health Probes - startupProbe covers the first model download.
+# Startup window = periodSeconds x failureThreshold = 10 s x 120 = 1200 s (20 min).
+# Readiness and liveness probes do not run until the startup probe succeeds.
 startupProbe:
   httpGet:
     path: /v1/health/ready
     port: 8000
-  failureThreshold: 30  # 5 minutes for model download
+  failureThreshold: 120
   periodSeconds: 10
   timeoutSeconds: 5
 
@@ -147,14 +140,6 @@ livenessProbe:
   periodSeconds: 30
   timeoutSeconds: 10
   failureThreshold: 3
-
-# Autoscaling - DISABLED for initial deployment
-autoscaling:
-  enabled: false
-  minReplicas: 1
-  maxReplicas: 3
-  targetCPUUtilizationPercentage: 80
-  targetMemoryUtilizationPercentage: 80
 
 # Monitoring - SIMPLIFIED for initial deployment
 podAnnotations:

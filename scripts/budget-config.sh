@@ -1,9 +1,21 @@
 #!/usr/bin/env bash
 
 # Budget Configuration for NVIDIA NIM OKE Deployment
-# VM.GPU.A10.4 pricing: ~$12.44/hour
+# All rates come from _lib.sh (single source of truth for shape and price).
 
 set -euo pipefail
+
+BUDGET_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if ! declare -F estimate_hourly_cost >/dev/null; then
+    # shellcheck source=_lib.sh
+    source "${BUDGET_SCRIPT_DIR}/_lib.sh"
+fi
+
+readonly BUDGET_GPU_SHAPE="${BUDGET_GPU_SHAPE:-${GPU_SHAPE:-$NIM_DEFAULT_GPU_SHAPE}}"
+BUDGET_GPU_RATE=$(get_gpu_hourly_rate "$BUDGET_GPU_SHAPE")
+BUDGET_GPUS_PER_NODE=$(get_shape_gpu_count "$BUDGET_GPU_SHAPE")
+BUDGET_HOURLY_TOTAL=$(printf "%.4f" "$(estimate_hourly_cost 1 "$BUDGET_GPU_SHAPE")")
+readonly BUDGET_GPU_RATE BUDGET_GPUS_PER_NODE BUDGET_HOURLY_TOTAL
 
 # Budget Ranges for Different Test Scenarios
 readonly BUDGET_CONFIGS=(
@@ -14,14 +26,13 @@ readonly BUDGET_CONFIGS=(
     "WEEKLY:2000:168:Weekly - 7 days for extended development"
 )
 
-# Cost Breakdown (VM.GPU.A10.4)
+# Cost Breakdown (one node of $BUDGET_GPU_SHAPE)
 readonly COST_BREAKDOWN=(
-    "GPU_NODES:12.24:VM.GPU.A10.4 (4x NVIDIA A10 GPUs)"
-    "CONTROL_PLANE:0.10:OKE Control Plane"
-    "ENHANCED:0.10:Enhanced Cluster Type"
-    "LOAD_BALANCER:0.01:Flexible Load Balancer (10 Mbps)"
-    "STORAGE:0.05:200GB Block Volume"
-    "TOTAL:12.44:Total Hourly Cost"
+    "GPU_NODES:${BUDGET_GPU_RATE}:${BUDGET_GPU_SHAPE} (${BUDGET_GPUS_PER_NODE}x NVIDIA A10 GPU)"
+    "ENHANCED:${NIM_ENHANCED_CLUSTER_HOURLY_USD}:OKE Enhanced Cluster (covers the control plane)"
+    "LOAD_BALANCER:${NIM_LB_HOURLY_ESTIMATE_USD}:Flexible Load Balancer (estimate, unverified)"
+    "STORAGE:${NIM_STORAGE_HOURLY_ESTIMATE_USD}:Block Volume (estimate, unverified)"
+    "TOTAL:${BUDGET_HOURLY_TOTAL}:Total Hourly Cost"
 )
 
 display_budget_options() {
@@ -31,7 +42,7 @@ display_budget_options() {
     for config in "${BUDGET_CONFIGS[@]}"; do
         IFS=':' read -r name budget hours description <<< "$config"
         local cost
-        cost=$(echo "12.44 * $hours" | bc -l)
+        cost=$(echo "$BUDGET_HOURLY_TOTAL * $hours" | bc -l)
         printf "  %-12s: \$%-6s (%2sh) - %s\n" "$name" "$budget" "$hours" "$description"
         printf "    Actual cost: \$%.2f\n" "$cost"
         echo ""
@@ -39,7 +50,7 @@ display_budget_options() {
 }
 
 display_cost_breakdown() {
-    echo "[NIM-OKE][COST] VM.GPU.A10.4 Cost Breakdown:"
+    echo "[NIM-OKE][COST] ${BUDGET_GPU_SHAPE} Cost Breakdown:"
     echo ""
     
     for cost in "${COST_BREAKDOWN[@]}"; do
@@ -52,7 +63,7 @@ display_cost_breakdown() {
 calculate_budget_for_duration() {
     local hours="${1:-1}"
     local cost
-    cost=$(echo "12.44 * $hours" | bc -l)
+    cost=$(echo "$BUDGET_HOURLY_TOTAL * $hours" | bc -l)
     
     echo "[NIM-OKE][CALCULATE] Budget for $hours hour(s):"
     echo "  Estimated cost: \$$(printf "%.2f" "$cost")"

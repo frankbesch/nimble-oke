@@ -49,6 +49,21 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
+Name of the Opaque Secret that holds NGC_API_KEY for the container.
+Derived from the release fullname so releases never collide.
+*/}}
+{{- define "nvidia-nim.ngcApiSecretName" -}}
+{{- printf "%s-ngc-api" (include "nvidia-nim.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Name of the dockerconfigjson Secret used to pull the NIM image from nvcr.io.
+*/}}
+{{- define "nvidia-nim.imagePullSecretName" -}}
+{{- printf "%s-ngc-registry" (include "nvidia-nim.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
 Create the name of the service account to use
 */}}
 {{- define "nvidia-nim.serviceAccountName" -}}

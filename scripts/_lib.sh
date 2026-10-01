@@ -33,7 +33,7 @@ log_success() {
 smart_retry() {
     local max_attempts="${1:-3}"
     local base_delay="${2:-5}"
-    local command="${@:3}"
+    local command="${*:3}"
     local attempt=1
     local circuit_breaker_threshold=5
     local circuit_breaker_reset_time=300  # 5 minutes
@@ -89,7 +89,7 @@ smart_retry() {
 timeout_with_retry() {
     local timeout_seconds="${1:-300}"
     local max_retries="${2:-2}"
-    local command="${@:3}"
+    local command="${*:3}"
     
     log_info "Running command with timeout protection and smart retry"
     log_info "Timeout: ${timeout_seconds}s, Max retries: $max_retries"
@@ -108,7 +108,9 @@ dry_run() {
         log_info "[DRY-RUN] Would execute: $*"
         return 0
     else
-        eval "$@"
+        # Run the argument vector directly (no eval): callers pass a command
+        # and its arguments as separate words.
+        "$@"
         return $?
     fi
 }
@@ -461,14 +463,52 @@ get_cluster_info() {
     esac
 }
 
+# --- Pricing: single source of truth -------------------------------------
+# Verified 2026-10-01 from Oracle's price list API:
+#   NVIDIA A10 GPU            $2.00 per GPU-hour     (part B95909)
+#   OKE enhanced cluster      $0.10 per cluster-hour (part B96545); basic is free
+# The provisioning scripts create an ENHANCED cluster, so the control plane
+# costs $0.10/hour in total (there is no separate control-plane charge).
+readonly NIM_A10_GPU_HOURLY_USD="2.00"
+readonly NIM_ENHANCED_CLUSTER_HOURLY_USD="0.10"
+# The two rates below are ESTIMATES and are NOT verified against Oracle pricing.
+readonly NIM_LB_HOURLY_ESTIMATE_USD="0.0144"       # 10 Mbps flexible LB (estimate, unverified)
+readonly NIM_STORAGE_HOURLY_ESTIMATE_USD="0.05"    # block volume for model cache (estimate, unverified)
+# Default GPU shape (matches the provision-cluster.sh fallback).
+readonly NIM_DEFAULT_GPU_SHAPE="VM.GPU.A10.1"
+
+# Number of GPUs in a supported shape. Fails for an unknown shape.
+get_shape_gpu_count() {
+    local shape="${1:-$NIM_DEFAULT_GPU_SHAPE}"
+    case "$shape" in
+        VM.GPU.A10.1) echo "1" ;;
+        VM.GPU.A10.2) echo "2" ;;
+        BM.GPU.A10.4) echo "4" ;;
+        *)
+            log_error "Unknown or unsupported GPU shape: '$shape' (supported: VM.GPU.A10.1, VM.GPU.A10.2, BM.GPU.A10.4)"
+            return 1
+            ;;
+    esac
+}
+
+# Hourly GPU cost (USD) for one node of the given shape. Fails for an unknown shape.
+get_gpu_hourly_rate() {
+    local shape="${1:-$NIM_DEFAULT_GPU_SHAPE}"
+    local gpus
+    gpus=$(get_shape_gpu_count "$shape") || return 1
+    printf "%.2f\n" "$(echo "$NIM_A10_GPU_HOURLY_USD * $gpus" | bc -l)"
+}
+
+# Estimated hourly cost (USD) of the whole deployment.
+#   $1 node count (default 1; kept first for existing callers)
+#   $2 GPU shape  (default $GPU_SHAPE, else VM.GPU.A10.1)
+# GPU and enhanced-cluster rates are verified; LB and storage are estimates.
 estimate_hourly_cost() {
-    local gpu_count="${1:-1}"
-    local gpu_hourly="12.24"       # VM.GPU.A10.4 (4x NVIDIA A10 GPUs)
-    local control_plane="0.10"     # OKE control plane
-    local enhanced="0.10"          # ENHANCED cluster type
-    local lb_cost="0.0144"         # 10 Mbps flexible LB (corrected from $0.25)
-    local storage_cost="0.05"      # 200GB at ~$0.03/GB/month
-    echo "($gpu_hourly * $gpu_count) + $control_plane + $enhanced + $lb_cost + $storage_cost" | bc -l
+    local node_count="${1:-1}"
+    local shape="${2:-${GPU_SHAPE:-$NIM_DEFAULT_GPU_SHAPE}}"
+    local node_hourly
+    node_hourly=$(get_gpu_hourly_rate "$shape") || return 1
+    echo "($node_hourly * $node_count) + $NIM_ENHANCED_CLUSTER_HOURLY_USD + $NIM_LB_HOURLY_ESTIMATE_USD + $NIM_STORAGE_HOURLY_ESTIMATE_USD" | bc -l
 }
 
 estimate_deployment_cost() {
@@ -481,7 +521,7 @@ estimate_deployment_cost() {
     fi
     
     local hourly_cost
-    hourly_cost=$(estimate_hourly_cost "$gpu_count")
+    hourly_cost=$(estimate_hourly_cost "$gpu_count") || return 1
     
     echo "$hourly_cost * $duration_hours" | bc -l
 }
@@ -597,7 +637,10 @@ validate_ngc_api_connectivity() {
     
     # Test NGC API connectivity
     local ngc_test_url="https://api.ngc.nvidia.com/v2/auth/status"
-    if curl -s -H "Authorization: Bearer $NGC_API_KEY" "$ngc_test_url" &>/dev/null; then
+    # The key goes to curl on stdin (--config -), never in argv, so it does
+    # not appear in `ps` output.
+    if printf 'header = "Authorization: Bearer %s"\n' "$NGC_API_KEY" \
+        | curl -s --config - "$ngc_test_url" &>/dev/null; then
         log_success "NGC API connectivity verified"
         return 0
     else
@@ -633,39 +676,91 @@ validate_oci_service_limits() {
     fi
 }
 
-get_gpu_hourly_rate() {
-    local shape="${1:-VM.GPU.A10.4}"
-    
-    # GPU hourly rates (USD per hour)
-    case "$shape" in
-        VM.GPU.A10.1|BM.GPU.A10.1)
-            echo "3.06"
-            ;;
-        VM.GPU.A10.2|BM.GPU.A10.2)
-            echo "6.12"
-            ;;
-        VM.GPU.A10.4|BM.GPU.A10.4)
-            echo "12.24"
-            ;;
-        VM.GPU3.1|BM.GPU3.1)
-            echo "3.06"
-            ;;
-        VM.GPU3.2|BM.GPU3.2)
-            echo "6.12"
-            ;;
-        VM.GPU3.4|BM.GPU3.4)
-            echo "12.24"
-            ;;
-        VM.GPU3.8|BM.GPU3.8)
-            echo "24.48"
-            ;;
-        *H100*)
-            echo "21.33"
-            ;;
-        *)
-            echo "12.24"  # Default to A10.4 rate
-            ;;
+# --- OCI / kubeconfig helpers shared by provision, teardown, emergency ----
+
+# Print the OCID of the first non-deleted OKE cluster with this name in the
+# compartment (empty if none). Returns non-zero if the list call fails.
+oci_find_cluster_id() {
+    local compartment_id="$1" name="$2" out
+    out=$(oci ce cluster list \
+        --compartment-id "$compartment_id" \
+        --name "$name" \
+        --query "data[?\"lifecycle-state\"!='DELETED' && \"lifecycle-state\"!='DELETING'].id | [0]" \
+        --raw-output) || return 1
+    [[ "$out" == "null" ]] && out=""
+    printf '%s\n' "$out"
+}
+
+# Print the OCID of the first non-deleted node pool with this name in the
+# compartment (optionally within one cluster). Non-zero if the list fails.
+oci_find_node_pool_id() {
+    local compartment_id="$1" name="$2" cluster_id="${3:-}" out
+    local args=(--compartment-id "$compartment_id" --name "$name")
+    if [[ -n "$cluster_id" ]]; then
+        args+=(--cluster-id "$cluster_id")
+    fi
+    out=$(oci ce node-pool list "${args[@]}" \
+        --query "data[?\"lifecycle-state\"!='DELETED' && \"lifecycle-state\"!='DELETING'].id | [0]" \
+        --raw-output) || return 1
+    [[ "$out" == "null" ]] && out=""
+    printf '%s\n' "$out"
+}
+
+# Delete an OKE cluster or node pool and confirm it reached DELETED.
+#   $1 = cluster | node-pool    $2 = OCID
+# Returns 0 only when the resource is confirmed DELETED.
+oci_ce_delete_confirmed() {
+    local kind="$1" id="$2" flag state
+    case "$kind" in
+        cluster) flag="--cluster-id" ;;
+        node-pool) flag="--node-pool-id" ;;
+        *) log_error "oci_ce_delete_confirmed: unknown kind '$kind'"; return 1 ;;
     esac
+
+    state=$(oci ce "$kind" get "$flag" "$id" --query 'data."lifecycle-state"' --raw-output 2>/dev/null) || state=""
+    if [[ "$state" == "DELETED" ]]; then
+        log_info "$kind already DELETED: $id"
+        return 0
+    fi
+
+    log_info "Deleting $kind $id (waiting for the work request)..."
+    # Delete --wait-for-state takes work-request states, not DELETED.
+    if ! oci ce "$kind" delete "$flag" "$id" --force \
+        --wait-for-state SUCCEEDED --wait-for-state FAILED \
+        --max-wait-seconds "${OCI_DELETE_MAX_WAIT:-1800}" >&2; then
+        log_error "$kind delete call failed: $id"
+        return 1
+    fi
+
+    if ! state=$(oci ce "$kind" get "$flag" "$id" --query 'data."lifecycle-state"' --raw-output); then
+        log_error "Could not confirm $kind deletion (get call failed): $id"
+        return 1
+    fi
+    if [[ "$state" != "DELETED" ]]; then
+        log_error "$kind is in state '${state:-unknown}', not DELETED: $id"
+        return 1
+    fi
+    log_success "$kind confirmed DELETED: $id"
+    return 0
+}
+
+# Print "context<TAB>cluster<TAB>user" for each kubeconfig context whose user
+# authenticates to the given OKE cluster OCID (the OCI exec plugin passes
+# --cluster-id <ocid>). Reads the local kubeconfig only.
+kube_contexts_for_cluster() {
+    local cluster_id="$1" users ctx cl user
+    [[ -n "$cluster_id" ]] || return 0
+    users=$(kubectl config view \
+        -o jsonpath='{range .users[*]}{.name}{"\t"}{.user.exec.args}{"\n"}{end}' 2>/dev/null \
+        | awk -F'\t' -v id="$cluster_id" 'index($2, id) { print $1 }') || users=""
+    [[ -n "$users" ]] || return 0
+    while IFS=$'\t' read -r ctx cl user; do
+        [[ -n "$ctx" ]] || continue
+        if printf '%s\n' "$users" | grep -Fqx -- "$user"; then
+            printf '%s\t%s\t%s\n' "$ctx" "$cl" "$user"
+        fi
+    done < <(kubectl config view \
+        -o jsonpath='{range .contexts[*]}{.name}{"\t"}{.context.cluster}{"\t"}{.context.user}{"\n"}{end}' 2>/dev/null)
 }
 
 check_namespace_exists() {
@@ -799,6 +894,7 @@ export -f start_phase end_phase start_step end_step with_timeout
 export -f get_default_storage_class get_gpu_nodes get_gpu_count
 export -f check_oci_credentials check_kubectl_context check_helm
 export -f get_cluster_info estimate_hourly_cost estimate_deployment_cost format_cost get_oci_tags_file
+export -f get_shape_gpu_count get_gpu_hourly_rate
 export -f check_namespace_exists create_namespace_if_missing
 export -f get_pod_status get_service_external_ip validate_ngc_api_key
 export -f helm_install_or_upgrade cleanup_helm_release cleanup_namespace

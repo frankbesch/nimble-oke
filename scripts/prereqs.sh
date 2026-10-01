@@ -71,7 +71,7 @@ check_ngc_credentials() {
     fi
     
     validate_ngc_api_key "$NGC_API_KEY"
-    log_success "NGC_API_KEY: set (${NGC_API_KEY:0:10}...)"
+    log_success "NGC_API_KEY: set"
     return 0
 }
 
@@ -87,8 +87,9 @@ check_ngc_model_access() {
     
     # Test NGC API authentication and model access
     local ngc_response
-    ngc_response=$(curl -s -w "%{http_code}" -o /dev/null \
-        -H "Authorization: Bearer $NGC_API_KEY" \
+    # The key reaches curl on stdin (--config -), never in argv.
+    ngc_response=$(printf 'header = "Authorization: Bearer %s"\n' "$NGC_API_KEY" \
+        | curl -s -w "%{http_code}" -o /dev/null --config - \
         "https://api.ngc.nvidia.com/v2/models/nvidia/$model" 2>/dev/null || echo "000")
     
     if [[ "$ngc_response" == "200" ]]; then

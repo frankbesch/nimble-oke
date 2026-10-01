@@ -36,8 +36,8 @@ cleanup_kubernetes_resources() {
     kubectl delete pods -n "$NAMESPACE" -l app.kubernetes.io/name=nvidia-nim --wait=false --grace-period=0 --force 2>/dev/null || true
     
     log_info "Deleting secrets..."
-    kubectl delete secret ngc-secret -n "$NAMESPACE" 2>/dev/null || true
-    kubectl delete secret "${RELEASE_NAME}-ngc-api" -n "$NAMESPACE" 2>/dev/null || true
+    # Chart secret names derive from the release fullname; select by label.
+    kubectl delete secret -n "$NAMESPACE" -l "app.kubernetes.io/instance=${RELEASE_NAME}" 2>/dev/null || true
     
     log_info "Deleting configmaps..."
     kubectl delete configmap -n "$NAMESPACE" -l app.kubernetes.io/name=nvidia-nim 2>/dev/null || true
@@ -71,18 +71,26 @@ verify_cleanup() {
     
     local remaining_resources=0
     
-    if kubectl get deployment -n "$NAMESPACE" -l app.kubernetes.io/name=nvidia-nim &>/dev/null; then
-        log_warn "Deployments still exist"
-        ((remaining_resources++))
+    # `kubectl get` exits 0 on an empty list, so count rows instead.
+    # A failed list (pipefail) counts as "unknown", never as zero.
+    local deploy_count
+    if ! deploy_count=$(kubectl get deployment -n "$NAMESPACE" -l app.kubernetes.io/name=nvidia-nim --no-headers 2>/dev/null | wc -l | tr -d ' '); then
+        log_warn "Could not list deployments"
+        deploy_count="unknown"
+    fi
+    if [[ "$deploy_count" != "0" ]]; then
+        log_warn "Deployments still exist: $deploy_count"
+        remaining_resources=$((remaining_resources + 1))
     fi
     
-    if kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=nvidia-nim &>/dev/null; then
-        local pod_count
-        pod_count=$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=nvidia-nim --no-headers | wc -l | tr -d ' ')
-        if [[ "$pod_count" != "0" ]]; then
-            log_warn "Pods still exist: $pod_count (may be terminating)"
-            ((remaining_resources++))
-        fi
+    local pod_count
+    if ! pod_count=$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=nvidia-nim --no-headers 2>/dev/null | wc -l | tr -d ' '); then
+        log_warn "Could not list pods"
+        pod_count="unknown"
+    fi
+    if [[ "$pod_count" != "0" ]]; then
+        log_warn "Pods still exist: $pod_count (may be terminating)"
+        remaining_resources=$((remaining_resources + 1))
     fi
     
     if [[ $remaining_resources -eq 0 ]]; then
@@ -146,7 +154,8 @@ main() {
     
     echo ""
     log_success "NIM cleanup complete"
-    log_info "Note: GPU nodes and cluster remain (use scripts/cleanup.sh for full cluster teardown)"
+    log_warn "GPU nodes and the cluster remain and keep billing."
+    log_warn "Only 'make teardown' stops GPU billing (deletes the node pool and cluster)."
 }
 
 main "$@"

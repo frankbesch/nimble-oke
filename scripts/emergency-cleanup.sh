@@ -5,214 +5,160 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/_lib.sh"
 
-# Emergency cleanup script based on 2025-10-19 learnings
-# This script performs comprehensive cleanup of all cost-incurring resources
+# Emergency cleanup: stop GPU and cluster billing for THIS project.
+# Scope is deliberately narrow:
+#   - OKE node pools and clusters in $OCI_COMPARTMENT_ID
+#   - the node pool / cluster recorded in cluster-info.txt
+#   - the NIM release's PVC/Service, only via this cluster's kubeconfig context
+# It never touches other compute instances, volumes or load balancers.
 
-readonly CLEANUP_TIMEOUT=300  # 5 minutes timeout for cleanup operations
+readonly INFO_FILE="${SCRIPT_DIR}/cluster-info.txt"
+readonly RELEASE_NAME="nvidia-nim"
+readonly NIM_NAMESPACE="default"
+readonly NIM_SELECTOR="app.kubernetes.io/instance=${RELEASE_NAME}"
+readonly SETTLE_SECONDS="${EMERGENCY_SETTLE_SECONDS:-10}"
+readonly ALIVE_FILTER="data[?\"lifecycle-state\"!='DELETED' && \"lifecycle-state\"!='DELETING'].id"
 
-cleanup_oke_cluster() {
-    log_info "🔍 Checking for active OKE clusters..."
-    
-    local active_clusters
-    active_clusters=$(oci ce cluster list --compartment-id $(oci iam compartment list --query 'data[0].id' --raw-output) --query 'data[?lifecycle-state==`ACTIVE`]' --raw-output 2>/dev/null || echo "[]")
-    
-    if [[ "$active_clusters" == "[]" ]]; then
-        log_success "No active OKE clusters found"
-        return 0
-    fi
-    
-    log_warn "Found active OKE clusters - initiating deletion..."
-    
-    # Extract cluster IDs and delete them
-    echo "$active_clusters" | jq -r '.[].id' | while read -r cluster_id; do
-        if [[ -n "$cluster_id" ]]; then
-            log_info "Deleting cluster: $cluster_id"
-            oci ce cluster delete --cluster-id "$cluster_id" --force || log_warn "Failed to delete cluster: $cluster_id"
-        fi
-    done
-    
-    log_success "OKE cluster deletion initiated"
+FAILURES=0
+REC_CLUSTER_ID=""
+REC_NODE_POOL_ID=""
+
+fail() {
+    log_error "$*"
+    FAILURES=$((FAILURES + 1))
 }
 
-cleanup_compute_instances() {
-    log_info "🔍 Checking for active compute instances..."
-    
-    local active_instances
-    active_instances=$(oci compute instance list --compartment-id $(oci iam compartment list --query 'data[0].id' --raw-output) --query 'data[?lifecycle-state==`RUNNING`]' --raw-output 2>/dev/null || echo "[]")
-    
-    if [[ "$active_instances" == "[]" ]]; then
-        log_success "No active compute instances found"
-        return 0
-    fi
-    
-    log_warn "Found active compute instances - terminating..."
-    
-    # Extract instance IDs and terminate them
-    echo "$active_instances" | jq -r '.[].id' | while read -r instance_id; do
-        if [[ -n "$instance_id" ]]; then
-            log_info "Terminating instance: $instance_id"
-            oci compute instance terminate --instance-id "$instance_id" --force || log_warn "Failed to terminate instance: $instance_id"
-        fi
-    done
-    
-    log_success "Compute instance termination initiated"
+# Print OCIDs (one per line) of non-deleted OKE resources of $1 kind
+# (cluster | node-pool) in the compartment. Non-zero if the list call fails.
+list_alive() {
+    local kind="$1" json
+    json=$(oci ce "$kind" list --compartment-id "$OCI_COMPARTMENT_ID" --all --query "$ALIVE_FILTER") || return 1
+    printf '%s' "${json:-[]}" | jq -r '.[]'
 }
 
-cleanup_block_volumes() {
-    log_info "🔍 Checking for active block volumes..."
-    
-    local active_volumes
-    active_volumes=$(oci bv volume list --compartment-id $(oci iam compartment list --query 'data[0].id' --raw-output) --query 'data[?lifecycle-state==`AVAILABLE`]' --raw-output 2>/dev/null || echo "[]")
-    
-    if [[ "$active_volumes" == "[]" ]]; then
-        log_success "No active block volumes found"
-        return 0
+load_recorded_ids() {
+    if [[ -f "$INFO_FILE" ]]; then
+        REC_CLUSTER_ID=$(grep '^CLUSTER_ID=' "$INFO_FILE" | tail -1 | cut -d= -f2- || true)
+        REC_NODE_POOL_ID=$(grep '^NODE_POOL_ID=' "$INFO_FILE" | tail -1 | cut -d= -f2- || true)
+        log_info "cluster-info.txt: cluster=${REC_CLUSTER_ID:-none} node-pool=${REC_NODE_POOL_ID:-none}"
     fi
-    
-    log_warn "Found active block volumes - deleting..."
-    
-    # Extract volume IDs and delete them
-    echo "$active_volumes" | jq -r '.[].id' | while read -r volume_id; do
-        if [[ -n "$volume_id" ]]; then
-            log_info "Deleting volume: $volume_id"
-            oci bv volume delete --volume-id "$volume_id" --force || log_warn "Failed to delete volume: $volume_id"
-        fi
-    done
-    
-    log_success "Block volume deletion initiated"
 }
 
-cleanup_load_balancers() {
-    log_info "🔍 Checking for active load balancers..."
-    
-    local active_lbs
-    active_lbs=$(oci lb load-balancer list --compartment-id $(oci iam compartment list --query 'data[0].id' --raw-output) --query 'data[?lifecycle-state==`ACTIVE`]' --raw-output 2>/dev/null || echo "[]")
-    
-    if [[ "$active_lbs" == "[]" ]]; then
-        log_success "No active load balancers found"
+confirm_scope() {
+    local name
+    name=$(oci iam compartment get --compartment-id "$OCI_COMPARTMENT_ID" --query 'data.name' --raw-output) \
+        || die "Cannot read compartment $OCI_COMPARTMENT_ID (OCI CLI not authenticated, or wrong OCID)"
+    [[ -n "$name" ]] || die "Compartment $OCI_COMPARTMENT_ID has no name"
+
+    log_warn "This force-deletes ALL OKE node pools and clusters in compartment '$name'"
+    log_warn "  ($OCI_COMPARTMENT_ID) plus the resources recorded in cluster-info.txt."
+    if [[ "${FORCE:-no}" == "yes" ]]; then
+        log_warn "FORCE=yes set; skipping typed confirmation"
         return 0
     fi
-    
-    log_warn "Found active load balancers - deleting..."
-    
-    # Extract LB IDs and delete them
-    echo "$active_lbs" | jq -r '.[].id' | while read -r lb_id; do
-        if [[ -n "$lb_id" ]]; then
-            log_info "Deleting load balancer: $lb_id"
-            oci lb load-balancer delete --load-balancer-id "$lb_id" --force || log_warn "Failed to delete load balancer: $lb_id"
-        fi
-    done
-    
-    log_success "Load balancer deletion initiated"
+    local reply=""
+    read -r -p "Type the compartment name ('$name') to confirm: " reply || reply=""
+    if [[ "$reply" != "$name" ]]; then
+        log_info "Confirmation did not match; nothing deleted"
+        exit 1
+    fi
 }
 
 cleanup_kubernetes_resources() {
-    log_info "🔍 Checking for active Kubernetes cluster..."
-    
-    # Check if kubectl is configured and cluster is accessible
-    if ! kubectl cluster-info &>/dev/null; then
-        log_info "No accessible Kubernetes cluster found"
+    log_info "🔍 Removing NIM PVC/Service (block volume, load balancer) if this cluster is reachable..."
+    local ctx_line ctx
+    ctx_line=$(kube_contexts_for_cluster "$REC_CLUSTER_ID" | head -1)
+    if [[ -z "$ctx_line" ]]; then
+        log_warn "No kubeconfig context for the recorded cluster; NIM block volume / load balancer may be orphaned"
         return 0
     fi
-    
-    log_warn "Found accessible Kubernetes cluster - cleaning up resources..."
-    
-    # Delete NIM deployment
-    log_info "Deleting NIM deployment..."
-    helm uninstall nvidia-nim --namespace default --wait=false || log_warn "Failed to uninstall NIM Helm chart"
-    
-    # Delete NIM-related resources
-    log_info "Deleting NIM-related resources..."
-    kubectl delete deployment nvidia-nim --namespace default --wait=false || true
-    kubectl delete service nvidia-nim --namespace default --wait=false || true
-    kubectl delete secret ngc-api --namespace default --wait=false || true
-    kubectl delete pvc -l app.kubernetes.io/name=nvidia-nim --namespace default --wait=false || true
-    
-    log_success "Kubernetes resources cleanup initiated"
+    ctx="${ctx_line%%$'\t'*}"
+    if ! kubectl --context "$ctx" --request-timeout=15s cluster-info &>/dev/null; then
+        log_warn "Cluster context $ctx unreachable; NIM block volume / load balancer may be orphaned"
+        return 0
+    fi
+    helm --kube-context "$ctx" uninstall "$RELEASE_NAME" -n "$NIM_NAMESPACE" --wait=false \
+        || log_warn "Helm uninstall of $RELEASE_NAME failed (may be absent)"
+    kubectl --context "$ctx" -n "$NIM_NAMESPACE" delete svc,pvc -l "$NIM_SELECTOR" --ignore-not-found --wait=false \
+        || fail "Deleting NIM Service/PVC failed"
+}
+
+delete_kind() {
+    local kind="$1" recorded="$2" flag ids id
+    case "$kind" in
+        cluster) flag="--cluster-id" ;;
+        node-pool) flag="--node-pool-id" ;;
+    esac
+    log_info "🔍 Listing OKE ${kind}s in compartment..."
+    if ! ids=$(list_alive "$kind"); then
+        fail "Listing OKE ${kind}s failed; cannot clean up"
+        return 0
+    fi
+    if [[ -n "$recorded" ]] && ! printf '%s\n' "$ids" | grep -Fqx -- "$recorded"; then
+        ids=$(printf '%s\n%s\n' "$ids" "$recorded")
+    fi
+    for id in $ids; do
+        log_info "Deleting $kind: $id"
+        oci ce "$kind" delete "$flag" "$id" --force >&2 || fail "Failed to delete $kind: $id"
+    done
+    [[ -n "$ids" ]] || log_success "No OKE ${kind}s to delete"
 }
 
 verify_cleanup() {
-    log_info "🔍 Verifying cleanup completion..."
-    
-    local remaining_costs=0
-    
-    # Check for remaining active resources
-    local active_clusters
-    active_clusters=$(oci ce cluster list --compartment-id $(oci iam compartment list --query 'data[0].id' --raw-output) --query 'data[?lifecycle-state==`ACTIVE`]' --raw-output 2>/dev/null || echo "[]")
-    if [[ "$active_clusters" != "[]" ]]; then
-        log_warn "⚠️  Active OKE clusters still exist"
-        ((remaining_costs++))
+    log_info "🔍 Verifying cleanup..."
+    local remaining=0 kind ids n
+    for kind in node-pool cluster; do
+        if ! ids=$(list_alive "$kind"); then
+            fail "Verification list of OKE ${kind}s failed"
+            continue
+        fi
+        n=$(printf '%s' "$ids" | grep -c . || true)
+        if [[ "$n" != "0" ]]; then
+            log_warn "⚠️  $n OKE $kind(s) not yet DELETED/DELETING"
+            remaining=$((remaining + n))
+        fi
+    done
+
+    if [[ $FAILURES -ne 0 ]]; then
+        log_error "CLEANUP UNCONFIRMED - $FAILURES error(s) above; GPU billing may continue"
+        return 1
     fi
-    
-    local active_instances
-    active_instances=$(oci compute instance list --compartment-id $(oci iam compartment list --query 'data[0].id' --raw-output) --query 'data[?lifecycle-state==`RUNNING`]' --raw-output 2>/dev/null || echo "[]")
-    if [[ "$active_instances" != "[]" ]]; then
-        log_warn "⚠️  Active compute instances still exist"
-        ((remaining_costs++))
+    if [[ $remaining -ne 0 ]]; then
+        log_warn "CLEANUP UNCONFIRMED - $remaining resource(s) still active; re-run in a few minutes"
+        return 1
     fi
-    
-    local active_volumes
-    active_volumes=$(oci bv volume list --compartment-id $(oci iam compartment list --query 'data[0].id' --raw-output) --query 'data[?lifecycle-state==`AVAILABLE`]' --raw-output 2>/dev/null || echo "[]")
-    if [[ "$active_volumes" != "[]" ]]; then
-        log_warn "⚠️  Active block volumes still exist"
-        ((remaining_costs++))
-    fi
-    
-    local active_lbs
-    active_lbs=$(oci lb load-balancer list --compartment-id $(oci iam compartment list --query 'data[0].id' --raw-output) --query 'data[?lifecycle-state==`ACTIVE`]' --raw-output 2>/dev/null || echo "[]")
-    if [[ "$active_lbs" != "[]" ]]; then
-        log_warn "⚠️  Active load balancers still exist"
-        ((remaining_costs++))
-    fi
-    
-    if [[ $remaining_costs -eq 0 ]]; then
-        log_success "✅ CLEANUP VERIFIED - No cost-incurring resources remaining"
-        log_success "💰 Current cost: $0.00/hour"
-    else
-        log_warn "⚠️  $remaining_costs types of resources still active"
-        log_warn "   Some resources may take time to fully terminate"
-        log_warn "   Monitor OCI Console for completion"
-    fi
+    log_success "✅ CLEANUP VERIFIED - no OKE node pools or clusters active in this compartment"
+    log_success "💰 OKE GPU and cluster charges for this compartment: \$0.00/hour (deletion may still be completing)"
+    return 0
 }
 
 main() {
     log_info "🚨 EMERGENCY CLEANUP INITIATED"
     log_info "=============================="
     log_info "Date: $(date)"
-    log_info "Purpose: Stop all cost-incurring resources"
+    log_info "Purpose: Stop GPU and OKE cluster billing for this project"
     log_info ""
-    
-    # Validate OCI CLI access
-    log_info "Validating OCI CLI access..."
-    if ! oci iam user get --user-id $(oci iam user list --query 'data[0].id' --raw-output) &>/dev/null; then
-        die "OCI CLI not authenticated or configured"
-    fi
-    log_success "OCI CLI access verified"
-    
-    # Perform cleanup operations
-    cleanup_oke_cluster
-    cleanup_compute_instances
-    cleanup_block_volumes
-    cleanup_load_balancers
+
+    check_env_var OCI_COMPARTMENT_ID
+    load_recorded_ids
+    confirm_scope
+
     cleanup_kubernetes_resources
-    
-    # Wait a moment for operations to propagate
-    log_info "Waiting for cleanup operations to propagate..."
-    sleep 10
-    
-    # Verify cleanup
-    verify_cleanup
-    
+    delete_kind node-pool "$REC_NODE_POOL_ID"
+    delete_kind cluster "$REC_CLUSTER_ID"
+
+    log_info "Waiting ${SETTLE_SECONDS}s for deletions to propagate..."
+    sleep "$SETTLE_SECONDS"
+
+    if ! verify_cleanup; then
+        log_info "Monitor OCI Console and run this script again to verify"
+        exit 1
+    fi
+
     log_info ""
-    log_success "🎯 EMERGENCY CLEANUP COMPLETE"
-    log_info "=============================="
-    log_info "All cost-incurring resources have been targeted for deletion"
-    log_info "Monitor OCI Console for completion status"
-    log_info "Run this script again to verify complete cleanup"
-    log_info ""
-    log_warn "⚠️  IMPORTANT: Network resources (VCNs, subnets) are preserved"
-    log_warn "   These have no cost impact and can be reused"
-    log_warn "   Delete manually via OCI Console if desired"
+    log_warn "⚠️  Not touched: VCNs/subnets (run 'make teardown' with cluster-info.txt),"
+    log_warn "   and any other compute instances, block volumes or load balancers."
+    log_warn "   Check Block Storage and Load Balancers in the OCI Console for NIM orphans."
 }
 
 main "$@"

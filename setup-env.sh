@@ -51,7 +51,7 @@ if [[ -z "${NGC_API_KEY:-}" ]]; then
     echo "  4. Run: export NGC_API_KEY=nvapi-your-key-here"
     echo ""
 else
-    echo "✅ NGC_API_KEY already set (${NGC_API_KEY:0:10}...)"
+    echo "✅ NGC_API_KEY: set"
     echo ""
 fi
 
@@ -91,7 +91,7 @@ echo "  OCI_COMPARTMENT_ID: ${OCI_COMPARTMENT_ID:0:40}..."
 echo "  OCI_REGION:         $OCI_REGION"
 echo "  DAILY_BUDGET_USD:   \$$DAILY_BUDGET_USD"
 if [[ -n "${NGC_API_KEY:-}" ]]; then
-    echo "  NGC_API_KEY:        ${NGC_API_KEY:0:10}... (set)"
+    echo "  NGC_API_KEY:        set"
 else
     echo "  NGC_API_KEY:        (NOT SET - required before deployment)"
 fi
@@ -133,7 +133,9 @@ echo "echo 'export OCI_COMPARTMENT_ID=$OCI_COMPARTMENT_ID' >> ~/.zshrc"
 echo "echo 'export OCI_REGION=$OCI_REGION' >> ~/.zshrc"
 echo "echo 'export DAILY_BUDGET_USD=$DAILY_BUDGET_USD' >> ~/.zshrc"
 if [[ -n "${NGC_API_KEY:-}" ]]; then
-    echo "echo 'export NGC_API_KEY=$NGC_API_KEY' >> ~/.zshrc"
+    # Print the variable NAME only; the shell expands it when the user runs
+    # the line, so the key itself is never printed here.
+    echo "echo \"export NGC_API_KEY=\$NGC_API_KEY\" >> ~/.zshrc"
 fi
 echo ""
 

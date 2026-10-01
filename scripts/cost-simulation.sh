@@ -10,7 +10,7 @@ source "${SCRIPT_DIR}/_lib.sh"
 
 readonly DEFAULT_DURATION=5
 readonly DEFAULT_GPU_COUNT=1
-readonly DEFAULT_GPU_SHAPE="VM.GPU.A10.4"
+readonly DEFAULT_GPU_SHAPE="$NIM_DEFAULT_GPU_SHAPE"
 
 show_cost_breakdown() {
     local duration="${1:-$DEFAULT_DURATION}"
@@ -24,39 +24,39 @@ show_cost_breakdown() {
     echo ""
     echo "Configuration:"
     echo "  Duration: ${duration} hours"
-    echo "  GPU Count: ${gpu_count}"
+    echo "  GPU Nodes: ${gpu_count}"
     echo "  GPU Shape: ${gpu_shape}"
     echo "  Environment: ${ENVIRONMENT:-dev}"
     echo ""
     
-    # Calculate individual costs
-    local gpu_hourly_rate
-    gpu_hourly_rate=$(get_gpu_hourly_rate "$gpu_shape")
+    # Calculate individual costs (all rates come from _lib.sh).
+    # gpu_count is the number of nodes of $gpu_shape.
+    local gpu_hourly_rate gpus_per_node
+    gpu_hourly_rate=$(get_gpu_hourly_rate "$gpu_shape") || return 1
+    gpus_per_node=$(get_shape_gpu_count "$gpu_shape") || return 1
     local gpu_cost
     gpu_cost=$(echo "scale=2; $gpu_hourly_rate * $gpu_count * $duration" | bc -l)
     
-    local oke_control_plane_cost
-    oke_control_plane_cost=$(echo "scale=2; 0.10 * $duration" | bc -l)
-    
+    # ENHANCED cluster: one $0.10/hour charge covers the control plane.
     local enhanced_cluster_cost
-    enhanced_cluster_cost=$(echo "scale=2; 0.10 * $duration" | bc -l)
+    enhanced_cluster_cost=$(echo "scale=2; $NIM_ENHANCED_CLUSTER_HOURLY_USD * $duration" | bc -l)
     
-    local storage_cost=1.50  # Fixed 50GB PVC cost
+    local storage_cost   # estimate, unverified
+    storage_cost=$(echo "scale=2; $NIM_STORAGE_HOURLY_ESTIMATE_USD * $duration" | bc -l)
     
-    local loadbalancer_cost
-    loadbalancer_cost=$(echo "scale=2; 1.25 * $duration" | bc -l)
+    local loadbalancer_cost   # estimate, unverified
+    loadbalancer_cost=$(echo "scale=2; $NIM_LB_HOURLY_ESTIMATE_USD * $duration" | bc -l)
     
     local total_cost
-    total_cost=$(echo "scale=2; $gpu_cost + $oke_control_plane_cost + $enhanced_cluster_cost + $storage_cost + $loadbalancer_cost" | bc -l)
+    total_cost=$(echo "scale=2; $gpu_cost + $enhanced_cluster_cost + $storage_cost + $loadbalancer_cost" | bc -l)
     
     # Display cost breakdown
     echo "Cost Breakdown:"
     echo "┌─────────────────────────────────────────────────────────────┐"
     printf "│ %-35s │ $%8.2f │\n" "GPU Nodes (${gpu_count}x $gpu_shape)" "$gpu_cost"
-    printf "│ %-35s │ $%8.2f │\n" "OKE Control Plane" "$oke_control_plane_cost"
-    printf "│ %-35s │ $%8.2f │\n" "ENHANCED Cluster" "$enhanced_cluster_cost"
-    printf "│ %-35s │ $%8.2f │\n" "Storage (50GB PVC)" "$storage_cost"
-    printf "│ %-35s │ $%8.2f │\n" "Load Balancer" "$loadbalancer_cost"
+    printf "│ %-35s │ $%8.2f │\n" "OKE Enhanced Cluster (ctrl plane)" "$enhanced_cluster_cost"
+    printf "│ %-35s │ $%8.2f │\n" "Storage (estimate, unverified)" "$storage_cost"
+    printf "│ %-35s │ $%8.2f │\n" "Load Bal. (estimate, unverified)" "$loadbalancer_cost"
     echo "├─────────────────────────────────────────────────────────────┤"
     printf "│ %-35s │ $%8.2f │\n" "TOTAL" "$total_cost"
     echo "└─────────────────────────────────────────────────────────────┘"
@@ -67,7 +67,7 @@ show_cost_breakdown() {
     cost_per_hour=$(echo "scale=2; $total_cost / $duration" | bc -l)
     echo "Cost Analysis:"
     echo "  Cost per hour: \$$(format_cost "$cost_per_hour")"
-    echo "  Cost per GPU-hour: \$$(echo "scale=2; $total_cost / ($duration * $gpu_count)" | bc -l)"
+    echo "  Cost per GPU-hour: \$$(echo "scale=2; $total_cost / ($duration * $gpu_count * $gpus_per_node)" | bc -l)"
     echo ""
     
     # Budget comparison
@@ -108,23 +108,23 @@ show_cost_scenarios() {
     
     echo "Scenario Analysis:"
     echo "┌─────────────────────────────────────────────────────────────────────────┐"
-    printf "│ %-12s │ %-8s │ %-20s │ %-12s │\n" "Duration" "GPUs" "Description" "Total Cost"
+    printf "│ %-12s │ %-8s │ %-20s │ %-12s │\n" "Duration" "Nodes" "Description" "Total Cost"
     echo "├─────────────────────────────────────────────────────────────────────────┤"
     
     for scenario in "${scenarios[@]}"; do
         IFS=':' read -r duration gpu_count description <<< "$scenario"
         
-        local gpu_cost
-        gpu_cost=$(echo "scale=2; 12.24 * $gpu_count * $duration" | bc -l)
-        local other_costs
-        other_costs=$(echo "scale=2; 0.20 * $duration + 1.50 + 1.25 * $duration" | bc -l)
+        # gpu_count nodes of the default shape, priced by _lib.sh.
+        local hourly
+        hourly=$(estimate_hourly_cost "$gpu_count" "$DEFAULT_GPU_SHAPE") || return 1
         local total_cost
-        total_cost=$(echo "scale=2; $gpu_cost + $other_costs" | bc -l)
+        total_cost=$(echo "scale=2; $hourly * $duration" | bc -l)
         
         printf "│ %-12s │ %-8s │ %-20s │ $%-11.2f │\n" "${duration}h" "$gpu_count" "$description" "$total_cost"
     done
     
     echo "└─────────────────────────────────────────────────────────────────────────┘"
+    echo "  Shape: $DEFAULT_GPU_SHAPE. Load balancer and storage portions are estimates, unverified."
     echo ""
 }
 
@@ -149,7 +149,7 @@ show_cost_optimization_tips() {
     echo "   • Prevents runaway costs"
     echo ""
     echo "4. AUTOMATIC CLEANUP:"
-    echo "   • Always run 'make cleanup' after testing"
+    echo "   • Always run 'make teardown' after testing (only teardown stops GPU billing)"
     echo "   • Set up automated teardown timers"
     echo "   • Use TTL annotations for self-destruction"
     echo ""
@@ -242,10 +242,10 @@ main() {
             echo "  all          - Show all information"
             echo ""
             echo "Examples:"
-            echo "  $0 5 1 VM.GPU.A10.4 breakdown"
+            echo "  $0 5 1 VM.GPU.A10.1 breakdown"
             echo "  $0 0 0 0 scenarios"
             echo "  $0 0 0 0 optimization"
-            echo "  $0 10 2 VM.GPU3.1 validate"
+            echo "  $0 10 2 VM.GPU.A10.2 validate"
             return 1
             ;;
     esac

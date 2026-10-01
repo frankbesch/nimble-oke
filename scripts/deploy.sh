@@ -9,17 +9,39 @@ readonly HELM_CHART_DIR="${SCRIPT_DIR}/../helm"
 readonly RELEASE_NAME="nvidia-nim"
 readonly NAMESPACE="default"
 readonly DEPLOY_TIMEOUT=1200
+readonly NIM_SELECTOR="app.kubernetes.io/instance=${RELEASE_NAME}"
+
+# Exit-time state. TEMP_VALUES holds the NGC key and is always removed.
+# Destructive cleanup runs only when ARMED (this run is installing a release
+# that did not exist before); an existing release is never uninstalled.
+TEMP_VALUES=""
+DESTRUCTIVE_CLEANUP_ARMED="no"
 
 cleanup_on_failure() {
-    log_warn "Deployment failed, running cleanup..."
+    log_warn "Deployment failed, removing the release this run created..."
     cleanup_helm_release "$RELEASE_NAME" "$NAMESPACE" || true
-    kubectl delete pvc -l app.kubernetes.io/name=nvidia-nim -n "$NAMESPACE" --wait=false || true
+    kubectl delete pvc -l "$NIM_SELECTOR" -n "$NAMESPACE" --wait=false || true
+}
+
+on_exit() {
+    local rc=$?
+    set +e
+    if [[ -n "$TEMP_VALUES" ]]; then
+        rm -f "$TEMP_VALUES"
+    fi
+    if [[ $rc -ne 0 && "$DESTRUCTIVE_CLEANUP_ARMED" == "yes" ]]; then
+        DESTRUCTIVE_CLEANUP_ARMED="no"
+        cleanup_on_failure
+    fi
+    exit "$rc"
 }
 
 main() {
     log_info "Starting NIM deployment..."
     
-    trap cleanup_on_failure EXIT ERR INT TERM
+    trap on_exit EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
     
     log_info "Running prerequisites check..."
     if ! "${SCRIPT_DIR}/prereqs.sh"; then
@@ -49,16 +71,19 @@ main() {
     
     # CRITICAL: OCI CLI validation based on 2025-10-19 learnings
     log_info "Validating OCI CLI configuration..."
-    if ! oci iam user get --user-id $(oci iam user list --query 'data[0].id' --raw-output) &>/dev/null; then
-        die "OCI CLI not authenticated or configured"
-    fi
+    check_oci_credentials
     log_success "OCI CLI authentication verified"
     
-    # CRITICAL: Check for active OKE cluster
+    # CRITICAL: Check for active OKE cluster in the project compartment
     log_info "Checking for active OKE cluster..."
-    local active_clusters
-    active_clusters=$(oci ce cluster list --compartment-id $(oci iam compartment list --query 'data[0].id' --raw-output) --query 'data[?lifecycle-state==`ACTIVE`]' --raw-output 2>/dev/null || echo "[]")
-    if [[ "$active_clusters" == "[]" ]]; then
+    check_env_var OCI_COMPARTMENT_ID
+    local active_json active_count
+    active_json=$(oci ce cluster list \
+        --compartment-id "$OCI_COMPARTMENT_ID" \
+        --lifecycle-state ACTIVE \
+        --query 'data[].id') || die "Failed to list OKE clusters in compartment $OCI_COMPARTMENT_ID"
+    active_count=$(printf '%s' "${active_json:-[]}" | jq 'length') || die "Unparseable cluster list output"
+    if [[ "$active_count" == "0" ]]; then
         log_warn "⚠️  No active OKE cluster found"
         log_warn "   Create cluster first using: scripts/provision-cluster.sh"
         log_warn "   Or use OCI Console: Container Engine → Clusters"
@@ -82,9 +107,9 @@ main() {
     fi
     
     log_info "Creating temporary values file with NGC credentials..."
-    local temp_values
-    temp_values=$(mktemp)
-    trap "rm -f $temp_values" EXIT
+    TEMP_VALUES=$(mktemp "${TMPDIR:-/tmp}/nim-values.XXXXXX") || die "mktemp failed"
+    chmod 600 "$TEMP_VALUES"
+    local temp_values="$TEMP_VALUES"
     
     cat > "$temp_values" <<EOF
 # NIM Deployment Configuration - Updated based on 2025-10-19 learnings
@@ -116,19 +141,8 @@ resources:
     cpu: 4
     ephemeral-storage: 100Gi  # Updated based on 2025-10-19 learnings
 
-# CRITICAL: NIM-specific security context (GPU compatibility)
-podSecurityContext:
-  runAsNonRoot: false  # REQUIRED for NIM GPU access
-  runAsUser: 0         # Root user for GPU operations
-  fsGroup: 0           # Root group for GPU access
-  # seccompProfile: disabled - REQUIRED for NIM GPU compatibility
-
-# CRITICAL: Rolling update strategy to prevent pod explosion
-podLimiter:
-  enabled: true
-  rollingUpdate:
-    maxSurge: 0
-    maxUnavailable: 1
+# podSecurityContext and podLimiter are intentionally not overridden here;
+# the chart defaults apply.
 
 nodeSelector:
   nvidia.com/gpu.present: "true"
@@ -157,7 +171,8 @@ EOF
     
     # CRITICAL: Dry run validation to prevent catastrophic failures
     log_info "Validating deployment with dry-run..."
-    if ! helm upgrade "$RELEASE_NAME" "$HELM_CHART_DIR" \
+    if ! helm upgrade --install "$RELEASE_NAME" "$HELM_CHART_DIR" \
+        -n "$NAMESPACE" \
         -f "${HELM_CHART_DIR}/values.yaml" \
         -f "$temp_values" \
         --dry-run \
@@ -168,6 +183,16 @@ EOF
     fi
     log_success "Dry run validation passed"
     
+    local existing_release
+    existing_release=$(helm list -n "$NAMESPACE" -a -q --filter "^${RELEASE_NAME}\$") \
+        || die "Could not list Helm releases in namespace $NAMESPACE"
+    if [[ -z "$existing_release" ]]; then
+        # New release: on failure from here on, remove what this run created.
+        DESTRUCTIVE_CLEANUP_ARMED="yes"
+    else
+        log_info "Release $RELEASE_NAME already exists; a failure will NOT uninstall it"
+    fi
+    
     log_info "Deploying NIM with Helm..."
     helm_install_or_upgrade \
         "$RELEASE_NAME" \
@@ -177,6 +202,8 @@ EOF
         -f "$temp_values" \
         --wait \
         --timeout "${DEPLOY_TIMEOUT}s"
+    
+    rm -f "$TEMP_VALUES"
     
     log_info "Waiting for pods to be ready..."
     
@@ -193,9 +220,12 @@ EOF
         # Emergency stop if too many pods
         if [[ "$pod_count" -gt 5 ]]; then
             log_error "🚨 EMERGENCY: Too many pods created ($pod_count)"
-            log_error "   Initiating emergency cleanup to prevent cost escalation"
-            cleanup_on_failure
-            die "Emergency cleanup initiated - too many pods created"
+            if [[ "$DESTRUCTIVE_CLEANUP_ARMED" == "yes" ]]; then
+                log_error "   Removing the release this run created to prevent cost escalation"
+                die "Emergency cleanup initiated - too many pods created"
+            fi
+            log_error "   Release existed before this run; not uninstalling it automatically"
+            die "Too many pods - inspect and run 'make cleanup' if needed"
         fi
     fi
     
@@ -206,7 +236,7 @@ EOF
         
         # Check for pod eviction issues
         local evicted_pods
-        evicted_pods=$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=nvidia-nim --no-headers | grep -c "Evicted" || echo "0")
+        evicted_pods=$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=nvidia-nim --no-headers | grep -c "Evicted" || true)
         if [[ "$evicted_pods" -gt 0 ]]; then
             log_error "🚨 Pod eviction detected ($evicted_pods pods)"
             log_error "   This may indicate disk pressure issues"
@@ -236,7 +266,7 @@ EOF
                     break
                 fi
                 sleep 10
-                ((retries++))
+                retries=$((retries + 1))
             done
             
             if [[ -n "$external_ip" ]]; then
@@ -248,7 +278,7 @@ EOF
         fi
     fi
     
-    trap - EXIT ERR INT TERM
+    DESTRUCTIVE_CLEANUP_ARMED="no"
     
     log_info "Recording deployment timestamp for cost tracking..."
     date +%s > "${SCRIPT_DIR}/.nim-deployed-at"
@@ -257,7 +287,8 @@ EOF
     log_success "Deployment complete!"
     log_info "Run 'make verify' to check health"
     log_info "Run 'make operate' for operational commands"
-    log_info "IMPORTANT: Run 'make cleanup' when finished to stop charges"
+    log_info "IMPORTANT: Only 'make teardown' stops GPU billing (it deletes the node pool and cluster)."
+    log_info "           'make cleanup' removes the NIM deployment only; GPU nodes keep billing."
 }
 
 main "$@"

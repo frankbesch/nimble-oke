@@ -101,7 +101,7 @@ check_env_vars() {
     if [[ -z "${NGC_API_KEY:-}" ]]; then
         missing+=("NGC_API_KEY")
     else
-        log_success "NGC_API_KEY is set (${NGC_API_KEY:0:10}...)"
+        log_success "NGC_API_KEY is set"
     fi
     
     if [[ -z "${OCI_COMPARTMENT_ID:-}" ]]; then
