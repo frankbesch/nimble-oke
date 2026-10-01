@@ -112,6 +112,13 @@ sp=$(line_of '^oci ce node-pool create .*--name system-node-pool'); gp=$(line_of
 check "T1 system pool created before GPU pool (lines $sp < $gp)" lt "$sp" "$gp"
 check "T1 system pool: E4.Flex 2 OCPU/16 GB, size 1, newest non-GPU 1.34.1 image, no GPU label" \
     bash -c 'l=$(grep "^oci ce node-pool create .*--name system-node-pool" "$1"); case "$l" in *"--node-shape VM.Standard.E4.Flex "*"\"ocpus\": 2, \"memoryInGBs\": 16"*"--size 1 "*ocid1.image.oc1.phx.sysnew*) ;; *) exit 1 ;; esac; case "$l" in *initial-node-labels*|*bootVolumeSizeInGBs*) exit 1 ;; esac' _ "$CASE/argv.log"
+# Live run 2026-10-01: OKE answered 400 "The service subnets cannot be used by
+# node pools" when the worker subnet was also the service LB subnet.
+if grep -q '^oci ce cluster create .*--service-lb-subnet-ids' "$CASE/argv.log"; then
+  check "T1 cluster create assigns no service LB subnet" false
+else
+  check "T1 cluster create assigns no service LB subnet" true
+fi
 check "T1 GPU pool create carries --node-metadata user_data" grep -q '^oci ce node-pool create .*--name gpu-node-pool .*--node-metadata {"user_data":' "$CASE/argv.log"
 check "T1 GPU pool size 1 in fixed mode" grep -qx 1 "$CASE/state/np.size"
 check "T1 decoded user_data runs oci-growfs" bash -c 'jq -r ".user_data | @base64d" "$1" | grep -q oci-growfs' _ "$CASE/state/np.metadata"

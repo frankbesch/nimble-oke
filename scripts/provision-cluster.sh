@@ -867,6 +867,9 @@ main() {
 
     if [[ -z "$cluster_id" ]]; then
         CLUSTER_CREATE_STARTED="yes"
+        # No --service-lb-subnet-ids: OKE refuses a node pool in a subnet that
+        # is also the cluster's service load-balancer subnet, and the chart's
+        # Service is ClusterIP, so no load balancer is created.
         wr_out=$(oci ce cluster create \
             --compartment-id "$compartment_id" \
             --name "$CLUSTER_NAME" \
@@ -875,7 +878,6 @@ main() {
             --type ENHANCED_CLUSTER \
             --endpoint-subnet-id "$api_subnet_id" \
             --endpoint-public-ip-enabled true \
-            --service-lb-subnet-ids "[\"$subnet_id\"]" \
             --wait-for-state SUCCEEDED \
             --wait-for-state FAILED \
             --max-wait-seconds 1800) || die "OKE cluster create failed"
