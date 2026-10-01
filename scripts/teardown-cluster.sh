@@ -370,7 +370,7 @@ main() {
     echo ""
     log_warn "This will DELETE:"
     log_warn "  - NIM Helm release, its PVC (block volume) and Service (load balancer), if reachable"
-    log_warn "  - GPU Node Pool: ${NODE_POOL_NAME:-unknown}"
+    log_warn "  - Every node pool of the cluster: GPU (${NODE_POOL_NAME:-unknown}) first, then system (${SYSTEM_NODE_POOL_NAME:-none recorded})"
     log_warn "  - OKE Cluster: ${CLUSTER_NAME:-unknown}"
     log_warn "  - Subnets, security lists, internet gateway and VCN: ${VCN_NAME:-unknown}"
     log_warn "    (the VCN and gateway only if this project created them)"
@@ -409,37 +409,60 @@ main() {
             cleanup_nim_k8s_resources || k8s_ok="no" ;;
     esac
 
-    log_info "Deleting node pool..."
-    # A node pool found by NAME is deleted only inside this project's cluster
-    # (recorded or name-resolved CLUSTER_ID). With no such cluster, a pool
-    # with that name belongs to someone else: report it, never delete it.
-    if [[ -z "${NODE_POOL_ID:-}" && -n "${NODE_POOL_NAME:-}" ]]; then
-        if [[ -n "${CLUSTER_ID:-}" ]]; then
-            if ! NODE_POOL_ID=$(oci_find_node_pool_id "$OCI_COMPARTMENT_ID" "$NODE_POOL_NAME" "$CLUSTER_ID"); then
-                log_error "Node pool lookup by name failed"
-                NODE_POOL_ID=""
-                np_ok="no"
-            fi
+    # E3: delete EVERY node pool of this project's cluster before the cluster:
+    # recorded OCIDs first (GPU pool first, then the system pool), then any
+    # other pool the list call returns for this cluster's OCID. A pool found
+    # by NAME is deleted only inside this project's cluster (recorded or
+    # name-resolved CLUSTER_ID). With no such cluster, a pool with one of the
+    # project's names belongs to someone else: report it, never delete it.
+    log_info "Deleting node pools (GPU pool first)..."
+    local pool_ids="" pool_name pool_var pid listed
+    for pool_var in gpu system; do
+        if [[ "$pool_var" == "gpu" ]]; then
+            pid="${NODE_POOL_ID:-}"; pool_name="${NODE_POOL_NAME:-}"
         else
-            local foreign_np=""
-            if ! foreign_np=$(oci_find_node_pool_id "$OCI_COMPARTMENT_ID" "$NODE_POOL_NAME"); then
-                log_error "Node pool lookup by name failed"
-                np_ok="no"
-            elif [[ -n "$foreign_np" ]]; then
-                log_error "A node pool named $NODE_POOL_NAME exists ($foreign_np), but no cluster of this project is recorded or found; NOT deleting it (it may belong to someone else). Check it in the OCI Console."
-                np_ok="no"
+            pid="${SYSTEM_NODE_POOL_ID:-}"; pool_name="${SYSTEM_NODE_POOL_NAME:-}"
+        fi
+        if [[ -z "$pid" && -n "$pool_name" ]]; then
+            if [[ -n "${CLUSTER_ID:-}" ]]; then
+                if ! pid=$(oci_find_node_pool_id "$OCI_COMPARTMENT_ID" "$pool_name" "$CLUSTER_ID"); then
+                    log_error "Node pool lookup by name failed: $pool_name"
+                    pid=""
+                    np_ok="no"
+                fi
+            else
+                local foreign_np=""
+                if ! foreign_np=$(oci_find_node_pool_id "$OCI_COMPARTMENT_ID" "$pool_name"); then
+                    log_error "Node pool lookup by name failed: $pool_name"
+                    np_ok="no"
+                elif [[ -n "$foreign_np" ]]; then
+                    log_error "A node pool named $pool_name exists ($foreign_np), but no cluster of this project is recorded or found; NOT deleting it (it may belong to someone else). Check it in the OCI Console."
+                    np_ok="no"
+                fi
             fi
         fi
+        [[ -n "$pid" ]] && pool_ids="$pool_ids $pid"
+    done
+    if [[ -n "${CLUSTER_ID:-}" ]]; then
+        if listed=$(oci_list_cluster_node_pool_ids "$OCI_COMPARTMENT_ID" "$CLUSTER_ID"); then
+            pool_ids="$pool_ids $listed"
+        else
+            log_error "Listing the node pools of cluster $CLUSTER_ID failed; cannot confirm every pool is deleted"
+            np_ok="no"
+        fi
     fi
-    if [[ -n "${NODE_POOL_ID:-}" ]]; then
-        oci_ce_delete_confirmed node-pool "$NODE_POOL_ID" || np_ok="no"
+    pool_ids=$(printf '%s\n' $pool_ids | awk 'NF && !seen[$0]++' | tr '\n' ' ')
+    if [[ -n "${pool_ids// /}" ]]; then
+        for pid in $pool_ids; do
+            oci_ce_delete_confirmed node-pool "$pid" || np_ok="no"
+        done
     elif [[ "$np_ok" == "yes" ]]; then
         log_info "No node pool found to delete"
     fi
 
     log_info "Deleting OKE cluster..."
     if [[ "$np_ok" != "yes" ]]; then
-        log_error "Skipping cluster deletion because node pool deletion is not confirmed"
+        log_error "Skipping cluster deletion because deletion of every node pool is not confirmed"
         cl_ok="no"
     else
         if [[ -z "${CLUSTER_ID:-}" && -n "${CLUSTER_NAME:-}" ]]; then
@@ -483,12 +506,12 @@ main() {
     fi
 
     if [[ "$np_ok" != "yes" || "$cl_ok" != "yes" || "$verify_ok" != "yes" ]]; then
-        log_error "TEARDOWN INCOMPLETE - the GPU node pool or OKE cluster is NOT confirmed deleted"
+        log_error "TEARDOWN INCOMPLETE - a node pool (GPU or system) or the OKE cluster is NOT confirmed deleted"
         log_error "GPU billing may be continuing. $INFO_FILE is kept; fix the error and re-run 'make teardown'."
         exit 1
     fi
 
-    log_success "GPU node pool and OKE cluster confirmed deleted - GPU and cluster billing stopped"
+    log_success "All node pools and the OKE cluster confirmed deleted - GPU and cluster billing stopped"
     remove_kube_entries
     rm -f "${SCRIPT_DIR}/.nim-endpoint" "${SCRIPT_DIR}/.nim-deployed-at"
 

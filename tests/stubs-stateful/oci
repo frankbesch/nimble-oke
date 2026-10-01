@@ -4,11 +4,15 @@
 # Knobs (environment):
 #   SIM_CL_WR=FAILED         cluster create work request ends FAILED
 #   SIM_NP_CREATE_FAIL=1     node-pool create errors before any work request
-#   SIM_NP_DELETE_FAIL=1     node-pool delete errors
+#   SIM_NP_DELETE_FAIL=1|system  GPU (1) or system pool delete errors
+#   SIM_NO_SYSTEM_IMAGE=1    node-pool-options lists no non-GPU x86 OKE image
+#   SIM_ADDON=never          ClusterAutoscaler add-on stays NEEDS_ATTENTION
+#   SIM_IAM=present          autoscaler dynamic group and policy exist
+#   SIM_GROWFS_NOEFFECT=1    GPU node keeps SIM_EPH_INITIAL despite cloud-init
 #   SIM_GONE_AS_404=1        a deleted cluster/node pool answers 404 on get
 #   SIM_GET_AUTH_FAIL=KIND   `ce KIND get` answers 401 NotAuthenticated
 #   SIM_GPU=after-apply|preinstalled|never   (node allocatable nvidia.com/gpu)
-#   SIM_EPH_INITIAL=36Gi     node ephemeral-storage before oci-growfs
+#   SIM_EPH_INITIAL=36Gi     node ephemeral-storage without a working cloud-init growfs
 #   SIM_RESOURCE_REGION=R    the simulated resources live in region R: a call
 #                            whose effective region (--region, else
 #                            OCI_CLI_REGION) differs gets 404 on get/delete and
@@ -52,6 +56,19 @@ IGW=ocid1.internetgateway.oc1.phx.sim
 RT=ocid1.routetable.oc1.phx.sim
 CL=ocid1.cluster.oc1.phx.sim
 NP=ocid1.nodepool.oc1.phx.sim
+SNP=ocid1.nodepool.oc1.phx.system
+# Node pools: GPU pool state in $st/np, system pool in $st/np.system.
+pool_file_by_name() { case "$1" in system-node-pool) echo np.system ;; *) echo np ;; esac; }
+pool_file_by_id() { case "$1" in "$SNP") echo np.system ;; "$NP") echo np ;; *) echo np.none ;; esac; }
+pool_id_of() { case "$1" in np.system) echo "$SNP" ;; *) echo "$NP" ;; esac; }
+live_pools_json() {
+    local f s out=""
+    for f in np np.system; do
+        s=$(cat "$st/$f" 2>/dev/null || true)
+        if [ -n "$s" ] && [ "$s" != DELETED ]; then out="${out:+$out, }\"$(pool_id_of "$f")\""; fi
+    done
+    echo "[$out]"
+}
 
 if [ -n "${SIM_RESOURCE_REGION:-}" ] && [ "$eff_region" != "$SIM_RESOURCE_REGION" ]; then
     case "$1 $2 $3" in
@@ -149,27 +166,96 @@ case "$1 $2 $3" in
       wr SUCCEEDED cluster "$CL" ;;
 
   "ce node-pool list")
-      s=$(cat "$st/np" 2>/dev/null || true)
       case "$*" in
-        *'| [0]'*) [ -n "$s" ] && [ "$s" != DELETED ] && [ "$s" != DELETING ] && echo "$NP" ;;
-        *) if [ -n "$s" ] && [ "$s" != DELETED ]; then printf '[\n  "%s"\n]\n' "$NP"; else echo '[]'; fi ;;
+        *'| [0]'*)
+            f=$(pool_file_by_name "$(arg --name "$@")"); s=$(cat "$st/$f" 2>/dev/null || true)
+            [ -n "$s" ] && [ "$s" != DELETED ] && [ "$s" != DELETING ] && pool_id_of "$f" ;;
+        *) live_pools_json ;;
       esac ;;
   "ce node-pool create")
-      [ -n "${SIM_NP_CREATE_FAIL:-}" ] && { printf 'ServiceError:\n{\n    "code": "InternalError",\n    "message": "Out of host capacity.",\n    "status": 500\n}\n' >&2; exit 1; }
-      echo ACTIVE > "$st/np"
-      echo "${SIM_EPH_INITIAL:-36Gi}" > "$st/node.eph"
-      if [ "${SIM_GPU:-after-apply}" = preinstalled ]; then echo 1 > "$st/node.gpu"; else echo 0 > "$st/node.gpu"; fi
-      arg --initial-node-labels "$@" > "$st/node.labels" || echo '[]' > "$st/node.labels"
-      wr SUCCEEDED nodepool "$NP" ;;
+      name=$(arg --name "$@")
+      if [ "$name" = system-node-pool ]; then
+          echo ACTIVE > "$st/np.system"; touch "$st/sysnode"
+          printf '%s\n' "$*" > "$st/np.system.args"
+          wr SUCCEEDED nodepool "$SNP"
+      else
+          [ -n "${SIM_NP_CREATE_FAIL:-}" ] && { printf 'ServiceError:\n{\n    "code": "InternalError",\n    "message": "Out of host capacity.",\n    "status": 500\n}\n' >&2; exit 1; }
+          echo ACTIVE > "$st/np"
+          size=$(arg --size "$@"); echo "$size" > "$st/np.size"
+          arg --node-metadata "$@" > "$st/np.metadata" || echo '{}' > "$st/np.metadata"
+          arg --freeform-tags "$@" > "$st/np.tags" || echo '{}' > "$st/np.tags"
+          arg --initial-node-labels "$@" > "$st/np.labels" || echo '[]' > "$st/np.labels"
+          if [ "${size:-0}" -gt 0 ]; then
+              # cloud-init grows the root filesystem at boot when user_data runs oci-growfs
+              if jq -r '.user_data // empty | @base64d' "$st/np.metadata" 2>/dev/null | grep -q 'oci-growfs' \
+                 && [ -z "${SIM_GROWFS_NOEFFECT:-}" ]; then
+                  echo 476Gi > "$st/node.eph"
+              else
+                  echo "${SIM_EPH_INITIAL:-36Gi}" > "$st/node.eph"
+              fi
+              if [ "${SIM_GPU:-after-apply}" = preinstalled ]; then echo 1 > "$st/node.gpu"; else echo 0 > "$st/node.gpu"; fi
+              cp "$st/np.labels" "$st/node.labels"
+          fi
+          wr SUCCEEDED nodepool "$NP"
+      fi ;;
   "ce node-pool get")
       [ "${SIM_GET_AUTH_FAIL:-}" = node-pool ] && authfail
-      [ -f "$st/np" ] || notfound; cat "$st/np" ;;
+      f=$(pool_file_by_id "$(arg --node-pool-id "$@")")
+      [ -f "$st/$f" ] || notfound; cat "$st/$f" ;;
   "ce node-pool delete")
-      [ -f "$st/np" ] || notfound
-      [ -n "${SIM_NP_DELETE_FAIL:-}" ] && { printf 'ServiceError:\n{\n    "code": "InternalError",\n    "message": "simulated delete failure",\n    "status": 500\n}\n' >&2; exit 1; }
-      if [ -n "${SIM_GONE_AS_404:-}" ]; then rm -f "$st/np"; else echo DELETED > "$st/np"; fi
-      rm -f "$st"/node.*
-      wr SUCCEEDED nodepool "$NP" ;;
+      id=$(arg --node-pool-id "$@"); f=$(pool_file_by_id "$id")
+      [ -f "$st/$f" ] || notfound
+      fail_it=no
+      case "${SIM_NP_DELETE_FAIL:-}:$f" in 1:np|system:np.system) fail_it=yes ;; esac
+      if [ "$fail_it" = yes ]; then
+          printf 'ServiceError:\n{\n    "code": "InternalError",\n    "message": "simulated delete failure",\n    "status": 500\n}\n' >&2; exit 1
+      fi
+      if [ -n "${SIM_GONE_AS_404:-}" ]; then rm -f "$st/$f"; else echo DELETED > "$st/$f"; fi
+      if [ "$f" = np ]; then rm -f "$st"/node.*; else rm -f "$st/sysnode"; fi
+      wr SUCCEEDED nodepool "$id" ;;
+  "ce node-pool-options get")
+      if [ -n "${SIM_NO_SYSTEM_IMAGE:-}" ]; then
+          printf '{"data":{"sources":[%s,%s]}}\n' \
+            '{"source-type":"IMAGE","source-name":"Oracle-Linux-8.10-Gen2-GPU-2025.08.31-0-OKE-1.34.1-1191","image-id":"ocid1.image.oc1.phx.gpu"}' \
+            '{"source-type":"IMAGE","source-name":"Oracle-Linux-8.10-aarch64-2025.09.10-0-OKE-1.34.1-1200","image-id":"ocid1.image.oc1.phx.arm"}'
+      else
+          printf '{"data":{"sources":[%s,%s,%s,%s,%s]}}\n' \
+            '{"source-type":"IMAGE","source-name":"Oracle-Linux-8.10-Gen2-GPU-2025.09.30-0-OKE-1.34.1-1300","image-id":"ocid1.image.oc1.phx.gpu"}' \
+            '{"source-type":"IMAGE","source-name":"Oracle-Linux-8.10-aarch64-2025.09.30-0-OKE-1.34.1-1300","image-id":"ocid1.image.oc1.phx.arm"}' \
+            '{"source-type":"IMAGE","source-name":"Oracle-Linux-8.10-2025.08.31-0-OKE-1.34.1-1191","image-id":"ocid1.image.oc1.phx.old"}' \
+            '{"source-type":"IMAGE","source-name":"Oracle-Linux-8.10-2025.09.20-0-OKE-1.34.1-1250","image-id":"ocid1.image.oc1.phx.sysnew"}' \
+            '{"source-type":"IMAGE","source-name":"Oracle-Linux-8.10-2025.10.01-0-OKE-1.33.1-1400","image-id":"ocid1.image.oc1.phx.otherver"}'
+      fi ;;
+
+  "ce cluster list-addons")
+      if [ -f "$st/addon" ]; then printf '{"data":[{"name":"ClusterAutoscaler","lifecycle-state":"%s"}]}\n' "$(cat "$st/addon")"
+      else echo '{"data":[]}'; fi ;;
+  "ce cluster install-addon")
+      f=$(arg --from-json "$@"); f="${f#file://}"
+      cp "$f" "$st/addon.json" || { echo "stub: cannot read $f" >&2; exit 2; }
+      printf '%s\n' "$(arg --addon-name "$@")" > "$st/addon.name"
+      if [ "${SIM_ADDON:-active}" = never ]; then echo NEEDS_ATTENTION > "$st/addon"; else echo ACTIVE > "$st/addon"; fi
+      wr ACCEPTED addon ClusterAutoscaler ;;
+  "ce cluster get-addon")
+      [ -f "$st/addon" ] || notfound
+      printf '{"data":{"name":"ClusterAutoscaler","lifecycle-state":"%s","addon-error":{"code":"SimError","message":"simulated: pods not ready"}}}\n' "$(cat "$st/addon")" ;;
+
+  "iam compartment get") echo "sim-compartment" ;;
+  "iam dynamic-group list")
+      if [ -n "${SIM_IAM:-}" ] || [ -f "$st/iam.dg" ]; then
+          printf '{"data":[{"id":"ocid1.dynamicgroup.oc1..sim","name":"nimble-oke-autoscaler","lifecycle-state":"ACTIVE","matching-rule":"ALL {instance.compartment.id = '"'"'%s'"'"'}"}]}\n' "${OCI_COMPARTMENT_ID:-}"
+      fi ;;
+  "iam policy list")
+      if [ -n "${SIM_IAM:-}" ] || [ -f "$st/iam.policy" ]; then
+          w="in compartment sim-compartment"; d="Allow dynamic-group nimble-oke-autoscaler to"
+          printf '{"data":[{"id":"ocid1.policy.oc1..sim","name":"nimble-oke-autoscaler","lifecycle-state":"ACTIVE","statements":["%s","%s","%s","%s","%s","%s"]}]}\n' \
+            "$d manage cluster-node-pools $w" "$d manage instance-family $w" "$d use subnets $w" \
+            "$d read virtual-network-family $w" "$d use vnics $w" "$d inspect compartments $w"
+      fi ;;
+  "iam dynamic-group create") touch "$st/iam.dg"; echo '{}' ;;
+  "iam policy create") arg --statements "$@" > "$st/iam.policy"; echo '{}' ;;
+  "iam dynamic-group delete") rm -f "$st/iam.dg" ;;
+  "iam policy delete") rm -f "$st/iam.policy" ;;
 
   *) echo "SIM-OCI-UNHANDLED: $*" >&2; exit 1 ;;
 esac

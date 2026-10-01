@@ -521,7 +521,7 @@ set +e; env -u WATCHDOG_SEC -u READY_TIMEOUT_SEC -u PROVISION_STEP_TIMEOUT_SEC -
   -u BENCH_STEP_TIMEOUT_SEC "${RUNNER}" --preflight-only "${O}" > "${TMP_DIR}/r17c.out" 2>&1; rc=$?; set -e
 pass=true
 [[ "${rc}" -eq 0 ]] || pass=false
-grep -q '= 8700s; WATCHDOG_SEC=9000s$' "${O}/preflight.log" || pass=false
+grep -q '= 7800s; WATCHDOG_SEC=9000s$' "${O}/preflight.log" || pass=false
 report R17c "${pass}" "rc=${rc} defaults | $(grep -m1 '^step budgets' "${O}/preflight.log")" "${O}"
 
 # --- R18: deploy past its hard timeout -> stopped, teardown runs ---

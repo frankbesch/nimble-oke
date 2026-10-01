@@ -6,6 +6,57 @@
 echo "kubectl $*" >> "${STUB_LOG:-/dev/null}"
 # A pinned context (--context NAME) may come first.
 if [[ "${1:-}" == "--context" ]]; then shift 2; fi
+# --autoscale emulation (tests/run_measured_autoscale_test.sh), active only when
+# STUB_AS_DIR names a state directory:
+#   STUB_AS_SCALEUP=never    no GPU node ever appears; events show NotTriggerScaleUp
+#   STUB_AS_UP_AFTER=N       the node appears after N GPU-node polls (default 2),
+#                            NotReady on its first appearance, then Ready
+#   STUB_AS_SCALEDOWN=never  the node never leaves after `scale --replicas=0`
+#   STUB_AS_DOWN_AFTER=N     the node leaves after N polls past the scale (default 2)
+if [[ -n "${STUB_AS_DIR:-}" ]]; then
+  d="${STUB_AS_DIR}"
+  args=()
+  for a in "$@"; do [[ "${a}" == --request-timeout* ]] || args+=("${a}"); done
+  set -- "${args[@]}"
+  present() { [[ -f "${d}/node_up" && ! -f "${d}/node_gone" ]]; }
+  case "$*" in
+    "get nodes -l "*)
+      if [[ "$*" == *"{.metadata.name}"* ]]; then   # the runner's poll query
+        if [[ -f "${d}/scaled0" ]]; then
+          n=$(( $(cat "${d}/down_polls" 2>/dev/null || echo 0) + 1 )); echo "${n}" > "${d}/down_polls"
+          [[ "${STUB_AS_SCALEDOWN:-ok}" != "never" && "${n}" -gt "${STUB_AS_DOWN_AFTER:-2}" ]] && touch "${d}/node_gone"
+        else
+          n=$(( $(cat "${d}/up_polls" 2>/dev/null || echo 0) + 1 )); echo "${n}" > "${d}/up_polls"
+          [[ "${STUB_AS_SCALEUP:-ok}" != "never" && "${n}" -gt "${STUB_AS_UP_AFTER:-2}" ]] && touch "${d}/node_up"
+        fi
+        if present; then
+          if [[ -f "${d}/node_seen" ]]; then echo "10.0.10.77 True"; else touch "${d}/node_seen"; echo "10.0.10.77 False"; fi
+        fi
+      elif present; then
+        if [[ "$*" == *allocatable* ]]; then echo "1 95551679990"
+        else printf 'NAME STATUS ROLES AGE VERSION INTERNAL-IP\n10.0.10.77 Ready node 1m v1.34.1 10.0.10.77\n'; fi
+      fi
+      exit 0 ;;
+    "get pods -n "*"app.kubernetes.io/instance"*)
+      [[ -f "${d}/scaled0" ]] && exit 0
+      if [[ -f "${d}/node_seen" ]] && present; then echo "Running Scheduled"
+      elif [[ "$*" == *--no-headers* ]]; then echo "nvidia-nim-6d5f-x2x 0/1 Pending 0 5s"
+      else echo "Pending Unschedulable"; fi
+      exit 0 ;;
+    "get deployment -n "*) echo "nvidia-nim"; exit 0 ;;
+    "scale deployment/"*) touch "${d}/scaled0"; echo "deployment.apps/nvidia-nim scaled"; exit 0 ;;
+    "get events "*)
+      echo "NAMESPACE LAST-SEEN TYPE REASON OBJECT MESSAGE"
+      echo "default 40s Warning FailedScheduling pod/nvidia-nim-6d5f-x2x 0/1 nodes are available: 1 Insufficient nvidia.com/gpu."
+      if [[ "${STUB_AS_SCALEUP:-ok}" == "never" ]]; then
+        echo "default 30s Normal NotTriggerScaleUp pod/nvidia-nim-6d5f-x2x pod didn't trigger scale-up: 1 node(s) didn't match Pod's node affinity/selector, 1 max node group size reached"
+      else
+        echo "default 35s Normal TriggeredScaleUp pod/nvidia-nim-6d5f-x2x pod triggered scale-up: [{ocid1.nodepool.oc1.phx.fakepoolid 0->1 (max: 1)}]"
+      fi
+      [[ -f "${d}/node_gone" ]] && echo "default 5s Normal ScaleDown node/10.0.10.77 marked the node as toBeDeleted/unschedulable"
+      exit 0 ;;
+  esac
+fi
 case "${1:-}" in
   version) echo '{"serverVersion":{"gitVersion":"v1.34.1-stub"}}' ;;
   port-forward)

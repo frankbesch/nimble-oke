@@ -513,16 +513,36 @@ get_gpu_hourly_rate() {
     printf "%.2f\n" "$(echo "$NIM_A10_GPU_HOURLY_USD * $gpus" | bc -l)"
 }
 
+# System node pool (non-autoscaled, runs CoreDNS and the Cluster Autoscaler):
+# VM.Standard.E4.Flex, verified 2026-10-01 from Oracle's price list API:
+#   $0.025 per OCPU-hour, $0.0015 per GB-hour (memory).
+readonly NIM_E4_FLEX_OCPU_HOURLY_USD="0.025"
+readonly NIM_E4_FLEX_GB_HOURLY_USD="0.0015"
+
+# Hourly cost (USD) of the one-node system pool:
+# SYSTEM_OCPUS (default 2) x OCPU rate + SYSTEM_MEMORY_GB (default 16) x GB rate.
+get_system_pool_hourly_rate() {
+    local ocpus="${SYSTEM_OCPUS:-2}" mem="${SYSTEM_MEMORY_GB:-16}"
+    if ! [[ "$ocpus" =~ ^[0-9]+$ && "$mem" =~ ^[0-9]+$ ]]; then
+        log_error "SYSTEM_OCPUS ('$ocpus') and SYSTEM_MEMORY_GB ('$mem') must be whole numbers"
+        return 1
+    fi
+    echo "$ocpus * $NIM_E4_FLEX_OCPU_HOURLY_USD + $mem * $NIM_E4_FLEX_GB_HOURLY_USD" | bc -l \
+        | awk '{ printf "%g\n", $1 }'
+}
+
 # Estimated hourly cost (USD) of the whole deployment.
 #   $1 node count (default 1; kept first for existing callers)
 #   $2 GPU shape  (default $GPU_SHAPE, else VM.GPU.A10.1)
-# GPU and enhanced-cluster rates are verified; LB and storage are estimates.
+# GPU, enhanced-cluster and system-pool rates are verified; LB and storage
+# are estimates. The system pool is counted once.
 estimate_hourly_cost() {
     local node_count="${1:-1}"
     local shape="${2:-${GPU_SHAPE:-$NIM_DEFAULT_GPU_SHAPE}}"
-    local node_hourly
+    local node_hourly system_hourly
     node_hourly=$(get_gpu_hourly_rate "$shape") || return 1
-    echo "($node_hourly * $node_count) + $NIM_ENHANCED_CLUSTER_HOURLY_USD + $NIM_LB_HOURLY_ESTIMATE_USD + $NIM_STORAGE_HOURLY_ESTIMATE_USD" | bc -l
+    system_hourly=$(get_system_pool_hourly_rate) || return 1
+    echo "($node_hourly * $node_count) + $system_hourly + $NIM_ENHANCED_CLUSTER_HOURLY_USD + $NIM_LB_HOURLY_ESTIMATE_USD + $NIM_STORAGE_HOURLY_ESTIMATE_USD" | bc -l
 }
 
 estimate_deployment_cost() {
@@ -718,6 +738,17 @@ oci_find_node_pool_id() {
         --raw-output) || return 1
     [[ "$out" == "null" ]] && out=""
     printf '%s\n' "$out"
+}
+
+# Print the OCID of every node pool of one cluster (one per line; DELETED
+# pools excluded, DELETING kept so its deletion is still confirmed).
+# Non-zero if the list call fails or its output is not JSON.
+oci_list_cluster_node_pool_ids() {
+    local compartment_id="$1" cluster_id="$2" out
+    out=$(oci ce node-pool list --compartment-id "$compartment_id" --cluster-id "$cluster_id" --all \
+        --query "data[?\"lifecycle-state\"!='DELETED'].id") || return 1
+    [[ -n "$out" ]] || return 0
+    printf '%s' "$out" | jq -r '.[]?' || return 1
 }
 
 # Return 0 if the OCI CLI error text on stdin says the resource does not

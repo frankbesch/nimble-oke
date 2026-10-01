@@ -173,6 +173,7 @@ estimate_oke_cost() {
     echo "[NIM-OKE][COST] $OKE_GPU_SHAPE Cost Estimation (rates from _lib.sh):" >&2
     echo "  GPU Cost: \$$(printf "%.2f" "$OKE_GPU_HOURLY_RATE")/hour × $node_count node(s) ($OKE_GPU_COUNT x NVIDIA A10 each) = \$$(printf "%.2f" "$node_cost")/hour" >&2
     echo "  Enhanced cluster (control plane): \$$(printf "%.2f" "$OKE_CONTROL_PLANE_RATE")/hour" >&2
+    echo "  System node pool (VM.Standard.E4.Flex): \$$(get_system_pool_hourly_rate)/hour" >&2
     echo "  LB + storage: ESTIMATE (unverified), included in the total" >&2
     echo "  Total Hourly: \$$(printf "%.2f" "$total_hourly")/hour" >&2
     echo "  $duration_hours-hour cost: \$$(printf "%.2f" "$total_cost")" >&2

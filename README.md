@@ -26,7 +26,8 @@ as estimates. Only a file in `docs/runs/` is a measurement.
 | Component | Value |
 |-----------|-------|
 | Cluster | OKE enhanced cluster, Kubernetes v1.34.1 |
-| GPU node | `VM.GPU.A10.1` by default: one NVIDIA A10 (24 GB), 15 OCPU, 240 GB RAM |
+| GPU node pool | `VM.GPU.A10.1` by default: one NVIDIA A10 (24 GB), 15 OCPU, 240 GB RAM |
+| System node pool | One `VM.Standard.E4.Flex` node, 2 OCPU and 16 GB. It runs cluster DNS and the autoscaler. |
 | Model | `nvcr.io/nim/meta/llama3-8b-instruct:1.0.3` (Llama 3 8B Instruct) |
 | Storage | 100 Gi block volume for the model cache |
 | Endpoint | OpenAI-compatible API on port 8000 |
@@ -49,9 +50,10 @@ Rates are Oracle list prices, read from Oracle's price list on 2026-10-01.
 |------|------|
 | A10 GPU | $2.00 per GPU-hour |
 | OKE enhanced cluster | $0.10 per cluster-hour |
-| **Default shape, `VM.GPU.A10.1`** | **$2.10 per hour** |
-| `VM.GPU.A10.2` (two GPUs) | $4.10 per hour |
-| `BM.GPU.A10.4` (four GPUs, bare metal) | $8.10 per hour |
+| System node, E4 Flex | $0.025 per OCPU-hour and $0.0015 per GB-hour: $0.074 per hour |
+| **Default shape, `VM.GPU.A10.1`** | **$2.17 per hour** |
+| `VM.GPU.A10.2` (two GPUs) | $4.17 per hour |
+| `BM.GPU.A10.4` (four GPUs, bare metal) | $8.17 per hour |
 
 The load balancer and block storage add a small amount. This repository does
 not verify those two rates, so the scripts label them as estimates.
@@ -59,7 +61,10 @@ not verify those two rates, so the scripts label them as estimates.
 One table in [scripts/_lib.sh](scripts/_lib.sh) holds every rate. An unknown
 shape is an error, not a default price.
 
-GPU billing stops only when the node pool is deleted. `make cleanup` removes
+With autoscaling, the GPU line bills only while the GPU node exists. The
+cluster and the system node bill for the whole run.
+
+GPU billing stops only when the GPU node is gone or the node pool is deleted. `make cleanup` removes
 the NIM release and leaves the cluster running. `make teardown` deletes the
 node pool and the cluster.
 
@@ -100,18 +105,52 @@ preflight, provision, deploy, wait for ready, benchmark, teardown, and a
 check that nothing is left.
 
 ```bash
-OCI_COMPARTMENT_ID=... NGC_API_KEY=... scripts/run_measured.sh docs/runs/out
+export OCI_COMPARTMENT_ID=ocid1.compartment.oc1..your-compartment
+scripts/run_measured.sh --key-file ~/.ngc-key docs/runs/out
 ```
 
 A free check of access, quota, and configuration, with nothing created:
 
 ```bash
-OCI_COMPARTMENT_ID=... scripts/run_measured.sh --preflight-only /tmp/preflight
+scripts/run_measured.sh --preflight-only /tmp/preflight
 ```
+
+### GPU node autoscaling, 0 to 1 to 0
+
+`--autoscale` creates the GPU node pool with no nodes and installs Oracle's
+Cluster Autoscaler add-on on the system node. The pending NIM pod triggers
+one GPU node. After the benchmark, the runner scales NIM to zero replicas and
+waits for the autoscaler to remove the node.
+
+The autoscaler needs a dynamic group and a policy in your tenancy. Oracle
+documents the six statements. The setup script prints them, checks for them,
+or creates them after a typed confirmation:
+
+```bash
+scripts/setup-autoscaler-iam.sh --print
+scripts/setup-autoscaler-iam.sh --check
+scripts/setup-autoscaler-iam.sh --apply
+```
+
+```bash
+scripts/run_measured.sh --autoscale --preflight-only /tmp/preflight
+scripts/run_measured.sh --autoscale docs/runs/out
+```
+
+The receipt records the seconds from pod Pending to GPU node Ready, the
+seconds from zero replicas to no GPU node, the autoscaler timers, GPU-node
+minutes, and a line `autoscale result: 0→1→0 PASS` or `FAIL` with the reason.
+
+Scope: one GPU node. `MAX_GPU_NODES` above 1 is refused. Oracle's
+documentation does not state that a node pool can scale up from zero nodes;
+the upstream autoscaler code supports it. The measured run is the test.
+
+### How the runner ends
 
 The runner is built to end with the cluster deleted:
 
 - A trap runs teardown once on success, failure, Ctrl-C, `TERM`, and `HUP`.
+- Each step has a hard timeout. Preflight refuses to start if the watchdog limit is shorter than the step timeouts combined.
 - A watchdog runs in its own session, outside the terminal's process tree.
   It starts before anything billable exists. It takes over teardown if the
   runner dies, and at a time limit.
@@ -140,6 +179,8 @@ OCI API; the measured run does that.
 | An early exit from deploy uninstalled a healthy release and deleted its model cache | Destructive cleanup is armed only for a release that this run created. |
 | Deploy left the NGC key in a temp file, and setup printed it | The key goes to Helm on standard input and is never written to disk. Scripts print only "set" or "not set". |
 | The scripted subnets had no OKE security rules, so nodes could not register | Provisioning creates security lists that mirror the rules Oracle's Quick Create generates. |
+| The root filesystem stayed near 35 GB whatever the boot volume size | The GPU node pool runs `oci-growfs` in cloud-init, as Oracle documents. |
+| A cluster of only tainted GPU nodes had nowhere to run DNS | A small system node pool is created first, and provisioning waits for DNS. |
 | A failed install uninstalled the release before anyone could see why | Deploy captures pod state, events, and logs before it cleans up. |
 | Prices and shapes disagreed across files, and `VM.GPU.A10.4` is not an Oracle shape | One rate table. Three valid shapes. |
 
@@ -147,10 +188,10 @@ OCI API; the measured run does that.
 
 ```
 Makefile            Entry point for every step
-scripts/            Provision, deploy, verify, cleanup, teardown, and the measured-run runner
+scripts/            Provision, deploy, verify, cleanup, teardown, IAM setup, and the measured-run runner
 scripts/_lib.sh     Logging, cost guards, rate table, confirmed-delete helpers
 helm/               Chart for the NIM deployment
-tests/              Stubbed tests for the runner
+tests/              Stubbed tests for the runner, autoscaling, and the provision and teardown scripts
 docs/               Runbook, prerequisites, API examples, and historical working notes
 docs/runs/          Receipts from measured runs
 ```
@@ -182,6 +223,7 @@ Their figures were corrected in October 2026.
 | `OCI_REGION` | `us-phoenix-1` | Region for every `oci` call. The pinned node image is Phoenix-only. |
 | `API_ALLOWED_CIDR` | `0.0.0.0/0` | Source range allowed to reach the Kubernetes API on 6443 |
 | `OKE_GPU_SHAPE` | `VM.GPU.A10.1` | GPU node shape |
+| `AUTOSCALE` | `0` | Set `1` for `make provision` to create the GPU pool at zero nodes with the autoscaler |
 | `CONFIRM_COST` | `no` | Set `yes` to pass the cost guard. Otherwise a billable step exits. |
 | `KEEP_CACHE` | `no` | Keep the model-cache volume during `make cleanup` |
 | `FORCE` | `no` | Skip confirmation prompts |
@@ -194,6 +236,7 @@ Their figures were corrected in October 2026.
 - The pod runs as uid 1000 with no further hardening. The chart says so.
 - The NVIDIA device plugin is pinned at v0.14.0 and has not been re-tested against newer releases.
 - The scripts are tested on bash 3.2. Bash 5 is exercised only in CI.
+- Autoscaling is limited to one GPU node and is unproven until a receipt is committed.
 - The watchdog runs on the machine that starts the run. If that machine loses power, nothing tears the cluster down.
 
 ## References

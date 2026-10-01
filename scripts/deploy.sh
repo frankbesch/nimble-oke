@@ -19,6 +19,25 @@ readonly NIM_SELECTOR="app.kubernetes.io/instance=${RELEASE_NAME}"
 # Kube context pin and per-request kubectl timeout (scripts/_lib.sh).
 nimble_pin_kube_context
 
+# Autoscale mode (AUTOSCALE=1 in the environment or in cluster-info.txt): the
+# GPU pool starts at 0 nodes under the cluster autoscaler. The "a node has
+# allocatable GPU" prerequisite is skipped, and Helm installs WITHOUT --wait:
+# the NIM pod stays Pending until the autoscaler adds a GPU node. deploy.sh
+# returns once the release exists and the pod object exists; the runner
+# measures scale-up and readiness. Every other prerequisite still applies.
+AUTOSCALE_MODE="no"
+_nimble_info="${NIMBLE_CLUSTER_INFO:-${SCRIPT_DIR}/cluster-info.txt}"
+if [[ "${AUTOSCALE:-0}" == "1" ]] \
+   || { [[ -f "$_nimble_info" ]] && [[ "$(sed -n 's/^AUTOSCALE=//p' "$_nimble_info" | tail -1)" == "1" ]]; }; then
+    AUTOSCALE_MODE="yes"
+    export AUTOSCALE=1   # prereqs.sh applies the same exemption
+fi
+unset _nimble_info
+# Autoscale: Helm's own bound (hooks, API calls; no readiness wait) and the
+# wait for the NIM pod object to exist.
+readonly AUTOSCALE_HELM_TIMEOUT=300
+readonly AUTOSCALE_POD_EXIST_TIMEOUT=300
+
 # The NGC key never touches disk and never appears in argv: ngc_values_yaml
 # prints it with the printf builtin into a pipe, and helm reads that pipe as
 # a values file (-f -). All non-secret settings come from helm/values.yaml.
@@ -94,6 +113,38 @@ on_exit() {
     exit "$rc"
 }
 
+# Autoscale install: no --wait (the pod cannot be Ready before a GPU node
+# exists). Success = release created and the NIM pod object exists. A failure
+# exits non-zero, so on_exit captures diagnostics and, when armed, removes
+# the release this run created.
+deploy_autoscale() {
+    log_info "Deploying NIM with Helm (autoscale: no readiness wait; Helm timeout ${AUTOSCALE_HELM_TIMEOUT}s)..."
+    INSTALL_ATTEMPTED="yes"
+    ngc_values_yaml | helm upgrade --install "$RELEASE_NAME" "$HELM_CHART_DIR" \
+        -n "$NAMESPACE" \
+        -f "${HELM_CHART_DIR}/values.yaml" \
+        -f - \
+        --timeout "${AUTOSCALE_HELM_TIMEOUT}s"
+    log_info "Waiting up to ${AUTOSCALE_POD_EXIST_TIMEOUT}s for the NIM pod object to exist..."
+    local start pods=""
+    start=$(date +%s)
+    while :; do
+        pods=$(kubectl get pods -n "$NAMESPACE" -l "$NIM_SELECTOR" --no-headers 2>/dev/null || true)
+        [[ -n "$pods" ]] && break
+        if (( $(date +%s) - start >= AUTOSCALE_POD_EXIST_TIMEOUT )); then
+            die "Release created but no NIM pod appeared within ${AUTOSCALE_POD_EXIST_TIMEOUT}s"
+        fi
+        sleep 5
+    done
+    log_info "NIM pod present (expected Pending until the autoscaler adds a GPU node):"
+    printf '%s\n' "$pods"
+    DESTRUCTIVE_CLEANUP_ARMED="no"
+    INSTALL_ATTEMPTED="no"
+    # .nim-deployed-at is not written here: GPU billing starts when the
+    # autoscaler's node arrives, which the runner records.
+    log_success "Release created (autoscale); the runner waits for scale-up and readiness"
+}
+
 main() {
     log_info "Starting NIM deployment..."
     
@@ -149,8 +200,12 @@ main() {
     fi
     log_success "Active OKE cluster found"
     
-    log_info "Checking GPU availability..."
-    check_gpu_available || die "No GPU nodes available"
+    if [[ "$AUTOSCALE_MODE" == "yes" ]]; then
+        log_info "GPU availability: skipped (autoscale: GPU pool starts at 0)"
+    else
+        log_info "Checking GPU availability..."
+        check_gpu_available || die "No GPU nodes available"
+    fi
     
     log_info "Creating namespace if needed..."
     create_namespace_if_missing "$NAMESPACE"
@@ -202,6 +257,11 @@ main() {
         log_info "Release $RELEASE_NAME already exists; a failure will NOT uninstall it"
     fi
     
+    if [[ "$AUTOSCALE_MODE" == "yes" ]]; then
+        deploy_autoscale
+        return 0
+    fi
+
     log_info "Deploying NIM with Helm (waits up to ${DEPLOY_TIMEOUT}s)..."
     INSTALL_ATTEMPTED="yes"
     ngc_values_yaml | helm upgrade --install "$RELEASE_NAME" "$HELM_CHART_DIR" \

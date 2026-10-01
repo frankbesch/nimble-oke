@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Measured-run runner for Oracle OKE:
 #   preflight -> provision -> deploy -> ready -> bench -> teardown -> verify-clean
+# With --autoscale (GPU node autoscaling 0->1->0 on one GPU node):
+#   preflight -> provision -> deploy -> scale-up -> ready -> bench -> scale-down
+#   -> teardown -> verify-clean
 #
 # Ported from the GKE runner in the sibling nim-gke repo (scripts/run_measured.sh).
 # It produces a timed receipt that an NVIDIA NIM container served inference,
@@ -10,6 +13,7 @@
 #        then: OCI_COMPARTMENT_ID=... scripts/run_measured.sh OUT_DIR
 #    or: OCI_COMPARTMENT_ID=... scripts/run_measured.sh --key-file PATH OUT_DIR
 #        OCI_COMPARTMENT_ID=... scripts/run_measured.sh --preflight-only OUT_DIR
+#        OCI_COMPARTMENT_ID=... scripts/run_measured.sh --autoscale OUT_DIR
 # Never put the key on the command line (shell history, ps).
 #
 # SPENDS REAL MONEY: provision-cluster.sh creates an ENHANCED OKE cluster and
@@ -37,6 +41,7 @@
 #
 # Test-only hooks (never for live use): RUNNER_PREFLIGHT, RUNNER_PROVISION,
 # RUNNER_DEPLOY, RUNNER_READY (readiness probe, polled until it exits 0),
+# RUNNER_AUTOSCALER_IAM_CHECK (replaces scripts/setup-autoscaler-iam.sh --check),
 # RUNNER_BENCH (called with --out FILE), RUNNER_TEARDOWN, and RUNNER_OKE_CONFIG
 # (fixture path for the preflight detectors). Defaults are this repo's files. summary.json records which hooks were set.
 # NIMBLE_CLUSTER_INFO (test-only, honoured only together with RUNNER_PROVISION)
@@ -59,6 +64,7 @@ Usage: export NGC_API_KEY beforehand (read -rs NGC_API_KEY; export NGC_API_KEY),
          OCI_COMPARTMENT_ID=... scripts/run_measured.sh OUT_DIR
        OCI_COMPARTMENT_ID=... scripts/run_measured.sh --key-file PATH OUT_DIR
        OCI_COMPARTMENT_ID=... scripts/run_measured.sh --preflight-only OUT_DIR
+       OCI_COMPARTMENT_ID=... scripts/run_measured.sh --autoscale [--preflight-only] OUT_DIR
   Never type the key on the command line: it lands in shell history and ps.
   OUT_DIR           new or empty directory for logs, phases.log and summary.json
   --key-file PATH   read the NGC key from PATH (mode 600 or 400; first line used);
@@ -66,6 +72,11 @@ Usage: export NGC_API_KEY beforehand (read -rs NGC_API_KEY; export NGC_API_KEY),
   --preflight-only  run only the no-cost preflight checks (real oci calls, read-only);
                     writes preflight.log and phases.log, starts no watchdog, creates
                     nothing, exits with the preflight status; NGC_API_KEY optional
+  --autoscale       measure GPU node autoscaling 0->1->0: the GPU pool starts at 0
+                    nodes under OKE's cluster autoscaler; adds the phases scale-up
+                    (NIM pod Pending -> GPU node Ready) and scale-down (replicas 0
+                    -> no GPU node); needs the autoscaler IAM policy
+                    (scripts/setup-autoscaler-iam.sh --check); MAX_GPU_NODES must be 1
 
 Env (required): OCI_COMPARTMENT_ID, NGC_API_KEY (NGC_CLI_API_KEY accepted) or --key-file
 Env (optional): OCI_REGION (us-phoenix-1; also exported as OCI_CLI_REGION),
@@ -74,8 +85,11 @@ Env (optional): OCI_REGION (us-phoenix-1; also exported as OCI_CLI_REGION),
   GPU limit query; default OCI_COMPARTMENT_ID), WATCHDOG_SEC (9000; must be >=
   the step-budget sum below unless ALLOW_SHORT_WATCHDOG=yes),
   PROVISION_STEP_TIMEOUT_SEC (3600), DEPLOY_STEP_TIMEOUT_SEC (2400),
-  READY_TIMEOUT_SEC (1800), BENCH_STEP_TIMEOUT_SEC (900),
+  READY_TIMEOUT_SEC (900; 2400 with --autoscale), BENCH_STEP_TIMEOUT_SEC (900),
   POLL_SEC (15), CLEANUP_RETRY_SEC (1800),
+  --autoscale only: SCALE_UP_TIMEOUT_SEC (1800), SCALE_DOWN_TIMEOUT_SEC (1500),
+  MAX_GPU_NODES (1; >1 refused), SCALE_DOWN_UNNEEDED (3m), SCALE_DOWN_DELAY_AFTER_ADD
+  (3m); WATCHDOG_SEC default 14400 (both scale timeouts join the step-budget sum),
   TEARDOWN_RETRY_PAUSE_SEC (30), STEP_STOP_WAIT_SEC (900),
   NIM_LOCAL_PORT (empty: a free local port; a busy port is replaced by a free one)
 Tools: oci kubectl helm jq python3 curl bc (macOS: caffeinate, if present, keeps
@@ -87,11 +101,13 @@ OUT_DIR=""
 WATCHDOG_MODE=0
 WD_MAIN_PID=""
 PREFLIGHT_ONLY=0
+AUTOSCALE_MODE=0
 KEY_FILE=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -h|--help) usage; exit 0 ;;
     --preflight-only) PREFLIGHT_ONLY=1 ;;
+    --autoscale) AUTOSCALE_MODE=1 ;;
     --key-file)
       KEY_FILE="${2:-}"
       [[ -n "${KEY_FILE}" ]] || { usage >&2; exit 2; }
@@ -150,12 +166,28 @@ CLUSTER_NAME="${CLUSTER_NAME:-nimble-oke-cluster}"
 NODE_POOL_NAME="gpu-node-pool"            # fixed in provision-cluster.sh
 NIM_RELEASE="nvidia-nim"                  # fixed in deploy.sh; chart fullname == release
 NIM_NAMESPACE="default"                   # fixed in deploy.sh
-WATCHDOG_SEC="${WATCHDOG_SEC:-9000}"
+if [[ -z "${WATCHDOG_SEC:-}" ]]; then
+  # Step caps plus a teardown margin: fixed 7800 + 1200, autoscale 12600 + 1800.
+  if [[ "${AUTOSCALE_MODE}" == "1" ]]; then WATCHDOG_SEC=14400; else WATCHDOG_SEC=9000; fi
+fi
 # Hard per-step caps. Their sum must fit inside WATCHDOG_SEC (preflight check).
 PROVISION_STEP_TIMEOUT_SEC="${PROVISION_STEP_TIMEOUT_SEC:-3600}"
 DEPLOY_STEP_TIMEOUT_SEC="${DEPLOY_STEP_TIMEOUT_SEC:-2400}"
-READY_TIMEOUT_SEC="${READY_TIMEOUT_SEC:-1800}"
+# Fixed mode: Helm has already waited for readiness, so this is a short check.
+# Autoscale mode: deploy does not wait, so this window covers the image pull
+# and the model download once the GPU node exists.
+if [[ -z "${READY_TIMEOUT_SEC:-}" ]]; then
+  if [[ "${AUTOSCALE_MODE}" == "1" ]]; then READY_TIMEOUT_SEC=2400; else READY_TIMEOUT_SEC=900; fi
+fi
 BENCH_STEP_TIMEOUT_SEC="${BENCH_STEP_TIMEOUT_SEC:-900}"
+# --autoscale only: scale-up / scale-down phase caps and autoscaler settings
+# passed to provision-cluster.sh (it reads AUTOSCALE, MAX_GPU_NODES, timers).
+SCALE_UP_TIMEOUT_SEC="${SCALE_UP_TIMEOUT_SEC:-1800}"
+SCALE_DOWN_TIMEOUT_SEC="${SCALE_DOWN_TIMEOUT_SEC:-1500}"
+MAX_GPU_NODES="${MAX_GPU_NODES:-1}"
+SCALE_DOWN_UNNEEDED="${SCALE_DOWN_UNNEEDED:-3m}"
+SCALE_DOWN_DELAY_AFTER_ADD="${SCALE_DOWN_DELAY_AFTER_ADD:-3m}"
+DEFAULT_GPU_NODE_SELECTOR="nvidia.com/gpu.present=true"
 ALLOW_SHORT_WATCHDOG="${ALLOW_SHORT_WATCHDOG:-no}"
 POLL_SEC="${POLL_SEC:-15}"
 CLEANUP_RETRY_SEC="${CLEANUP_RETRY_SEC:-1800}"
@@ -167,17 +199,26 @@ NIM_LOCAL_PORT="${NIM_LOCAL_PORT:-}"
   || { echo "ERROR: NIM_LOCAL_PORT must be empty or a port number" >&2; exit 2; }
 for v in NODE_COUNT WATCHDOG_SEC READY_TIMEOUT_SEC POLL_SEC CLEANUP_RETRY_SEC \
          TEARDOWN_RETRY_PAUSE_SEC STEP_STOP_WAIT_SEC CLEANUP_LOCK_WAIT_SEC \
-         PROVISION_STEP_TIMEOUT_SEC DEPLOY_STEP_TIMEOUT_SEC BENCH_STEP_TIMEOUT_SEC; do
+         PROVISION_STEP_TIMEOUT_SEC DEPLOY_STEP_TIMEOUT_SEC BENCH_STEP_TIMEOUT_SEC \
+         SCALE_UP_TIMEOUT_SEC SCALE_DOWN_TIMEOUT_SEC MAX_GPU_NODES; do
   [[ "${!v}" =~ ^[0-9]+$ ]] || { echo "ERROR: ${v} must be a non-negative integer" >&2; exit 2; }
 done
 STEP_BUDGET_SUM=$(( PROVISION_STEP_TIMEOUT_SEC + DEPLOY_STEP_TIMEOUT_SEC + READY_TIMEOUT_SEC + BENCH_STEP_TIMEOUT_SEC ))
+if [[ "${AUTOSCALE_MODE}" == "1" ]]; then
+  STEP_BUDGET_SUM=$(( STEP_BUDGET_SUM + SCALE_UP_TIMEOUT_SEC + SCALE_DOWN_TIMEOUT_SEC ))
+  AUTOSCALE=1
+else
+  AUTOSCALE=0   # an AUTOSCALE=1 left in the shell must not change a fixed run
+fi
 # Every oci call (the runner's own and its children's) targets OCI_REGION, not
 # the CLI profile's region; the OCI CLI reads OCI_CLI_REGION.
 OCI_CLI_REGION="${OCI_REGION}"
 export OCI_REGION OCI_CLI_REGION OKE_GPU_SHAPE NODE_COUNT CLUSTER_NAME WATCHDOG_SEC READY_TIMEOUT_SEC \
        POLL_SEC CLEANUP_RETRY_SEC TEARDOWN_RETRY_PAUSE_SEC STEP_STOP_WAIT_SEC \
        CLEANUP_LOCK_WAIT_SEC NIM_LOCAL_PORT PROVISION_STEP_TIMEOUT_SEC \
-       DEPLOY_STEP_TIMEOUT_SEC BENCH_STEP_TIMEOUT_SEC ALLOW_SHORT_WATCHDOG
+       DEPLOY_STEP_TIMEOUT_SEC BENCH_STEP_TIMEOUT_SEC ALLOW_SHORT_WATCHDOG \
+       AUTOSCALE MAX_GPU_NODES SCALE_DOWN_UNNEEDED SCALE_DOWN_DELAY_AFTER_ADD \
+       SCALE_UP_TIMEOUT_SEC SCALE_DOWN_TIMEOUT_SEC
 
 INFO_FILE="${SCRIPT_DIR}/cluster-info.txt"   # written by provision, read by teardown
 if [[ -n "${RUNNER_PROVISION:-}" && -n "${NIMBLE_CLUSTER_INFO:-}" ]]; then
@@ -196,6 +237,17 @@ STEP_PID_FILE="${OUT_DIR}/.step.pid"
 PF_PID_FILE="${OUT_DIR}/.pf.pid"
 CLEANUP_LOCK_DIR="${OUT_DIR}/.cleanup_lock"
 DEPLOY_TMP_MARKER="${OUT_DIR}/.deploy_tmpdir"
+# --autoscale state (epoch seconds or PASS/FAIL lines), read by write_summary.
+AS_POD_PENDING="${OUT_DIR}/.as_pod_pending"
+AS_GPU_FIRST="${OUT_DIR}/.as_gpu_first_seen"
+AS_NODE_READY="${OUT_DIR}/.as_node_ready"
+AS_POD_READY="${OUT_DIR}/.as_pod_ready"
+AS_SD_START="${OUT_DIR}/.as_scale_down_start"
+AS_GPU_GONE="${OUT_DIR}/.as_gpu_gone"
+AS_SCALE_UP="${OUT_DIR}/.as_scale_up"
+AS_SCALE_DOWN="${OUT_DIR}/.as_scale_down"
+AS_ALLOC="${OUT_DIR}/.as_alloc"
+AS_POOL_SIZE="${OUT_DIR}/.as_pool_size"
 
 # ---------------------------------------------------------------- helpers
 now() { date +%s; }
@@ -265,6 +317,7 @@ info_get() {  # read KEY from cluster-info.txt (or the OUT_DIR snapshot) without
   echo "${v}"
 }
 effective_shape() { local s; s="$(info_get GPU_SHAPE)"; echo "${s:-${OKE_GPU_SHAPE}}"; }
+gpu_selector() { local s; s="$(info_get GPU_NODE_SELECTOR)"; echo "${s:-${DEFAULT_GPU_NODE_SELECTOR}}"; }
 
 # Kube context pin: provision-cluster.sh records KUBE_CONTEXT=<name> in
 # cluster-info.txt. When present, the runner's own kubectl calls use
@@ -524,12 +577,14 @@ cleanup_sequence() {  # $1 = runner | watchdog
 }
 
 manual_commands() {
-  local cid npid
+  local cid npid spid
   cid="$(info_get CLUSTER_ID)"
   npid="$(info_get NODE_POOL_ID)"
-  echo "Delete the GPU node pool first, then the cluster (OCI CLI, region ${OCI_REGION}):"
+  echo "Delete the node pools (GPU, then system) first, then the cluster (OCI CLI, region ${OCI_REGION}):"
   echo "  oci ce node-pool list --compartment-id \"\$OCI_COMPARTMENT_ID\" --name ${NODE_POOL_NAME} --region ${OCI_REGION}"
   echo "  oci ce node-pool delete --node-pool-id ${npid:-<NODE_POOL_OCID>} --region ${OCI_REGION} --force --wait-for-state SUCCEEDED --wait-for-state FAILED"
+  spid="$(info_get SYSTEM_NODE_POOL_ID)"
+  [[ -n "${spid}" ]] && echo "  oci ce node-pool delete --node-pool-id ${spid} --region ${OCI_REGION} --force --wait-for-state SUCCEEDED --wait-for-state FAILED   # system pool"
   echo "  oci ce cluster list --compartment-id \"\$OCI_COMPARTMENT_ID\" --name ${CLUSTER_NAME} --region ${OCI_REGION}"
   echo "  oci ce cluster delete --cluster-id ${cid:-<CLUSTER_OCID>} --region ${OCI_REGION} --force --wait-for-state SUCCEEDED --wait-for-state FAILED"
   echo "Then remove the network and leftovers: OCI_REGION=${OCI_REGION} FORCE=yes scripts/teardown-cluster.sh"
@@ -543,9 +598,21 @@ partial_commands() {
 }
 
 write_summary() {  # $1 = runner | watchdog, $2 = runner exit code ("" if unknown)
-  local hourly="" hooks="" h
+  local hourly="" hooks="" h gpu_rate="" sys_rate="" sys_basis="" cl_rate=""
   hourly="$(lib_call estimate_hourly_cost "${NODE_COUNT}" "$(effective_shape)" 2>/dev/null)" || hourly=""
-  for h in RUNNER_PREFLIGHT RUNNER_PROVISION RUNNER_DEPLOY RUNNER_READY RUNNER_BENCH RUNNER_TEARDOWN; do
+  gpu_rate="$(lib_call get_gpu_hourly_rate "$(effective_shape)" 2>/dev/null)" || gpu_rate=""
+  # System pool rate: scripts/_lib.sh get_system_pool_hourly_rate when present,
+  # else the documented default 0.074 USD/h (named as a fallback in the basis).
+  sys_basis="scripts/_lib.sh get_system_pool_hourly_rate"
+  sys_rate="$(lib_call get_system_pool_hourly_rate 2>/dev/null)" || sys_rate=""
+  if [[ ! "${sys_rate}" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+    sys_rate="0.074"
+    sys_basis="fallback constant 0.074 (get_system_pool_hourly_rate not found in scripts/_lib.sh)"
+  fi
+  cl_rate="$( ( source "${SCRIPT_DIR}/_lib.sh" >/dev/null 2>&1; echo "${NIM_ENHANCED_CLUSTER_HOURLY_USD:-}" ) 2>/dev/null )" || cl_rate=""
+  [[ "${cl_rate}" =~ ^[0-9]+(\.[0-9]+)?$ ]] || cl_rate="0.10"
+  for h in RUNNER_PREFLIGHT RUNNER_PROVISION RUNNER_DEPLOY RUNNER_READY RUNNER_BENCH RUNNER_TEARDOWN \
+           RUNNER_AUTOSCALER_IAM_CHECK; do
     [[ -n "${!h:-}" ]] && hooks="${hooks}${h},"
   done
   S_WHO="$1" S_RC="$2" S_HOURLY="${hourly}" S_HOOKS="${hooks%,}" \
@@ -553,6 +620,11 @@ write_summary() {  # $1 = runner | watchdog, $2 = runner exit code ("" if unknow
   S_NODES="${NODE_COUNT}" S_TD_RESULT="${TD_RESULT}" S_TD_RC="${TD_RC}" \
   S_TD_ATTEMPTS="${TD_ATTEMPTS}" S_VERIFY="${VERIFY_OK}" S_SIGNAL="${SIGNAL_NAME:-}" \
   S_VALUES="${REPO_ROOT}/helm/values.yaml" \
+  S_AUTOSCALE="${AUTOSCALE_MODE}" S_GPU_RATE="${gpu_rate}" S_SYS_RATE="${sys_rate}" \
+  S_SYS_BASIS="${sys_basis}" S_CL_RATE="${cl_rate}" S_MAX_GPU="${MAX_GPU_NODES}" \
+  S_SD_UNNEEDED="${SCALE_DOWN_UNNEEDED}" S_SD_DELAY="${SCALE_DOWN_DELAY_AFTER_ADD}" \
+  S_SU_TIMEOUT="${SCALE_UP_TIMEOUT_SEC}" S_SD_TIMEOUT="${SCALE_DOWN_TIMEOUT_SEC}" \
+  S_SELECTOR="$(gpu_selector)" \
   python3 - "${OUT_DIR}" <<'PY' || note "WARNING: summary.json could not be written"
 import json, os, re, sys, time
 out = sys.argv[1]
@@ -600,12 +672,15 @@ except ValueError:
 b_start, b_end = num(rd(".provision_started")), num(rd(".billable_end"))
 billable = (b_end - b_start) if (b_start and b_end) else None
 so_far = (int(time.time()) - b_start) if (b_start and not b_end) else None
-hourly = None
-try:
-    hourly = float(E.get("S_HOURLY", "")) if E.get("S_HOURLY") else None
-except ValueError:
-    pass
+def fnum(k):
+    try:
+        return float(E.get(k, "")) if E.get(k) else None
+    except ValueError:
+        return None
+hourly = fnum("S_HOURLY")
+gpu_rate, sys_rate, cl_rate = fnum("S_GPU_RATE"), fnum("S_SYS_RATE"), fnum("S_CL_RATE")
 cost_secs = billable if billable is not None else so_far
+autoscale = E.get("S_AUTOSCALE") == "1"
 prev = {}
 try:
     prev = json.loads(rd("summary.json")) if rd("summary.json") else {}
@@ -615,6 +690,85 @@ rc = num(E.get("S_RC"))
 if rc is None:
     rc = prev.get("runner_exit_code")
 hooks = [h for h in E.get("S_HOOKS", "").split(",") if h]
+def usd(rate, sec):
+    return round(rate * sec / 3600.0, 4) if (rate is not None and sec is not None) else None
+sys_cost = usd(sys_rate, cost_secs)
+if hourly is not None and sys_rate is not None:
+    total_hourly = round(hourly + sys_rate, 4)
+else:
+    total_hourly = hourly
+est_cost = usd(total_hourly, cost_secs)
+cost_note = ("rate from scripts/_lib.sh estimate_hourly_cost: GPU and enhanced-cluster rates verified there; "
+             "LB and storage are estimates (unverified); plus the CPU system pool at %s USD/h (%s)"
+             % (E.get("S_SYS_RATE"), E.get("S_SYS_BASIS")))
+AS = None
+if autoscale:
+    sig = E.get("S_SIGNAL") or prev.get("signal")
+    ep = lambda n: num(rd(n))
+    pend, first, nready = ep(".as_pod_pending"), ep(".as_gpu_first_seen"), ep(".as_node_ready")
+    podready, sdstart, gone = ep(".as_pod_ready"), ep(".as_scale_down_start"), ep(".as_gpu_gone")
+    blocker = next((n for n in order if rcs.get(n, 0) != 0), None)
+    def res(fname, pname):
+        t = rd(fname)
+        if t.startswith("PASS"):
+            return "PASS", None
+        if t.startswith("FAIL"):
+            return "FAIL", t[4:].strip() or "failed"
+        if pname in open_start:
+            return "FAIL", "interrupted (%s)" % (("signal " + sig) if sig else "runner stopped")
+        return "FAIL", "not reached" + (" (%s rc %s)" % (blocker, rcs.get(blocker)) if blocker else "")
+    su_res, su_why = res(".as_scale_up", "scale-up")
+    sd_res, sd_why = res(".as_scale_down", "scale-down")
+    ok = su_res == "PASS" and sd_res == "PASS"
+    reason = None if ok else ("scale-up: " + su_why if su_res != "PASS" else "scale-down: " + sd_why)
+    d = lambda a, b: (b - a) if (a is not None and b is not None) else None
+    # GPU billable window: GPU node first seen -> node gone or teardown
+    # confirmed, whichever is first. No GPU node observed -> 0.
+    ends = [x for x in (gone, b_end) if x]
+    if first is None:
+        gpu_secs, gpu_end, gpu_confirmed = 0, "no GPU node observed", True
+    elif ends:
+        gpu_secs = min(ends) - first
+        gpu_end = "GPU node gone" if (gone and gone == min(ends)) else "teardown confirmed"
+        gpu_confirmed = True
+    else:
+        gpu_secs, gpu_end, gpu_confirmed = int(time.time()) - first, "NOT confirmed (so far)", False
+    alloc = rd(".as_alloc").split()
+    gpu_cost, cl_cost = usd(gpu_rate, gpu_secs), usd(cl_rate, cost_secs)
+    parts = [gpu_cost, sys_cost, cl_cost]
+    est_cost = round(sum(parts), 4) if all(p is not None for p in parts) else None
+    total_hourly = None
+    cost_note = ("GPU %s USD/h x GPU-node seconds (scripts/_lib.sh get_gpu_hourly_rate); system pool %s USD/h (%s) "
+                 "and enhanced cluster fee %s USD/h x provision start to verified teardown; "
+                 "block volume and any load balancer not included" % (
+                     E.get("S_GPU_RATE"), E.get("S_SYS_RATE"), E.get("S_SYS_BASIS"), E.get("S_CL_RATE")))
+    AS = {
+        "result": "PASS" if ok else "FAIL",
+        "reason": reason,
+        "line": "autoscale result: 0\u21921\u21920 %s" % ("PASS" if ok else "FAIL (%s)" % reason),
+        "scale_up": {"result": su_res, "reason": su_why},
+        "scale_down": {"result": sd_res, "reason": sd_why},
+        "max_gpu_nodes": num(E.get("S_MAX_GPU")),
+        "gpu_node_selector": E.get("S_SELECTOR"),
+        "timers": {"scale_down_unneeded": E.get("S_SD_UNNEEDED"),
+                   "scale_down_delay_after_add": E.get("S_SD_DELAY"),
+                   "scale_up_timeout_sec": num(E.get("S_SU_TIMEOUT")),
+                   "scale_down_timeout_sec": num(E.get("S_SD_TIMEOUT"))},
+        "pod_pending_epoch": pend, "gpu_node_first_seen_epoch": first,
+        "gpu_node_ready_epoch": nready, "pod_ready_epoch": podready,
+        "scale_down_start_epoch": sdstart, "gpu_node_gone_epoch": gone,
+        "scale_up_seconds": d(pend, nready),
+        "pod_ready_seconds": d(nready, podready),
+        "pending_to_pod_ready_seconds": d(pend, podready),
+        "scale_down_seconds": d(sdstart, gone),
+        "gpu_node_allocatable": {"nvidia.com/gpu": alloc[0] if len(alloc) > 0 else None,
+                                 "ephemeral-storage": alloc[1] if len(alloc) > 1 else None},
+        "gpu_pool_size_after_scale_down": rd(".as_pool_size") or None,
+        "gpu_billable_seconds": gpu_secs,
+        "gpu_billing_end": gpu_end,
+        "gpu_billing_stop_confirmed": gpu_confirmed,
+        "gpu_node_minutes": round(gpu_secs / 60.0, 2) if gpu_secs is not None else None,
+    }
 s = {
     "live_run": not hooks,
     "test_hooks": hooks,
@@ -636,9 +790,16 @@ s = {
     "billing_stop_confirmed": billable is not None,
     "billable_seconds": billable,
     "billable_seconds_so_far_unconfirmed": so_far,
-    "hourly_rate_usd": hourly,
-    "estimated_cost_usd": round(hourly * cost_secs / 3600.0, 4) if (hourly is not None and cost_secs is not None) else None,
-    "cost_note": "rate from scripts/_lib.sh estimate_hourly_cost: GPU and enhanced-cluster rates verified there; LB and storage are estimates (unverified)",
+    "autoscale_mode": autoscale,
+    "hourly_rate_usd": total_hourly,
+    "system_pool_hourly_usd": sys_rate,
+    "estimated_system_pool_cost_usd": sys_cost,
+    "estimated_cost_usd": est_cost,
+    "cost_split_usd": ({"gpu": AS and usd(gpu_rate, AS["gpu_billable_seconds"]), "system_pool": sys_cost,
+                        "cluster_fee": usd(cl_rate, cost_secs),
+                        "rates_usd_per_hour": {"gpu": gpu_rate, "system_pool": sys_rate, "cluster_fee": cl_rate}}
+                       if autoscale else None),
+    "cost_note": cost_note,
     "bench_ok": rcs.get("bench") == 0 and isinstance(bench, dict) and "error" not in bench,
     "bench": bench,
     "teardown": {
@@ -650,6 +811,8 @@ s = {
         "gpu_billing_stopped_possible_orphans": E["S_TD_RESULT"] == "partial",
     },
 }
+if AS is not None:
+    s["autoscale"] = AS
 tmp = os.path.join(out, ".summary.json.tmp")
 with open(tmp, "w") as f:
     json.dump(s, f, indent=2)
@@ -677,6 +840,19 @@ L.append("- Shape: %s x %s" % (s["shape"], fmt(s["node_count"])))
 L.append("- Image: %s" % fmt(image))
 L.append("- Kubernetes version: %s" % fmt(s["k8s_version"]))
 L.append("- Runner exit code: %s" % fmt(rc))
+if AS is not None:
+    L += ["", "## Autoscale (GPU node 0\u21921\u21920)", ""]
+    L.append("- %s" % AS["line"])
+    L.append("- Timers: scale-down-unneeded %s, scale-down-delay-after-add %s; max GPU nodes %s; selector %s" % (
+        fmt(AS["timers"]["scale_down_unneeded"]), fmt(AS["timers"]["scale_down_delay_after_add"]),
+        fmt(AS["max_gpu_nodes"]), fmt(AS["gpu_node_selector"])))
+    L.append("- Scale-up seconds (NIM pod Pending to GPU node Ready): %s" % fmt(AS["scale_up_seconds"]))
+    L.append("- Pod Ready seconds (GPU node Ready to NIM pod Ready): %s" % fmt(AS["pod_ready_seconds"]))
+    L.append("- Pod Pending to pod Ready seconds: %s" % fmt(AS["pending_to_pod_ready_seconds"]))
+    L.append("- Scale-down seconds (replicas 0 to no GPU node): %s" % fmt(AS["scale_down_seconds"]))
+    L.append("- GPU node allocatable: nvidia.com/gpu %s, ephemeral-storage %s" % (
+        fmt(AS["gpu_node_allocatable"]["nvidia.com/gpu"]), fmt(AS["gpu_node_allocatable"]["ephemeral-storage"])))
+    L.append("- GPU pool size after scale-down (oci ce node-pool get): %s" % fmt(AS["gpu_pool_size_after_scale_down"]))
 L += ["", "## Phases (seconds)", ""]
 for name in order:
     L.append("- %s: %s (rc %s)" % (name, fmt(secs.get(name)), fmt(rcs.get(name))))
@@ -684,7 +860,16 @@ L += ["", "## Cost", ""]
 L.append("- Billable seconds (provision start to verified teardown): %s" % fmt(billable))
 if billable is None and so_far is not None:
     L.append("- Billing stop NOT confirmed; seconds so far: %s" % so_far)
-L.append("- Hourly rate (USD): %s" % fmt(hourly))
+if AS is not None:
+    cs = s["cost_split_usd"]
+    L.append("- GPU-node seconds (first seen to %s): %s (%s GPU-node minutes)" % (
+        AS["gpu_billing_end"], fmt(AS["gpu_billable_seconds"]), fmt(AS["gpu_node_minutes"])))
+    L.append("- GPU (USD): %s at %s/h" % (fmt(cs["gpu"]), fmt(gpu_rate)))
+    L.append("- System pool (USD): %s at %s/h" % (fmt(cs["system_pool"]), fmt(sys_rate)))
+    L.append("- Cluster fee (USD): %s at %s/h" % (fmt(cs["cluster_fee"]), fmt(cl_rate)))
+else:
+    L.append("- Hourly rate (USD): %s" % fmt(total_hourly))
+    L.append("- System pool (USD): %s at %s/h (included above)" % (fmt(sys_cost), fmt(sys_rate)))
 L.append("- Estimated cost (USD): %s" % fmt(s["estimated_cost_usd"]))
 L.append("- Rate basis: %s" % s["cost_note"])
 L += ["", "## Bench", ""]
@@ -703,7 +888,7 @@ txt = "\n".join(L) + "\n"
 txt = re.sub(r"ocid1\.[^\s\"',)]*", "[ocid-redacted]", txt)
 txt = re.sub(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", "[ip-redacted]", txt)
 tmp = os.path.join(out, ".receipt.md.tmp")
-with open(tmp, "w") as f:
+with open(tmp, "w", encoding="utf-8") as f:
     f.write(txt)
 os.replace(tmp, os.path.join(out, "receipt.md"))
 PY
@@ -884,6 +1069,8 @@ default_preflight() {
   echo "check: shape ${OKE_GPU_SHAPE} supported"
   gpus="$(lib_call get_shape_gpu_count "${OKE_GPU_SHAPE}")" || { echo "FAIL: unsupported shape ${OKE_GPU_SHAPE}"; return 1; }
   need=$((gpus * NODE_COUNT))
+  # --autoscale: the GPU pool may grow to MAX_GPU_NODES nodes.
+  [[ "${AUTOSCALE_MODE}" == "1" ]] && need=$((gpus * MAX_GPU_NODES))
   echo "ok: shape ${OKE_GPU_SHAPE} supported (${need} GPU(s) for ${NODE_COUNT} node(s))"
   # provision-cluster.sh derives its shape after sourcing oke-optimized-config.sh.
   echo "check: provision-cluster.sh would create the requested shape"
@@ -952,6 +1139,55 @@ sys.exit(0 if sys.argv[1] in (d.get("kubernetes-versions") or []) else 1)' "${k8
   echo "preflight checks passed"
 }
 
+# --autoscale checks, run after the main preflight (also when RUNNER_PREFLIGHT
+# replaces it): MAX_GPU_NODES must be 1 in this version, and the autoscaler's
+# IAM dynamic group and policy must exist (read-only check).
+autoscale_preflight() {
+  local rc=0
+  echo "check: MAX_GPU_NODES=${MAX_GPU_NODES} (this version measures 0->1->0 on one GPU node)"
+  if [[ "${MAX_GPU_NODES}" != "1" ]]; then
+    echo "FAIL: MAX_GPU_NODES=${MAX_GPU_NODES} is refused: this version of --autoscale measures exactly one GPU node (0->1->0); set MAX_GPU_NODES=1"
+    return 1
+  fi
+  echo "ok: MAX_GPU_NODES=1"
+  echo "check: cluster autoscaler IAM dynamic group and policy (setup-autoscaler-iam.sh --check)"
+  if [[ -n "${RUNNER_AUTOSCALER_IAM_CHECK:-}" ]]; then
+    "${RUNNER_AUTOSCALER_IAM_CHECK}" --check || rc=$?
+  elif [[ -x "${SCRIPT_DIR}/setup-autoscaler-iam.sh" ]]; then
+    "${SCRIPT_DIR}/setup-autoscaler-iam.sh" --check || rc=$?
+  else
+    echo "FAIL: scripts/setup-autoscaler-iam.sh not found or not executable"
+    return 1
+  fi
+  if [[ "${rc}" != "0" ]]; then
+    echo "FAIL: autoscaler IAM check exited ${rc}: the cluster autoscaler cannot resize the GPU pool."
+    echo "      Create the dynamic group and policy first: scripts/setup-autoscaler-iam.sh --apply"
+    return 1
+  fi
+  echo "ok: autoscaler IAM dynamic group and policy present"
+  echo "autoscale preflight checks passed"
+}
+
+# ------------------------------------------------- autoscale phase helpers
+as_kubectl() { kubectl ${KCTX_ARGS[@]+"${KCTX_ARGS[@]}"} "$@" --request-timeout=20s; }
+as_gpu_nodes() {  # "name ReadyStatus" per node matching the GPU selector
+  as_kubectl get nodes -l "$(gpu_selector)" \
+    -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}'
+}
+as_pod_states() {  # "phase PodScheduled-reason" per NIM pod
+  as_kubectl get pods -n "${NIM_NAMESPACE}" -l "app.kubernetes.io/instance=${NIM_RELEASE}" \
+    -o jsonpath='{range .items[*]}{.status.phase}{" "}{.status.conditions[?(@.type=="PodScheduled")].reason}{"\n"}{end}'
+}
+as_count() { printf '%s\n' "$1" | awk -v f="${2:-}" 'NF && (f == "" || $2 == f)' | wc -l | tr -d ' '; }
+as_events() {  # $1 file, $2 ERE of event reasons: all events -> $1-all, matches -> $1
+  as_kubectl get events -A --sort-by=.lastTimestamp > "${OUT_DIR}/$1.all.log" 2>&1 || true
+  grep -E "$2" "${OUT_DIR}/$1.all.log" > "${OUT_DIR}/$1" 2>/dev/null || true
+}
+as_event_msg() {  # last message of event reason $2 in file $1 (default table: NS LAST TYPE REASON OBJECT MESSAGE)
+  grep -E "[[:space:]]$2[[:space:]]" "${OUT_DIR}/$1" 2>/dev/null | tail -1 \
+    | sed -E "s/^.*[[:space:]]$2[[:space:]]+[^[:space:]]+[[:space:]]+//"
+}
+
 # Returns 0 ready, 1 not ready yet, 2 the port-forward exited right after start.
 default_ready_probe() {
   local code i
@@ -983,7 +1219,9 @@ isleep() { sleep "$1" & wait $! || true; }   # interruptible by trapped signals
 # Step budgets vs the watchdog deadline: a slow but healthy run must not be
 # torn down mid-step by the watchdog. Prints the sum; non-zero if too short.
 watchdog_budget_check() {
-  echo "step budgets: provision ${PROVISION_STEP_TIMEOUT_SEC}s + deploy ${DEPLOY_STEP_TIMEOUT_SEC}s + ready ${READY_TIMEOUT_SEC}s + bench ${BENCH_STEP_TIMEOUT_SEC}s = ${STEP_BUDGET_SUM}s; WATCHDOG_SEC=${WATCHDOG_SEC}s"
+  local extra=""
+  [[ "${AUTOSCALE_MODE}" == "1" ]] && extra=" + scale-up ${SCALE_UP_TIMEOUT_SEC}s + scale-down ${SCALE_DOWN_TIMEOUT_SEC}s"
+  echo "step budgets: provision ${PROVISION_STEP_TIMEOUT_SEC}s + deploy ${DEPLOY_STEP_TIMEOUT_SEC}s + ready ${READY_TIMEOUT_SEC}s + bench ${BENCH_STEP_TIMEOUT_SEC}s${extra} = ${STEP_BUDGET_SUM}s; WATCHDOG_SEC=${WATCHDOG_SEC}s"
   if (( WATCHDOG_SEC >= STEP_BUDGET_SUM )); then
     echo "ok: WATCHDOG_SEC ${WATCHDOG_SEC} >= step-budget sum ${STEP_BUDGET_SUM}"
     return 0
@@ -1019,6 +1257,9 @@ if [[ "${PREFLIGHT_ONLY}" == "1" ]]; then
   fi
   pf_rc=0
   run_step preflight "${RUNNER_PREFLIGHT:-default_preflight}" || pf_rc=$?
+  if [[ "${pf_rc}" == "0" && "${AUTOSCALE_MODE}" == "1" ]]; then
+    run_step preflight autoscale_preflight || pf_rc=$?
+  fi
   phase preflight END "${pf_rc}"
   note "preflight-only finished: rc=${pf_rc} (see ${OUT_DIR}/preflight.log)"
   exit "${pf_rc}"
@@ -1032,7 +1273,7 @@ trap 'trap "" INT TERM HUP; SIGNAL_NAME=INT; exit 130' INT
 trap 'trap "" INT TERM HUP; SIGNAL_NAME=TERM; exit 143' TERM
 trap 'trap "" INT TERM HUP; SIGNAL_NAME=HUP; exit 129' HUP
 
-note "run start: region=${OCI_REGION} shape=${OKE_GPU_SHAPE} out=${OUT_DIR}"
+note "run start: region=${OCI_REGION} shape=${OKE_GPU_SHAPE} autoscale=${AUTOSCALE_MODE} out=${OUT_DIR}"
 phase preflight START 0
 if [[ -z "${OCI_COMPARTMENT_ID:-}" || -z "${NGC_KEY_VALUE}" ]]; then
   echo "FAIL: OCI_COMPARTMENT_ID and NGC_API_KEY must be set" >> "${OUT_DIR}/preflight.log"
@@ -1048,11 +1289,17 @@ fi
 note "step-budget sum ${STEP_BUDGET_SUM}s; watchdog deadline ${WATCHDOG_SEC}s"
 pf_rc=0
 run_step preflight "${RUNNER_PREFLIGHT:-default_preflight}" || pf_rc=$?
+if [[ "${pf_rc}" == "0" && "${AUTOSCALE_MODE}" == "1" ]]; then
+  run_step preflight autoscale_preflight || pf_rc=$?
+  [[ "${pf_rc}" == "0" ]] || console "$(grep -E '^(FAIL|      )' "${OUT_DIR}/preflight.log" | tail -2)"
+fi
 if [[ "${pf_rc}" != "0" ]]; then
   note "preflight FAILED (see preflight.log); nothing created"
   phase preflight END "${pf_rc}"
   exit 1
 fi
+AS_ARG=()
+[[ "${AUTOSCALE_MODE}" == "1" ]] && AS_ARG=(--autoscale)
 # Watchdog: own session (python3 os.setsid; macOS has no setsid command),
 # double fork so it is re-parented to init at once, started without the
 # NGC key. It re-invokes this script with --watchdog-for.
@@ -1062,7 +1309,7 @@ if os.fork():
     os._exit(0)
 os.setsid()
 os.execvp(sys.argv[1], sys.argv[1:])
-' bash "${SCRIPT_DIR}/run_measured.sh" --watchdog-for "$$" "${OUT_DIR}" \
+' bash "${SCRIPT_DIR}/run_measured.sh" --watchdog-for "$$" ${AS_ARG[@]+"${AS_ARG[@]}"} "${OUT_DIR}" \
   < /dev/null >> "${OUT_DIR}/watchdog.log" 2>&1 || true
 i=0
 while [[ ! -f "${WATCHDOG_ARMED}" ]] && (( i < 20 )); do sleep 0.5; i=$((i + 1)); done
@@ -1085,7 +1332,7 @@ run_step provision "${RUNNER_PROVISION:-${SCRIPT_DIR}/provision-cluster.sh}" || 
 phase provision END "${rc}"
 [[ "${rc}" == "124" ]] && note "provision stopped at its ${PROVISION_STEP_TIMEOUT_SEC}s hard timeout"
 if [[ -f "${INFO_FILE}" ]]; then
-  grep -E '^(CLUSTER_ID|NODE_POOL_ID|GPU_SHAPE|KUBE_CONTEXT)=' "${INFO_FILE}" > "${OUT_DIR}/.oke_ids" 2>/dev/null || true
+  grep -E '^(CLUSTER_ID|NODE_POOL_ID|SYSTEM_NODE_POOL_ID|GPU_SHAPE|KUBE_CONTEXT|AUTOSCALE|GPU_NODE_SELECTOR|MAX_GPU_NODES)=' "${INFO_FILE}" > "${OUT_DIR}/.oke_ids" 2>/dev/null || true
 fi
 [[ "${rc}" == "0" ]] || { note "provision FAILED (see provision.log)"; exit 1; }
 load_kube_context
@@ -1101,6 +1348,79 @@ NGC_KEY_VALUE=""   # deploy consumed it; nothing later may inherit it
 phase deploy END "${rc}"
 [[ "${rc}" == "124" ]] && note "deploy stopped at its ${DEPLOY_STEP_TIMEOUT_SEC}s hard timeout"
 [[ "${rc}" == "0" ]] || { note "deploy FAILED (see deploy.log)"; exit 1; }
+
+if [[ "${AUTOSCALE_MODE}" == "1" ]]; then
+  # scale-up: t0 = NIM pod first seen Pending; done when exactly one node
+  # matches the GPU selector and is Ready.
+  phase scale-up START 0
+  su_start="$(now)"
+  SEL="$(gpu_selector)"
+  SU_LOG="${OUT_DIR}/scale-up.log"
+  deadline=$(( su_start + SCALE_UP_TIMEOUT_SEC ))
+  su_ok=0
+  su_why=""
+  nodes="$(as_gpu_nodes 2>>"${SU_LOG}" || true)"
+  note "scale-up: waiting up to ${SCALE_UP_TIMEOUT_SEC}s for one Ready node matching ${SEL} ($(as_count "${nodes}") at start)"
+  while :; do
+    pods="$(as_pod_states 2>>"${SU_LOG}" || true)"
+    if [[ ! -f "${AS_POD_PENDING}" ]] && printf '%s\n' "${pods}" | grep -q '^Pending'; then
+      now > "${AS_POD_PENDING}"
+      note "scale-up: NIM pod seen Pending ($(printf '%s\n' "${pods}" | grep -m1 '^Pending')); t0 recorded"
+    fi
+    nodes="$(as_gpu_nodes 2>>"${SU_LOG}" || true)"
+    total="$(as_count "${nodes}")"
+    ready_n="$(as_count "${nodes}" True)"
+    echo "$(ts) pods=[$(printf '%s' "${pods}" | tr '\n' ';')] gpu_nodes=${total} ready=${ready_n}" >> "${SU_LOG}"
+    if (( total >= 1 )) && [[ ! -f "${AS_GPU_FIRST}" ]]; then
+      now > "${AS_GPU_FIRST}"
+      note "scale-up: GPU node first seen (${total} matching ${SEL}; GPU billing window starts)"
+    fi
+    if (( total > 1 )); then
+      su_why="${total} nodes match ${SEL}; expected exactly 1 (MAX_GPU_NODES=1)"
+      break
+    fi
+    if (( total == 1 && ready_n == 1 )); then
+      if [[ ! -f "${AS_POD_PENDING}" ]]; then
+        echo "${su_start}" > "${AS_POD_PENDING}"
+        note "scale-up: NIM pod never seen Pending; t0 = scale-up phase start"
+      fi
+      su_ok=1
+      break
+    fi
+    (( $(now) >= deadline )) && break
+    isleep "${POLL_SEC}"
+  done
+  [[ "${su_ok}" == "1" ]] && now > "${AS_NODE_READY}"
+  # Evidence (node names may embed private IPs: *.log files only).
+  as_events scale-up-events.log 'TriggeredScaleUp|NotTriggerScaleUp|FailedScheduling'
+  as_kubectl get nodes -l "${SEL}" -o wide > "${OUT_DIR}/gpu-nodes-scale-up.log" 2>&1 || true
+  as_kubectl get nodes -l "${SEL}" \
+    -o jsonpath='{range .items[*]}{.status.allocatable.nvidia\.com/gpu}{" "}{.status.allocatable.ephemeral-storage}{"\n"}{end}' \
+    2>/dev/null | head -1 > "${AS_ALLOC}" || true
+  if [[ "${su_ok}" == "1" ]]; then
+    echo "PASS" > "${AS_SCALE_UP}"
+    note "scale-up: GPU node Ready $(( $(cat "${AS_NODE_READY}") - $(cat "${AS_POD_PENDING}") ))s after the NIM pod went Pending; allocatable (gpu ephemeral-storage): $(cat "${AS_ALLOC}" 2>/dev/null)"
+    phase scale-up END 0
+  else
+    if [[ -z "${su_why}" ]]; then
+      su_why="no Ready GPU node matching ${SEL} within ${SCALE_UP_TIMEOUT_SEC}s"
+      msg="$(as_event_msg scale-up-events.log NotTriggerScaleUp)"
+      if [[ -n "${msg}" ]]; then
+        su_why="${su_why}; NotTriggerScaleUp: ${msg}"
+      elif grep -q 'TriggeredScaleUp' "${OUT_DIR}/scale-up-events.log" 2>/dev/null; then
+        su_why="${su_why}; TriggeredScaleUp was seen but the node did not become Ready"
+      else
+        msg="$(as_event_msg scale-up-events.log FailedScheduling)"
+        su_why="${su_why}; no TriggeredScaleUp or NotTriggerScaleUp event${msg:+; FailedScheduling: ${msg}}"
+      fi
+    fi
+    echo "FAIL ${su_why}" > "${AS_SCALE_UP}"
+    echo "$(ts) scale-up FAILED: ${su_why}" >> "${SU_LOG}"
+    note "scale-up FAILED: ${su_why}"
+    phase scale-up END 1
+    exit 1
+  fi
+fi
 
 phase ready START 0
 # Local port for the port-forward and bench: NIM_LOCAL_PORT if free, else a
@@ -1144,6 +1464,7 @@ if [[ "${ready}" != "1" ]]; then
   exit 1
 fi
 phase ready END 0
+[[ "${AUTOSCALE_MODE}" == "1" ]] && now > "${AS_POD_READY}"
 
 phase bench START 0
 rc=0
@@ -1161,6 +1482,60 @@ fi
 phase bench END "${rc}"
 [[ "${rc}" == "124" ]] && note "bench stopped at its ${BENCH_STEP_TIMEOUT_SEC}s hard timeout"
 [[ "${rc}" == "0" ]] || { note "bench FAILED (see bench.log)"; exit 1; }
+
+if [[ "${AUTOSCALE_MODE}" == "1" ]]; then
+  # scale-down: NIM Deployment to 0 replicas, then wait for no GPU node. A node
+  # still present at the timeout is a FAILED scale-down; teardown still runs.
+  phase scale-down START 0
+  SEL="$(gpu_selector)"
+  SD_LOG="${OUT_DIR}/scale-down.log"
+  sd_ok=0
+  sd_why=""
+  dep="$(as_kubectl get deployment -n "${NIM_NAMESPACE}" -l "app.kubernetes.io/instance=${NIM_RELEASE}" \
+          -o jsonpath='{.items[*].metadata.name}' 2>>"${SD_LOG}" || true)"
+  if [[ -z "${dep}" || "${dep}" == *" "* ]]; then
+    sd_why="could not resolve one NIM Deployment by label app.kubernetes.io/instance=${NIM_RELEASE} (got '${dep}')"
+  elif ! as_kubectl scale "deployment/${dep}" -n "${NIM_NAMESPACE}" --replicas=0 >> "${SD_LOG}" 2>&1; then
+    sd_why="kubectl scale deployment/${dep} --replicas=0 failed (see scale-down.log)"
+  else
+    now > "${AS_SD_START}"
+    note "scale-down: deployment/${dep} scaled to 0; waiting up to ${SCALE_DOWN_TIMEOUT_SEC}s for no node matching ${SEL}"
+    deadline=$(( $(now) + SCALE_DOWN_TIMEOUT_SEC ))
+    while :; do
+      nodes="$(as_gpu_nodes 2>>"${SD_LOG}")" || nodes="?query-failed"
+      total="$(as_count "${nodes}")"
+      echo "$(ts) gpu_nodes=${total}" >> "${SD_LOG}"
+      if [[ "${nodes}" != "?query-failed" && "${total}" == "0" ]]; then
+        now > "${AS_GPU_GONE}"
+        sd_ok=1
+        break
+      fi
+      (( $(now) >= deadline )) && break
+      isleep "${POLL_SEC}"
+    done
+    [[ "${sd_ok}" == "1" ]] || sd_why="GPU node still present after ${SCALE_DOWN_TIMEOUT_SEC}s (timers: unneeded ${SCALE_DOWN_UNNEEDED}, delay-after-add ${SCALE_DOWN_DELAY_AFTER_ADD})"
+  fi
+  as_events scale-down-events.log 'ScaleDown'
+  as_kubectl get nodes -l "${SEL}" -o wide > "${OUT_DIR}/gpu-nodes-scale-down.log" 2>&1 || true
+  npid="$(info_get NODE_POOL_ID)"
+  if [[ -n "${npid}" ]]; then
+    oci ce node-pool get --node-pool-id "${npid}" --region "${OCI_REGION}" \
+      --query 'data."node-config-details".size' --raw-output \
+      > "${OUT_DIR}/node-pool-scale-down.log" 2>&1 || true
+    sz="$(tail -1 "${OUT_DIR}/node-pool-scale-down.log" 2>/dev/null | tr -d ' ')"
+    [[ "${sz}" =~ ^[0-9]+$ ]] && echo "${sz}" > "${AS_POOL_SIZE}"
+  fi
+  if [[ "${sd_ok}" == "1" ]]; then
+    echo "PASS" > "${AS_SCALE_DOWN}"
+    note "scale-down: no GPU node $(( $(cat "${AS_GPU_GONE}") - $(cat "${AS_SD_START}") ))s after replicas 0; GPU pool size now $(cat "${AS_POOL_SIZE}" 2>/dev/null || echo unknown)"
+    phase scale-down END 0
+  else
+    echo "FAIL ${sd_why}" > "${AS_SCALE_DOWN}"
+    note "scale-down FAILED: ${sd_why}; tearing down (teardown stops GPU billing)"
+    phase scale-down END 1
+    exit 1
+  fi
+fi
 
 RUN_OK=1
 note "bench succeeded; tearing down"

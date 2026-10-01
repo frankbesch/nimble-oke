@@ -40,12 +40,35 @@ run() {
     shift 2
     env -i PATH="$STUBS:/usr/bin:/bin:/usr/sbin:/sbin" HOME="$CASE/home" TMPDIR="$CASE/tmp" \
         KUBECONFIG="$KCFG" SIM_STATE="$CASE/state" SIM_LOG="$CASE/argv.log" \
-        OCI_COMPARTMENT_ID=ocid1.compartment.oc1..sim CONFIRM_COST=yes FORCE=yes \
-        NODE_READY_TIMEOUT=5 GROWFS_TIMEOUT=5 GPU_ALLOCATABLE_TIMEOUT=3 POLL_INTERVAL=1 \
+        OCI_COMPARTMENT_ID=ocid1.compartment.oc1..sim OCI_TENANCY_ID=ocid1.tenancy.oc1..sim \
+        CONFIRM_COST=yes FORCE=yes \
+        NODE_READY_TIMEOUT=5 GPU_ALLOCATABLE_TIMEOUT=3 ADDON_TIMEOUT=5 POLL_INTERVAL=1 \
         "$@" "$BASH_BIN" "$CASE/scripts/$script" > "$CASE/$out" 2>&1
     RC=$?
 }
 provision() { run provision-cluster.sh "$@"; }
+# iam OUTFILE STDIN-TEXT [script args...]: run setup-autoscaler-iam.sh with stubs.
+iam() {
+    local out="$1" input="$2"
+    shift 2
+    printf '%s\n' "$input" | env -i PATH="$STUBS:/usr/bin:/bin:/usr/sbin:/sbin" HOME="$CASE/home" TMPDIR="$CASE/tmp" \
+        SIM_STATE="$CASE/state" SIM_LOG="$CASE/argv.log" ${SIM_IAM:+SIM_IAM=$SIM_IAM} \
+        OCI_COMPARTMENT_ID=ocid1.compartment.oc1..sim OCI_TENANCY_ID=ocid1.tenancy.oc1..sim \
+        "$BASH_BIN" "$CASE/scripts/setup-autoscaler-iam.sh" "$@" > "$CASE/$out" 2>&1
+    RC=$?
+}
+# Decoded user_data of the GPU pool create (from the stub's saved --node-metadata).
+gpu_user_data() { jq -r '.user_data // empty | @base64d' "$CASE/state/np.metadata"; }
+# Lines of $2 (in order) appear in the decoded GPU user_data in Oracle's order.
+cloud_init_in_order() {
+    local ud a b c
+    ud=$(gpu_user_data) || return 1
+    a=$(printf '%s\n' "$ud" | grep -n 'opc/v2/instance/metadata/oke_init_script | base64 --decode >/var/run/oke-init.sh' | cut -d: -f1)
+    b=$(printf '%s\n' "$ud" | grep -n '^bash /usr/libexec/oci-growfs -y$' | cut -d: -f1)
+    c=$(printf '%s\n' "$ud" | grep -n '^bash /var/run/oke-init.sh$' | cut -d: -f1)
+    lt "$a" "$b" && lt "$b" "$c"
+}
+any_create() { grep -Eq '^oci [a-z-]+ [a-z-]+ create( |$)' "$CASE/argv.log"; }
 teardown()  { run teardown-cluster.sh "$@"; }
 
 line_of()      { grep -n -- "$1" "$CASE/argv.log" | head -1 | cut -d: -f1; }
@@ -60,7 +83,7 @@ provision prov.out
 check "provision rc 0 (rc=$RC)" test "$RC" -eq 0
 [[ $RC -eq 0 ]] || show_tail prov.out
 for k in OCI_COMPARTMENT_ID REGION VCN_ID API_SECLIST_ID WORKER_SECLIST_ID API_SUBNET_ID SUBNET_ID \
-         CLUSTER_ID NODE_POOL_ID KUBE_CONTEXT; do
+         CLUSTER_ID NODE_POOL_ID SYSTEM_NODE_POOL_ID KUBE_CONTEXT; do
     check "cluster-info.txt has $k" has_key "$k"
 done
 check "VCN_CREATED=yes recorded" grep -q '^VCN_CREATED=yes$' "$INFO"
@@ -84,9 +107,22 @@ check "kubeconfig written to \$KUBECONFIG" grep -q -- "create-kubeconfig .*--fil
 check "KUBE_CONTEXT=context-csim" grep -q '^KUBE_CONTEXT=context-csim$' "$INFO"
 check "post-kubeconfig kubectl node calls pinned with --context" \
     bash -c '! grep "^kubectl " "$1" | grep -v "^kubectl config " | grep -vq -- "--context context-csim"' _ "$CASE/argv.log"
-check "growfs step ran" grep -q '^kubectl --context context-csim --request-timeout=30s -n kube-system run nimble-growfs-.*oci-growfs' "$CASE/argv.log"
-check "kubelet restart ran after growfs" grep -q 'run nimble-restart-kubelet-.*systemctl' "$CASE/argv.log"
-check "ephemeral storage reported grown" grep -q 'ephemeral-storage now 476Gi' "$CASE/prov.out"
+echo "  -- T1 fixed mode: system pool first, cloud-init growfs, no node mutation"
+sp=$(line_of '^oci ce node-pool create .*--name system-node-pool'); gp=$(line_of '^oci ce node-pool create .*--name gpu-node-pool')
+check "T1 system pool created before GPU pool (lines $sp < $gp)" lt "$sp" "$gp"
+check "T1 system pool: E4.Flex 2 OCPU/16 GB, size 1, newest non-GPU 1.34.1 image, no GPU label" \
+    bash -c 'l=$(grep "^oci ce node-pool create .*--name system-node-pool" "$1"); case "$l" in *"--node-shape VM.Standard.E4.Flex "*"\"ocpus\": 2, \"memoryInGBs\": 16"*"--size 1 "*ocid1.image.oc1.phx.sysnew*) ;; *) exit 1 ;; esac; case "$l" in *initial-node-labels*|*bootVolumeSizeInGBs*) exit 1 ;; esac' _ "$CASE/argv.log"
+check "T1 GPU pool create carries --node-metadata user_data" grep -q '^oci ce node-pool create .*--name gpu-node-pool .*--node-metadata {"user_data":' "$CASE/argv.log"
+check "T1 GPU pool size 1 in fixed mode" grep -qx 1 "$CASE/state/np.size"
+check "T1 decoded user_data runs oci-growfs" bash -c 'jq -r ".user_data | @base64d" "$1" | grep -q oci-growfs' _ "$CASE/state/np.metadata"
+check "T1 user_data in Oracle's order: fetch init script, oci-growfs, run init script" cloud_init_in_order
+check "T1 no nsenter / helper pod created" bash -c '! grep -Eq "nsenter| run nimble-|systemctl" "$1"' _ "$CASE/argv.log"
+check "T1 capacity check passed (verification only)" grep -q 'Node gpu-node-1 ephemeral-storage 476Gi (476Gi) >= 150Gi' "$CASE/prov.out"
+check "T1 system node Ready before DNS gate" \
+    lt "$(grep -n 'System pool node(s) Ready' "$CASE/prov.out" | cut -d: -f1)" "$(grep -n 'DNS check passed' "$CASE/prov.out" | cut -d: -f1)"
+check "T1 cluster-info.txt AUTOSCALE=0 and GPU_NODE_SELECTOR" \
+    bash -c 'grep -qx AUTOSCALE=0 "$1" && grep -qx GPU_NODE_SELECTOR=nvidia.com/gpu.present=true "$1"' _ "$INFO"
+check "T1 no add-on installed in fixed mode" bash -c '! grep -q "install-addon" "$1"' _ "$CASE/argv.log"
 check "device plugin applied (no GPU before)" grep -q '^kubectl --context context-csim --request-timeout=30s apply -f .*nvidia-device-plugin.yml' "$CASE/argv.log"
 check "allocatable-GPU wait passed" grep -q 'GPU check passed: node allocatable nvidia.com/gpu=1' "$CASE/prov.out"
 check "DNS gate passed (Ready kube-dns pod)" grep -q 'DNS check passed: 1 Ready kube-dns pod' "$CASE/prov.out"
@@ -107,6 +143,12 @@ sl=$(line_of 'oci network security-list delete'); sll=$(last_line_of 'oci networ
 vc=$(line_of 'oci network vcn delete')
 echo "  argv lines: node-pool=$np cluster=$cl subnets=$sn..$snl seclists=$sl..$sll vcn=$vc"
 check "order node pool < cluster" lt "$np" "$cl"
+echo "  -- T5 teardown with two pools"
+gd=$(line_of 'oci ce node-pool delete --node-pool-id ocid1.nodepool.oc1.phx.sim '); sd=$(line_of 'oci ce node-pool delete --node-pool-id ocid1.nodepool.oc1.phx.system ')
+check "T5 GPU pool deleted before system pool (lines $gd < $sd)" lt "$gd" "$sd"
+check "T5 system pool deleted before cluster (lines $sd < $cl)" lt "$sd" "$cl"
+check "T5 both pools confirmed DELETED" test "$(grep -c 'node-pool confirmed DELETED' "$CASE/td.out")" -eq 2
+check "T5 pools listed by cluster id" grep -q '^oci ce node-pool list --compartment-id ocid1.compartment.oc1..sim --cluster-id ocid1.cluster.oc1.phx.sim --all' "$CASE/argv.log"
 check "order cluster < subnets" lt "$cl" "$sn"
 check "order subnets < security lists" lt "$snl" "$sl"
 check "order security lists < VCN (VCN created by this project)" lt "$sll" "$vc"
@@ -121,6 +163,8 @@ new_case l3
 provision prov.out SIM_NP_CREATE_FAIL=1
 check "provision rc non-zero (rc=$RC)" test "$RC" -ne 0
 check "trap deleted the cluster" grep -q '^oci ce cluster delete --cluster-id ocid1.cluster.oc1.phx.sim' "$CASE/argv.log"
+check "trap deleted the system pool before the cluster" \
+    lt "$(line_of 'oci ce node-pool delete --node-pool-id ocid1.nodepool.oc1.phx.system')" "$(line_of 'oci ce cluster delete')"
 check "trap confirmed cleanup" grep -q 'Failure cleanup confirmed' "$CASE/prov.out"
 teardown td1.out
 check "teardown rc 0 (rc=$RC)" test "$RC" -eq 0
@@ -200,11 +244,20 @@ provision prov.out SIM_GPU=preinstalled
 check "provision rc 0 (rc=$RC)" test "$RC" -eq 0
 check "upstream manifest not applied" bash -c '! grep -q "apply -f" "$1"' _ "$CASE/argv.log"
 
-echo "== L7c growfs has no effect -> provision fails with the observed value"
+echo "== L7c / T1 cloud-init growfs had no effect -> capacity check fails with the observed value"
 new_case l7c
 provision prov.out SIM_GROWFS_NOEFFECT=1
 check "provision rc non-zero (rc=$RC)" test "$RC" -ne 0
-check "reports observed capacity" grep -q 'GROWFS FAILED: node gpu-node-1 ephemeral-storage capacity is 36Gi' "$CASE/prov.out"
+check "T1 capacity check fails with observed capacity" grep -q 'EPHEMERAL STORAGE CHECK FAILED: node gpu-node-1 reports ephemeral-storage 36Gi' "$CASE/prov.out"
+check "T1 node not mutated after the failure" bash -c '! grep -Eq "nsenter| run nimble-" "$1"' _ "$CASE/argv.log"
+
+echo "== L7d no non-GPU x86 OKE image for the version -> fail loudly before the system pool"
+new_case l7d
+provision prov.out SIM_NO_SYSTEM_IMAGE=1
+check "provision rc non-zero (rc=$RC)" test "$RC" -ne 0
+check "says no system image found" grep -q 'No Oracle Linux x86_64 non-GPU OKE image found for Kubernetes 1.34.1' "$CASE/prov.out"
+check "no node-pool create attempted" bash -c '! grep -q "^oci ce node-pool create" "$1"' _ "$CASE/argv.log"
+check "trap deleted the cluster" grep -q '^oci ce cluster delete' "$CASE/argv.log"
 
 echo "== L1c pre-existing VCN named nimble-oke-vcn (with gateway) is reused, never deleted"
 new_case l1c
@@ -299,6 +352,109 @@ check "teardown rc non-zero (rc=$RC)" test "$RC" -ne 0
 check "reports the foreign pool, not deleting" grep -q 'NOT deleting it (it may belong to someone else)' "$CASE/td.out"
 check "no node-pool delete issued" bash -c '! grep -q "^oci ce node-pool delete" "$1"' _ "$CASE/argv.log"
 check "foreign pool still ACTIVE" grep -qx ACTIVE "$CASE/state/np"
+
+echo "== T2 AUTOSCALE=1 provision: GPU pool size 0, add-on installed, no GPU wait"
+new_case t2
+provision prov.out AUTOSCALE=1 SIM_IAM=present
+check "provision rc 0 (rc=$RC)" test "$RC" -eq 0
+[[ $RC -eq 0 ]] || show_tail prov.out
+check "T2 IAM check ran before any create" lt "$(line_of '^oci iam policy list')" "$(grep -En '^oci [a-z-]+ [a-z-]+ create( |$)' "$CASE/argv.log" | head -1 | cut -d: -f1)"
+sp=$(line_of '^oci ce node-pool create .*--name system-node-pool'); gp=$(line_of '^oci ce node-pool create .*--name gpu-node-pool')
+check "T2 system pool before GPU pool (lines $sp < $gp)" lt "$sp" "$gp"
+check "T2 GPU pool created with --size 0" grep -q '^oci ce node-pool create .*--name gpu-node-pool .*--size 0 ' "$CASE/argv.log"
+check "T2 GPU pool carries the GPU label" grep -q '"key": "nvidia.com/gpu.present", "value": "true"' "$CASE/state/np.labels"
+check "T2 GPU pool cloud-init in Oracle's order" cloud_init_in_order
+check "T2 ephemeral-storage freeform tag = 400Gi" \
+    test "$(jq -r '.["cluster-autoscaler/node-ephemeral-storage"]' "$CASE/state/np.tags")" = 400Gi
+check "T2 add-on name ClusterAutoscaler" grep -qx ClusterAutoscaler "$CASE/state/addon.name"
+cfgv() { jq -r --arg k "$1" '.configurations[] | select(.key == $k) | .value' "$CASE/state/addon.json"; }
+check "T2 add-on nodes=0:1:<gpu pool ocid>" test "$(cfgv nodes)" = "0:1:ocid1.nodepool.oc1.phx.sim"
+check "T2 add-on scaleDownUnneededTime=3m" test "$(cfgv scaleDownUnneededTime)" = 3m
+check "T2 add-on scaleDownDelayAfterAdd=3m" test "$(cfgv scaleDownDelayAfterAdd)" = 3m
+check "T2 add-on authType=instance, maxNodeProvisionTime=25m" \
+    bash -c 'test "$1" = instance && test "$2" = 25m' _ "$(cfgv authType)" "$(cfgv maxNodeProvisionTime)"
+check "T2 autoscaler pod Running on the system node" grep -q 'pod cluster-autoscaler-sim-1 Running on system node system-node-1' "$CASE/prov.out"
+check "T2 no wait for a GPU node or allocatable GPU" \
+    bash -c '! grep -Eq "GPU nodes Ready|GPU check passed|Node .* ephemeral-storage" "$1" && ! grep -q "allocatable" "$2"' _ "$CASE/prov.out" "$CASE/argv.log"
+check "T2 device plugin DaemonSet ensured (applied: none present)" grep -q 'apply -f .*nvidia-device-plugin.yml' "$CASE/argv.log"
+check "T2 DNS gate passed" grep -q 'DNS check passed' "$CASE/prov.out"
+for kv in AUTOSCALE=1 GPU_NODE_SELECTOR=nvidia.com/gpu.present=true MAX_GPU_NODES=1 \
+          NODE_POOL_ID=ocid1.nodepool.oc1.phx.sim SYSTEM_NODE_POOL_ID=ocid1.nodepool.oc1.phx.system; do
+    check "T2 cluster-info.txt has $kv" grep -qx "$kv" "$INFO"
+done
+: > "$CASE/argv.log"
+teardown td.out
+check "T2 teardown rc 0 (rc=$RC)" test "$RC" -eq 0
+check "T2 teardown deleted both pools and the cluster" \
+    bash -c 'grep -qx DELETED "$1/np" && grep -qx DELETED "$1/np.system" && grep -qx DELETED "$1/cluster"' _ "$CASE/state"
+
+echo "== T3 AUTOSCALE=1 with the IAM check failing -> nothing created"
+new_case t3
+provision prov.out AUTOSCALE=1
+check "T3 provision rc non-zero (rc=$RC)" test "$RC" -ne 0
+check "T3 says PREFLIGHT FAILED and to run --apply" grep -q 'PREFLIGHT FAILED: Cluster Autoscaler IAM .* --apply' "$CASE/prov.out"
+check "T3 zero create calls in the argv log" bash -c '! grep -Eq "^oci [a-z-]+ [a-z-]+ create( |$)" "$1"' _ "$CASE/argv.log"
+check "T3 no cluster-info.txt written" test ! -f "$INFO"
+
+echo "== T4 add-on never ACTIVE -> provision fails loudly; teardown removes both pools and the cluster"
+new_case t4
+t0=$(date +%s)
+provision prov.out AUTOSCALE=1 SIM_IAM=present SIM_ADDON=never ADDON_TIMEOUT=3
+t1=$(date +%s)
+check "T4 provision rc non-zero (rc=$RC)" test "$RC" -ne 0
+check "T4 fails with AUTOSCALER CHECK FAILED and the state" grep -q "AUTOSCALER CHECK FAILED: add-on state 'NEEDS_ATTENTION'" "$CASE/prov.out"
+check "T4 evidence: get-addon output" grep -q '"lifecycle-state":"NEEDS_ATTENTION"' "$CASE/prov.out"
+check "T4 evidence: autoscaler pod Pending" grep -q 'cluster-autoscaler-sim-1   0/1     Pending' "$CASE/prov.out"
+check "T4 within the shortened timeout ($((t1 - t0))s < 30s)" test $((t1 - t0)) -lt 30
+check "T4 no completion message" bash -c '! grep -q "provisioning complete" "$1"' _ "$CASE/prov.out"
+: > "$CASE/argv.log"
+teardown td.out
+check "T4 teardown rc 0 (rc=$RC)" test "$RC" -eq 0
+[[ $RC -eq 0 ]] || show_tail td.out
+check "T4 GPU pool deleted first, then system pool, then cluster" \
+    bash -c 'lt() { [[ -n "$1" && -n "$2" && "$1" -lt "$2" ]]; }; g=$(grep -n "node-pool delete --node-pool-id ocid1.nodepool.oc1.phx.sim " "$1" | head -1 | cut -d: -f1); s=$(grep -n "node-pool delete --node-pool-id ocid1.nodepool.oc1.phx.system " "$1" | head -1 | cut -d: -f1); c=$(grep -n "^oci ce cluster delete" "$1" | head -1 | cut -d: -f1); lt "$g" "$s" && lt "$s" "$c"' _ "$CASE/argv.log"
+check "T4 both pools and the cluster DELETED" \
+    bash -c 'grep -qx DELETED "$1/np" && grep -qx DELETED "$1/np.system" && grep -qx DELETED "$1/cluster"' _ "$CASE/state"
+
+echo "== T5b one of two pool deletes fails -> rc 1, file kept, cluster kept"
+new_case t5b
+provision prov.out
+: > "$CASE/argv.log"
+teardown td.out SIM_NP_DELETE_FAIL=system
+check "T5 teardown rc 1 (rc=$RC)" test "$RC" -eq 1
+check "T5 cluster-info.txt kept" test -f "$INFO"
+check "T5 GPU pool still deleted" grep -qx DELETED "$CASE/state/np"
+check "T5 cluster delete not attempted" bash -c '! grep -q "^oci ce cluster delete" "$1"' _ "$CASE/argv.log"
+check "T5 loud incomplete message" grep -q 'TEARDOWN INCOMPLETE' "$CASE/td.out"
+
+echo "== T6 setup-autoscaler-iam.sh"
+new_case t6
+iam print.out "" --print
+check "T6 --print rc 0 (rc=$RC)" test "$RC" -eq 0
+check "T6 --print shows six statements for the compartment name" \
+    test "$(grep -c '^Allow dynamic-group nimble-oke-autoscaler to .* in compartment sim-compartment$' "$CASE/print.out")" -eq 6
+check "T6 --print shows the rule with the compartment OCID" grep -qx "ALL {instance.compartment.id = 'ocid1.compartment.oc1..sim'}" "$CASE/print.out"
+for v in "manage cluster-node-pools" "manage instance-family" "use subnets" "read virtual-network-family" "use vnics" "inspect compartments"; do
+    check "T6 statement: $v" grep -q "to $v in compartment sim-compartment" "$CASE/print.out"
+done
+iam check1.out "" --check
+check "T6 --check rc 3 when missing (rc=$RC)" test "$RC" -eq 3
+check "T6 --check names what is missing" grep -q "missing: dynamic group 'nimble-oke-autoscaler'" "$CASE/check1.out"
+SIM_IAM=present iam check2.out "" --check
+check "T6 --check rc 0 when the objects match (rc=$RC)" test "$RC" -eq 0
+: > "$CASE/argv.log"
+iam apply1.out "wrong-name" --apply
+check "T6 --apply with a wrong typed name: rc non-zero (rc=$RC)" test "$RC" -ne 0
+check "T6 --apply with a wrong typed name: no create call" bash -c '! grep -q " create" "$1"' _ "$CASE/argv.log"
+iam apply2.out "" --apply
+check "T6 --apply with no input: no create call" bash -c '! grep -q " create" "$1"' _ "$CASE/argv.log"
+iam apply3.out "sim-compartment" --apply
+check "T6 --apply with the typed name creates both, then --check passes (rc=$RC)" \
+    bash -c 'test "$1" -eq 0 && grep -q "^oci iam dynamic-group create" "$2" && grep -q "^oci iam policy create" "$2"' _ "$RC" "$CASE/argv.log"
+check "T6 policy attached to the compartment" grep -q '^oci iam policy create --compartment-id ocid1.compartment.oc1..sim ' "$CASE/argv.log"
+iam del.out "sim-compartment" --delete
+check "T6 --delete removes exactly the two objects (rc=$RC)" \
+    bash -c 'test "$1" -eq 0 && grep -q "^oci iam policy delete --policy-id ocid1.policy.oc1..sim" "$2" && grep -q "^oci iam dynamic-group delete --dynamic-group-id ocid1.dynamicgroup.oc1..sim" "$2"' _ "$RC" "$CASE/argv.log"
 
 # L8 deploy: added after deploy.sh settles
 

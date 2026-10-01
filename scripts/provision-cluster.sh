@@ -26,13 +26,29 @@ readonly API_ALLOWED_CIDR="${API_ALLOWED_CIDR:-0.0.0.0/0}"
 # select GPU nodes by it. The Helm chart no longer requires it (it schedules
 # on the nvidia.com/gpu resource request).
 readonly GPU_NODE_LABEL_KEY="nvidia.com/gpu.present"
-# Post-Ready steps (NVIDIA OKE guide: grow the root filesystem, then confirm
-# the node advertises allocatable nvidia.com/gpu). Timeouts in seconds.
-readonly SKIP_GROWFS="${SKIP_GROWFS:-no}"
+readonly GPU_NODE_SELECTOR="${GPU_NODE_LABEL_KEY}=true"
+# AUTOSCALE=1: GPU pool starts at size 0 and the OKE ClusterAutoscaler add-on
+# scales it 0 -> MAX_GPU_NODES -> 0. AUTOSCALE unset/0: fixed GPU pool.
+readonly AUTOSCALE="${AUTOSCALE:-0}"
+readonly MAX_GPU_NODES="${MAX_GPU_NODES:-1}"
+readonly SCALE_DOWN_UNNEEDED="${SCALE_DOWN_UNNEEDED:-3m}"
+readonly SCALE_DOWN_DELAY_AFTER_ADD="${SCALE_DOWN_DELAY_AFTER_ADD:-3m}"
+readonly ADDON_TIMEOUT="${ADDON_TIMEOUT:-900}"
+# Non-autoscaled system pool (Oracle: keep one pool the autoscaler does not
+# manage, for critical add-ons and the autoscaler itself).
+readonly SYSTEM_NODE_POOL_NAME="system-node-pool"
+readonly SYSTEM_SHAPE="VM.Standard.E4.Flex"
+readonly SYSTEM_OCPUS="${SYSTEM_OCPUS:-2}"
+readonly SYSTEM_MEMORY_GB="${SYSTEM_MEMORY_GB:-16}"
+# Ephemeral storage the autoscaler's template node advertises for the empty
+# GPU pool (freeform tag read by the OCI cloud provider): boot volume minus a
+# safety margin for partitions, GB-vs-GiB, and kubelet eviction reserve.
+readonly EPHEMERAL_TAG_MARGIN_GB="${EPHEMERAL_TAG_MARGIN_GB:-100}"
+readonly EPHEMERAL_STORAGE_TAG_KEY="cluster-autoscaler/node-ephemeral-storage"
+# The GPU node must report at least this much ephemeral storage once Ready
+# (verification only: the root filesystem is grown by cloud-init at boot).
 readonly MIN_EPHEMERAL_STORAGE="${MIN_EPHEMERAL_STORAGE:-150Gi}"
-readonly GROWFS_IMAGE="${GROWFS_IMAGE:-docker.io/library/oraclelinux:8}"
 readonly NODE_READY_TIMEOUT="${NODE_READY_TIMEOUT:-1200}"
-readonly GROWFS_TIMEOUT="${GROWFS_TIMEOUT:-600}"
 readonly GPU_ALLOCATABLE_TIMEOUT="${GPU_ALLOCATABLE_TIMEOUT:-900}"
 # Cluster DNS gate: at least one Ready kube-dns (CoreDNS) pod in kube-system.
 readonly DNS_READY_TIMEOUT="${DNS_READY_TIMEOUT:-600}"
@@ -49,8 +65,10 @@ readonly NVIDIA_DEVICE_PLUGIN_VERSION="${NVIDIA_DEVICE_PLUGIN_VERSION:-v0.14.0}"
 TRAP_COMPARTMENT_ID=""
 CLUSTER_ID=""
 NODE_POOL_ID=""
+SYSTEM_NODE_POOL_ID=""
 CLUSTER_CREATE_STARTED="no"
 NODE_POOL_CREATE_STARTED="no"
+SYSTEM_NODE_POOL_CREATE_STARTED="no"
 
 # Record KEY=VALUE in cluster-info.txt immediately (replaces an earlier value).
 record_info() {
@@ -235,10 +253,8 @@ quantity_to_gib() {
 
 # kubectl pinned to this cluster's context (set after create-kubeconfig).
 # KCTL adds a per-request timeout so a hung API call cannot stall the deadline
-# loops; KCTL_STREAM (no request timeout) is for `wait` and `logs`, which
-# carry their own bounds.
+# loops.
 KCTL=(kubectl)
-KCTL_STREAM=(kubectl)
 
 # Wait until NODE_COUNT GPU-labelled nodes exist and all are Ready.
 wait_gpu_nodes_ready() {
@@ -262,31 +278,71 @@ wait_gpu_nodes_ready() {
     done
 }
 
-# Run one privileged, host-PID pod on a node that enters the host namespaces
-# (the NVIDIA OKE guide's kubectl-only method). $1 node, $2 purpose, rest = command.
-run_node_pod() {
-    local node="$1" purpose="$2" pod overrides cmd_json rc=0
-    shift 2
-    pod="nimble-${purpose}-$(date +%s)"
-    # Command words as a JSON array (jq --args would read "-y" as an option).
-    cmd_json=$(printf '%s\n' nsenter -t 1 -m -u -i -n "$@" | jq -R . | jq -cs .) || return 1
-    overrides=$(jq -cn --arg node "$node" --arg pod "$pod" --arg image "$GROWFS_IMAGE" --argjson cmd "$cmd_json" '{
-        spec: {nodeName: $node, hostPID: true, restartPolicy: "Never",
-               tolerations: [{operator: "Exists"}],
-               containers: [{name: $pod, image: $image,
-                             command: $cmd, securityContext: {privileged: true}}]}}') || return 1
-    log_info "Running $purpose on $node: $*"
-    "${KCTL[@]}" -n kube-system run "$pod" --image="$GROWFS_IMAGE" --restart=Never \
-        --overrides="$overrides" >/dev/null || return 1
-    "${KCTL_STREAM[@]}" -n kube-system wait --for=jsonpath='{.status.phase}'=Succeeded "pod/$pod" \
-        --timeout="${GROWFS_TIMEOUT}s" >/dev/null || rc=1
-    if [[ $rc -ne 0 ]]; then
-        log_error "$purpose pod $pod did not succeed; its logs follow"
-        "${KCTL_STREAM[@]}" -n kube-system logs "$pod" >&2 || true
+# E1: Oracle's documented custom cloud-init for a node pool (OKE docs,
+# "Using Custom Cloud-init Initialization Scripts", Example 5): fetch the OKE
+# init script, grow the root partition and filesystem, then run the init
+# script. Printed base64 (one line) for node metadata "user_data". Nodes are
+# never mutated after creation: a node the autoscaler adds gets it at boot.
+gpu_cloud_init() {
+    cat <<'CLOUDINIT'
+#!/bin/bash
+curl --fail -H "Authorization: Bearer Oracle" -L0 http://169.254.169.254/opc/v2/instance/metadata/oke_init_script | base64 --decode >/var/run/oke-init.sh
+bash /usr/libexec/oci-growfs -y
+bash /var/run/oke-init.sh
+CLOUDINIT
+}
+gpu_node_metadata_json() {
+    local b64
+    b64=$(gpu_cloud_init | base64 | tr -d '\n') || return 1
+    jq -cn --arg ud "$b64" '{user_data: $ud}'
+}
+
+# E2: newest Oracle Linux x86_64 non-GPU OKE image for K8S_VERSION, from
+# `oci ce node-pool-options get --node-pool-option-id all` (data.sources[]).
+# Rule: source-type IMAGE; source-name matches
+#   Oracle-Linux-<ver>-[Gen2-]<YYYY.MM.DD>-<n>-OKE-<k8s version>-<build>
+# (so no GPU or aarch64 variant, which insert a word before the date);
+# newest by the date in the name, then by name. Prints "<ocid>\t<name>".
+# SYSTEM_IMAGE_ID overrides the lookup.
+resolve_system_image() {
+    local compartment_id="$1" ver="${K8S_VERSION#v}" out sel
+    if [[ -n "${SYSTEM_IMAGE_ID:-}" ]]; then
+        printf '%s\t%s\n' "$SYSTEM_IMAGE_ID" "SYSTEM_IMAGE_ID override"
+        return 0
     fi
-    "${KCTL[@]}" -n kube-system delete pod "$pod" --ignore-not-found --wait=false >/dev/null 2>&1 \
-        || log_warn "Could not delete helper pod kube-system/$pod; delete it by hand"
-    return "$rc"
+    out=$(oci ce node-pool-options get --node-pool-option-id all --compartment-id "$compartment_id") || return 1
+    sel=$(printf '%s' "$out" | jq -r --arg v "$ver" '
+        [ .data.sources[]?
+          | select((.["source-type"] // "") == "IMAGE")
+          | select((.["source-name"] // "") | test("^Oracle-Linux-[0-9]+(\\.[0-9]+)?-(Gen2-)?[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}-[0-9]+-OKE-"))
+          | select(.["source-name"] | contains("-OKE-" + $v + "-"))
+          | select(.["source-name"] | test("GPU|aarch64"; "i") | not)
+          | {id: .["image-id"], name: .["source-name"],
+             date: (.["source-name"] | capture("(?<d>[0-9]{4}\\.[0-9]{2}\\.[0-9]{2})").d)} ]
+        | if length == 0 then empty else (sort_by(.date, .name) | last | "\(.id)\t\(.name)") end') || return 1
+    [[ -n "$sel" ]] || return 1
+    printf '%s\n' "$sel"
+}
+
+# Wait until at least one non-GPU (system pool) node is Ready. CoreDNS and the
+# Cluster Autoscaler run there; the DNS gate depends on it.
+wait_system_node_ready() {
+    local deadline lines ready
+    deadline=$(( $(date +%s) + NODE_READY_TIMEOUT ))
+    while :; do
+        lines=$("${KCTL[@]}" get nodes -l "!${GPU_NODE_LABEL_KEY}" \
+            -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}' \
+            2>/dev/null) || lines=""
+        ready=$(printf '%s\n' "$lines" | awk -F'\t' '$2 == "True" {r++} END {print r + 0}')
+        if (( ready >= 1 )); then
+            log_success "System pool node(s) Ready: $ready (no ${GPU_NODE_LABEL_KEY} label)"
+            return 0
+        fi
+        if (( $(date +%s) >= deadline )); then
+            die "No Ready system-pool node after ${NODE_READY_TIMEOUT}s (pool $SYSTEM_NODE_POOL_NAME). CoreDNS and the autoscaler cannot run. The cluster is billing; re-run or run 'make teardown'."
+        fi
+        sleep "$POLL_INTERVAL"
+    done
 }
 
 # Print "<raw>\t<GiB>" for a node's ephemeral-storage capacity.
@@ -297,49 +353,171 @@ node_ephemeral() {
     printf '%s\t%s\n' "$raw" "$gib"
 }
 
-# N3: with a large boot volume the root filesystem stays ~35 GB until
-# oci-growfs runs; the chart requests 20Gi ephemeral storage (limit 200Gi,
-# helm/values.yaml) and the kubelet needs headroom above that. Idempotent:
-# a node already above MIN_EPHEMERAL_STORAGE is skipped.
-ensure_ephemeral_storage() {
-    if [[ "$SKIP_GROWFS" == "yes" ]]; then
-        log_warn "SKIP_GROWFS=yes: not expanding node root filesystems"
-        return 0
-    fi
-    local min_gib nodes node cur raw gib deadline
+# E1 verification only: every GPU node must report ephemeral-storage capacity
+# >= MIN_EPHEMERAL_STORAGE (the chart requests 20Gi, limit 200Gi). Nothing is
+# changed on the node; a failure means the cloud-init growfs did not work.
+verify_ephemeral_storage() {
+    local min_gib nodes node cur raw gib
     min_gib=$(quantity_to_gib "$MIN_EPHEMERAL_STORAGE") || die "MIN_EPHEMERAL_STORAGE '$MIN_EPHEMERAL_STORAGE' is not a quantity"
-    nodes=$("${KCTL[@]}" get nodes -l "${GPU_NODE_LABEL_KEY}=true" \
+    nodes=$("${KCTL[@]}" get nodes -l "$GPU_NODE_SELECTOR" \
         -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}') || die "Listing GPU nodes failed"
     [[ -n "$nodes" ]] || die "No GPU nodes found for the ephemeral-storage check"
     for node in $nodes; do
         cur=$(node_ephemeral "$node") || die "Reading ephemeral-storage capacity of $node failed"
         raw="${cur%%$'\t'*}"; gib="${cur##*$'\t'}"
-        if (( gib >= min_gib )); then
-            log_info "Node $node ephemeral-storage ${raw} (${gib}Gi) >= ${MIN_EPHEMERAL_STORAGE}; growfs not needed"
-            continue
+        if (( gib < min_gib )); then
+            die "EPHEMERAL STORAGE CHECK FAILED: node $node reports ephemeral-storage ${raw} (${gib}Gi); need >= ${MIN_EPHEMERAL_STORAGE}. The node pool's cloud-init (oci-growfs) did not take effect; nodes are not modified after creation. The cluster is billing; investigate or run 'make teardown'."
         fi
-        log_info "Node $node ephemeral-storage ${raw} (${gib}Gi) < ${MIN_EPHEMERAL_STORAGE}; expanding root filesystem (oci-growfs)..."
-        run_node_pod "$node" growfs /usr/libexec/oci-growfs -y \
-            || die "oci-growfs failed on node $node. The cluster is billing; re-run or run 'make teardown'."
-        # The NVIDIA OKE guide restarts kubelet after growfs so the node
-        # reports the new capacity.
-        run_node_pod "$node" restart-kubelet systemctl restart kubelet \
-            || log_warn "kubelet restart pod on $node did not report success; checking capacity anyway"
-        deadline=$(( $(date +%s) + GROWFS_TIMEOUT ))
-        while :; do
-            cur=$(node_ephemeral "$node") || cur=$'unknown\t0'
-            raw="${cur%%$'\t'*}"; gib="${cur##*$'\t'}"
-            if (( gib >= min_gib )); then
-                log_success "Node $node ephemeral-storage now ${raw} (${gib}Gi)"
-                break
-            fi
-            if (( $(date +%s) >= deadline )); then
-                die "GROWFS FAILED: node $node ephemeral-storage capacity is ${raw} (${gib}Gi) after oci-growfs + kubelet restart; need >= ${MIN_EPHEMERAL_STORAGE}. The cluster is billing; investigate or run 'make teardown'."
-            fi
-            sleep "$POLL_INTERVAL"
-        done
+        log_success "Node $node ephemeral-storage ${raw} (${gib}Gi) >= ${MIN_EPHEMERAL_STORAGE}"
     done
 }
+
+# Create a node pool (or reuse one with the same name in this cluster) and
+# record its OCID under $2. Sets CREATED_POOL_ID.
+#   $1 role (system|gpu)  $2 info key  $3 name  $4 compartment  $5 cluster
+#   rest: extra `oci ce node-pool create` arguments
+CREATED_POOL_ID=""
+create_node_pool() {
+    local role="$1" key="$2" name="$3" compartment_id="$4" cluster_id="$5" id wr_out state
+    shift 5
+    CREATED_POOL_ID=""
+    id=$(oci_find_node_pool_id "$compartment_id" "$name" "$cluster_id") \
+        || die "Failed to list node pools in compartment $compartment_id"
+    if [[ -n "$id" ]]; then
+        log_info "Node pool exists: $name ($id)"
+        record_info "$key" "$id"
+        CREATED_POOL_ID="$id"
+        return 0
+    fi
+    if [[ "$role" == "gpu" ]]; then NODE_POOL_CREATE_STARTED="yes"; else SYSTEM_NODE_POOL_CREATE_STARTED="yes"; fi
+    wr_out=$(oci ce node-pool create \
+        --cluster-id "$cluster_id" \
+        --compartment-id "$compartment_id" \
+        --name "$name" \
+        --kubernetes-version "$K8S_VERSION" \
+        "$@" \
+        --wait-for-state SUCCEEDED \
+        --wait-for-state FAILED \
+        --max-wait-seconds 1800) || die "Failed to create node pool $name - check quota and capacity in region"
+    parse_work_request "$wr_out" '^node.?pool$'
+    id="$WR_RESOURCE_ID"
+    if ! is_ocid_of nodepool "$id"; then
+        id=$(oci_find_node_pool_id "$compartment_id" "$name" "$cluster_id") || id=""
+    fi
+    if [[ "$role" == "gpu" ]]; then NODE_POOL_ID="$id"; else SYSTEM_NODE_POOL_ID="$id"; fi
+    [[ -n "$id" ]] && record_info "$key" "$id"
+    if [[ -n "$WR_STATUS" && "$WR_STATUS" != "SUCCEEDED" ]]; then
+        die "Node pool $name create work request ended in state $WR_STATUS (not SUCCEEDED) - check capacity in the AD"
+    fi
+    [[ -n "$id" ]] || die "Node pool create returned no node pool OCID: $name"
+    if [[ -z "$WR_STATUS" ]]; then
+        state=$(oci_ce_get_state node-pool "$id") || die "Could not read state of node pool $id"
+        [[ "$state" == "ACTIVE" ]] || die "Node pool $id is in state '$state', not ACTIVE"
+    fi
+    log_success "Node pool created: $name ($id)"
+    CREATED_POOL_ID="$id"
+}
+
+# Lifecycle state of the ClusterAutoscaler add-on ("" if not installed).
+# Non-zero if the list call fails.
+addon_state() {
+    local out
+    out=$(oci ce cluster list-addons --cluster-id "$1" --all) || return 1
+    [[ -n "$out" ]] || { echo ""; return 0; }
+    printf '%s' "$out" | jq -r '[.data[]? | select(.name == "ClusterAutoscaler") | .["lifecycle-state"]] | first // empty'
+}
+
+addon_evidence() {
+    local cluster_id="$1"
+    echo "--- oci ce cluster get-addon --addon-name ClusterAutoscaler ---" >&2
+    oci ce cluster get-addon --cluster-id "$cluster_id" --addon-name ClusterAutoscaler >&2 || true
+    echo "--- kubectl get pods -n kube-system -o wide ---" >&2
+    "${KCTL[@]}" get pods -n kube-system -o wide >&2 || true
+}
+
+# Name and node of a Running cluster-autoscaler pod on a non-GPU node ("" if none).
+autoscaler_pod_on_system_node() {
+    local pods gpu_nodes name phase node
+    pods=$("${KCTL[@]}" -n kube-system get pods \
+        -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.phase}{"\t"}{.spec.nodeName}{"\n"}{end}' 2>/dev/null) || return 0
+    gpu_nodes=$("${KCTL[@]}" get nodes -l "$GPU_NODE_SELECTOR" \
+        -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null) || gpu_nodes=""
+    while IFS=$'\t' read -r name phase node; do
+        [[ "$name" == cluster-autoscaler* && "$phase" == "Running" && -n "$node" ]] || continue
+        if ! printf '%s\n' "$gpu_nodes" | grep -Fqx -- "$node"; then
+            printf '%s\t%s\n' "$name" "$node"
+            return 0
+        fi
+    done <<< "$pods"
+}
+
+# I1: install the OKE ClusterAutoscaler add-on for the GPU pool (min 0) and
+# wait, bounded by ADDON_TIMEOUT, for ACTIVE plus a Running autoscaler pod on
+# the system pool. Fails loudly with the add-on state and pod evidence.
+ensure_cluster_autoscaler() {
+    local cluster_id="$1" gpu_pool_id="$2" state cfg deadline pod
+    state=$(addon_state "$cluster_id") || die "Listing cluster add-ons failed (oci ce cluster list-addons). The cluster is billing; re-run or run 'make teardown'."
+    if [[ -n "$state" && "$state" != "DELETED" ]]; then
+        log_warn "ClusterAutoscaler add-on already installed (state $state); keeping its existing configuration"
+    else
+        cfg="${TMPDIR:-/tmp}/nimble-ca-addon.$$.json"
+        jq -n --arg nodes "0:${MAX_GPU_NODES}:${gpu_pool_id}" \
+              --arg unneeded "$SCALE_DOWN_UNNEEDED" --arg delay "$SCALE_DOWN_DELAY_AFTER_ADD" '{
+            configurations: [
+              {key: "nodes", value: $nodes},
+              {key: "authType", value: "instance"},
+              {key: "scaleDownUnneededTime", value: $unneeded},
+              {key: "scaleDownDelayAfterAdd", value: $delay},
+              {key: "maxNodeProvisionTime", value: "25m"}
+            ]}' > "$cfg" || die "Writing the add-on configuration failed"
+        log_info "Installing ClusterAutoscaler add-on: nodes=0:${MAX_GPU_NODES}:${gpu_pool_id}, scaleDownUnneededTime=${SCALE_DOWN_UNNEEDED}, scaleDownDelayAfterAdd=${SCALE_DOWN_DELAY_AFTER_ADD}"
+        if ! oci ce cluster install-addon --addon-name ClusterAutoscaler \
+            --from-json "file://$cfg" --cluster-id "$cluster_id" >/dev/null; then
+            rm -f "$cfg"
+            die "ClusterAutoscaler add-on install FAILED. The cluster is billing; fix and re-run, or run 'make teardown'."
+        fi
+        rm -f "$cfg"
+    fi
+    deadline=$(( $(date +%s) + ADDON_TIMEOUT ))
+    while :; do
+        state=$(addon_state "$cluster_id") || state="UNKNOWN (list failed)"
+        if [[ "$state" == "FAILED" ]]; then
+            log_error "ClusterAutoscaler add-on is FAILED; evidence follows"
+            addon_evidence "$cluster_id"
+            die "AUTOSCALER CHECK FAILED: add-on state FAILED. The cluster is billing; fix and re-run, or run 'make teardown'."
+        fi
+        if [[ "$state" == "ACTIVE" ]]; then
+            pod=$(autoscaler_pod_on_system_node)
+            if [[ -n "$pod" ]]; then
+                log_success "ClusterAutoscaler add-on ACTIVE; pod ${pod%%$'\t'*} Running on system node ${pod##*$'\t'}"
+                return 0
+            fi
+        fi
+        if (( $(date +%s) >= deadline )); then
+            log_error "ClusterAutoscaler not ready after ${ADDON_TIMEOUT}s (add-on state: ${state:-not installed}); evidence follows"
+            addon_evidence "$cluster_id"
+            die "AUTOSCALER CHECK FAILED: add-on state '${state:-not installed}', no Running cluster-autoscaler pod on the system pool after ${ADDON_TIMEOUT}s. GPU nodes will NOT scale up. The cluster is billing; fix and re-run, or run 'make teardown'."
+        fi
+        sleep "$POLL_INTERVAL"
+    done
+}
+
+# Autoscale mode: make sure an NVIDIA device plugin DaemonSet exists so GPU
+# nodes that appear later advertise nvidia.com/gpu. Applies the pinned
+# upstream manifest only if no kube-system DaemonSet matches nvidia.*device-plugin.
+ensure_device_plugin_daemonset() {
+    local ds
+    ds=$("${KCTL[@]}" -n kube-system get daemonsets \
+        -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}') || die "Listing kube-system DaemonSets failed"
+    if printf '%s\n' "$ds" | grep -Eq 'nvidia.*device-plugin'; then
+        log_info "NVIDIA device plugin DaemonSet present: $(printf '%s\n' "$ds" | grep -E 'nvidia.*device-plugin' | head -1)"
+        return 0
+    fi
+    log_info "No NVIDIA device plugin DaemonSet in kube-system; applying ${NVIDIA_DEVICE_PLUGIN_VERSION}..."
+    "${KCTL[@]}" apply -f "https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/${NVIDIA_DEVICE_PLUGIN_VERSION}/nvidia-device-plugin.yml" \
+        || die "NVIDIA device plugin ${NVIDIA_DEVICE_PLUGIN_VERSION} apply FAILED. The cluster is billing; re-run or run 'make teardown'."
+}
+
 
 # Highest allocatable nvidia.com/gpu across nodes (0 if none).
 gpu_allocatable_max() {
@@ -417,23 +595,31 @@ cleanup_on_failure() {
     log_warn "Provisioning failed (exit $rc); cleaning up GPU/cluster resources created by this run..."
     local ok="yes" deleted=""
 
-    if [[ "$NODE_POOL_CREATE_STARTED" == "yes" ]]; then
-        if [[ -z "$NODE_POOL_ID" ]]; then
-            log_info "Node pool OCID unknown; looking it up by name '$NODE_POOL_NAME'..."
-            if ! NODE_POOL_ID=$(oci_find_node_pool_id "$TRAP_COMPARTMENT_ID" "$NODE_POOL_NAME" "$CLUSTER_ID"); then
-                log_error "Node pool lookup failed; cannot confirm whether a node pool exists"
-                NODE_POOL_ID=""
+    # GPU pool first, then the system pool (both only if this run created them).
+    local role started pool_id pool_name
+    for role in gpu system; do
+        if [[ "$role" == "gpu" ]]; then
+            started="$NODE_POOL_CREATE_STARTED"; pool_id="$NODE_POOL_ID"; pool_name="$NODE_POOL_NAME"
+        else
+            started="$SYSTEM_NODE_POOL_CREATE_STARTED"; pool_id="$SYSTEM_NODE_POOL_ID"; pool_name="$SYSTEM_NODE_POOL_NAME"
+        fi
+        [[ "$started" == "yes" ]] || continue
+        if [[ -z "$pool_id" ]]; then
+            log_info "Node pool OCID unknown; looking it up by name '$pool_name'..."
+            if ! pool_id=$(oci_find_node_pool_id "$TRAP_COMPARTMENT_ID" "$pool_name" "$CLUSTER_ID"); then
+                log_error "Node pool lookup failed; cannot confirm whether node pool $pool_name exists"
+                pool_id=""
                 ok="no"
             fi
         fi
-        if [[ -n "$NODE_POOL_ID" ]]; then
-            if oci_ce_delete_confirmed node-pool "$NODE_POOL_ID"; then
-                deleted="$deleted node-pool"
+        if [[ -n "$pool_id" ]]; then
+            if oci_ce_delete_confirmed node-pool "$pool_id"; then
+                deleted="$deleted node-pool($pool_name)"
             else
                 ok="no"
             fi
         fi
-    fi
+    done
 
     if [[ "$CLUSTER_CREATE_STARTED" == "yes" ]]; then
         if [[ -z "$CLUSTER_ID" ]]; then
@@ -480,13 +666,32 @@ main() {
     local compartment_id="${OCI_COMPARTMENT_ID}"
     local region="${OCI_REGION:-us-phoenix-1}"
 
+    # GPU pool size at create: 0 in autoscale mode (the add-on scales it).
+    local autoscale="no" gpu_pool_size="$NODE_COUNT" priced_nodes="$NODE_COUNT"
+    case "$AUTOSCALE" in
+        1|yes|true) autoscale="yes" ;;
+        0|no|false|"") autoscale="no" ;;
+        *) die "AUTOSCALE must be 1 or 0 (got '$AUTOSCALE')" ;;
+    esac
+    if [[ "$autoscale" == "yes" ]]; then
+        [[ "$MAX_GPU_NODES" =~ ^[1-9][0-9]*$ ]] || die "MAX_GPU_NODES must be a whole number >= 1 (got '$MAX_GPU_NODES')"
+        gpu_pool_size=0
+        priced_nodes="$MAX_GPU_NODES"
+        # I5: preflight - nothing is created unless the autoscaler's IAM exists.
+        log_info "AUTOSCALE=1: checking Cluster Autoscaler IAM (scripts/setup-autoscaler-iam.sh --check)..."
+        if ! "${BASH:-bash}" "${SCRIPT_DIR}/setup-autoscaler-iam.sh" --check; then
+            die "PREFLIGHT FAILED: Cluster Autoscaler IAM (dynamic group + policy) is not in place; nothing was created. The owner runs: scripts/setup-autoscaler-iam.sh --print, then --apply."
+        fi
+    fi
+
     log_info "Estimating provisioning cost..."
     local gpus_per_node
     gpus_per_node=$(get_shape_gpu_count "$GPU_SHAPE") || die "Unsupported GPU shape: $GPU_SHAPE"
-    local node_rate
+    local node_rate system_rate
     node_rate=$(get_gpu_hourly_rate "$GPU_SHAPE") || die "Cannot price GPU shape: $GPU_SHAPE"
+    system_rate=$(get_system_pool_hourly_rate) || die "Cannot price the system pool"
     local hourly_cost
-    hourly_cost=$(estimate_hourly_cost "$NODE_COUNT" "$GPU_SHAPE") || die "Cannot price GPU shape: $GPU_SHAPE"
+    hourly_cost=$(estimate_hourly_cost "$priced_nodes" "$GPU_SHAPE") || die "Cannot price GPU shape: $GPU_SHAPE"
     local test_cost
     test_cost=$(echo "$hourly_cost * 5" | bc -l)
 
@@ -494,9 +699,14 @@ main() {
     log_info "  Cluster: $CLUSTER_NAME"
     log_info "  Region: $region"
     log_info "  GPU Shape: $GPU_SHAPE (${gpus_per_node}x NVIDIA A10 GPU per node)"
-    log_info "  Node Count: $NODE_COUNT"
+    if [[ "$autoscale" == "yes" ]]; then
+        log_info "  GPU nodes: autoscaled 0..$MAX_GPU_NODES (cost shown at $MAX_GPU_NODES node(s))"
+    else
+        log_info "  Node Count: $NODE_COUNT"
+    fi
+    log_info "  System pool: 1 x $SYSTEM_SHAPE (${SYSTEM_OCPUS} OCPU, ${SYSTEM_MEMORY_GB} GB) \$${system_rate}/hour"
     log_info "  Estimated cost: \$$(format_cost "$hourly_cost")/hour"
-    log_info "    GPU \$${node_rate}/node-hour + enhanced cluster \$${NIM_ENHANCED_CLUSTER_HOURLY_USD}/hour"
+    log_info "    GPU \$${node_rate}/node-hour + system pool \$${system_rate}/hour + enhanced cluster \$${NIM_ENHANCED_CLUSTER_HOURLY_USD}/hour"
     log_info "    + load balancer and storage (estimate, unverified)"
     log_info "  5-hour test cost: \$$(format_cost "$test_cost")"
     log_info ""
@@ -521,6 +731,15 @@ main() {
     record_info VCN_NAME "$VCN_NAME"
     record_info GPU_SHAPE "$GPU_SHAPE"
     record_info NODE_COUNT "$NODE_COUNT"
+    record_info SYSTEM_NODE_POOL_NAME "$SYSTEM_NODE_POOL_NAME"
+    record_info GPU_NODE_SELECTOR "$GPU_NODE_SELECTOR"
+    if [[ "$autoscale" == "yes" ]]; then
+        record_info AUTOSCALE 1
+        record_info MAX_GPU_NODES "$MAX_GPU_NODES"
+    else
+        record_info AUTOSCALE 0
+        record_info MAX_GPU_NODES "$NODE_COUNT"
+    fi
 
     log_info "Setting up VCN..."
     local vcn_id
@@ -682,61 +901,77 @@ main() {
         record_info CLUSTER_ID "$cluster_id"
     fi
 
+    # Availability domain shared by both pools.
+    local availability_domain
+    availability_domain=$(get_oke_availability_domain "$compartment_id" "$region") || die "Failed to get availability domain"
+    local placement="[{\"availabilityDomain\": \"$availability_domain\", \"subnetId\": \"$subnet_id\"}]"
+
+    # E2: non-autoscaled system pool first (CoreDNS, the Cluster Autoscaler).
+    log_info "Creating system node pool ($SYSTEM_SHAPE, ${SYSTEM_OCPUS} OCPU / ${SYSTEM_MEMORY_GB} GB, size 1)..."
+    local system_pool_id
+    system_pool_id=$(oci_find_node_pool_id "$compartment_id" "$SYSTEM_NODE_POOL_NAME" "$cluster_id") \
+        || die "Failed to list node pools in compartment $compartment_id"
+    if [[ -n "$system_pool_id" ]]; then
+        log_info "System node pool exists: $system_pool_id"
+        record_info SYSTEM_NODE_POOL_ID "$system_pool_id"
+    else
+        local sys_image sys_image_id
+        sys_image=$(resolve_system_image "$compartment_id") \
+            || die "No Oracle Linux x86_64 non-GPU OKE image found for Kubernetes ${K8S_VERSION#v} (oci ce node-pool-options get --node-pool-option-id all). Set SYSTEM_IMAGE_ID to an OKE image OCID and re-run."
+        sys_image_id="${sys_image%%$'\t'*}"
+        log_info "  System pool image: ${sys_image##*$'\t'} ($sys_image_id)"
+        create_node_pool system SYSTEM_NODE_POOL_ID "$SYSTEM_NODE_POOL_NAME" "$compartment_id" "$cluster_id" \
+            --node-shape "$SYSTEM_SHAPE" \
+            --node-shape-config "{\"ocpus\": $SYSTEM_OCPUS, \"memoryInGBs\": $SYSTEM_MEMORY_GB}" \
+            --size 1 \
+            --placement-configs "$placement" \
+            --node-source-details "{\"sourceType\": \"IMAGE\", \"imageId\": \"$sys_image_id\"}"
+        system_pool_id="$CREATED_POOL_ID"
+    fi
+
     log_info "Creating GPU node pool (10-15 minutes)..."
     local node_pool_id
     node_pool_id=$(oci_find_node_pool_id "$compartment_id" "$NODE_POOL_NAME" "$cluster_id") \
         || die "Failed to list node pools in compartment $compartment_id"
-
-    if [[ -z "$node_pool_id" ]]; then
-        # Validate OKE-optimized configuration
-        validate_oke_gpu_quota "$NODE_COUNT" "$GPU_SHAPE" || die "GPU quota validation failed"
-        validate_oke_image "$OKE_GPU_IMAGE_ID" || die "OKE-optimized image validation failed"
-
-        # Get availability domain for placement
-        local availability_domain
-        availability_domain=$(get_oke_availability_domain "$compartment_id" "$region") || die "Failed to get availability domain"
-
-        log_info "Creating GPU node pool with OKE-optimized configuration..."
-        log_info "  Shape: $GPU_SHAPE"
-        log_info "  Image: $OKE_GPU_IMAGE_NAME"
-        log_info "  Boot Volume: ${OKE_BOOT_VOLUME_SIZE_GB}GB"
-        log_info "  Availability Domain: $availability_domain"
-        log_info "  Node label: ${GPU_NODE_LABEL_KEY}=true"
-
-        NODE_POOL_CREATE_STARTED="yes"
-        wr_out=$(oci ce node-pool create \
-            --cluster-id "$cluster_id" \
-            --compartment-id "$compartment_id" \
-            --name "$NODE_POOL_NAME" \
-            --node-shape "$GPU_SHAPE" \
-            --size "$NODE_COUNT" \
-            --kubernetes-version "$K8S_VERSION" \
-            --placement-configs "[{\"availabilityDomain\": \"$availability_domain\", \"subnetId\": \"$subnet_id\"}]" \
-            --node-source-details "{\"sourceType\": \"IMAGE\", \"imageId\": \"$OKE_GPU_IMAGE_ID\", \"bootVolumeSizeInGBs\": $OKE_BOOT_VOLUME_SIZE_GB}" \
-            --initial-node-labels "[{\"key\": \"${GPU_NODE_LABEL_KEY}\", \"value\": \"true\"}]" \
-            --wait-for-state SUCCEEDED \
-            --wait-for-state FAILED \
-            --max-wait-seconds 1800) || die "Failed to create GPU node pool - check GPU quota and capacity in region"
-        parse_work_request "$wr_out" '^node.?pool$'
-        node_pool_id="$WR_RESOURCE_ID"
-        if ! is_ocid_of nodepool "$node_pool_id"; then
-            node_pool_id=$(oci_find_node_pool_id "$compartment_id" "$NODE_POOL_NAME" "$cluster_id") || node_pool_id=""
-        fi
-        NODE_POOL_ID="$node_pool_id"
-        [[ -n "$node_pool_id" ]] && record_info NODE_POOL_ID "$node_pool_id"
-        if [[ -n "$WR_STATUS" && "$WR_STATUS" != "SUCCEEDED" ]]; then
-            die "GPU node pool create work request ended in state $WR_STATUS (not SUCCEEDED) - check GPU capacity in the AD"
-        fi
-        [[ -n "$node_pool_id" ]] || die "Node pool create returned no node pool OCID"
-        if [[ -z "$WR_STATUS" ]]; then
-            state=$(oci_ce_get_state node-pool "$node_pool_id") || die "Could not read state of node pool $node_pool_id"
-            [[ "$state" == "ACTIVE" ]] || die "Node pool $node_pool_id is in state '$state', not ACTIVE"
-        fi
-        log_success "GPU node pool created: $node_pool_id"
-    else
+    if [[ -n "$node_pool_id" ]]; then
         log_info "GPU node pool exists: $node_pool_id"
         record_info NODE_POOL_ID "$node_pool_id"
+    else
+        validate_oke_gpu_quota "$priced_nodes" "$GPU_SHAPE" || die "GPU quota validation failed"
+        validate_oke_image "$OKE_GPU_IMAGE_ID" || die "OKE-optimized image validation failed"
+        local node_metadata
+        node_metadata=$(gpu_node_metadata_json) || die "Building the GPU pool cloud-init failed"
+        local gpu_extra_tags=""
+        log_info "  Shape: $GPU_SHAPE, size $gpu_pool_size"
+        log_info "  Image: $OKE_GPU_IMAGE_NAME"
+        log_info "  Boot Volume: ${OKE_BOOT_VOLUME_SIZE_GB}GB (root grown at boot by cloud-init oci-growfs)"
+        log_info "  Availability Domain: $availability_domain"
+        log_info "  Node label: $GPU_NODE_SELECTOR"
+        if [[ "$autoscale" == "yes" ]]; then
+            local eph_gb=$(( OKE_BOOT_VOLUME_SIZE_GB - EPHEMERAL_TAG_MARGIN_GB ))
+            (( eph_gb > 0 )) || die "Boot volume ${OKE_BOOT_VOLUME_SIZE_GB}GB minus margin ${EPHEMERAL_TAG_MARGIN_GB}GB leaves no ephemeral storage"
+            gpu_extra_tags=$(jq -cn --arg k "$EPHEMERAL_STORAGE_TAG_KEY" --arg v "${eph_gb}Gi" '{($k): $v}')
+            log_info "  Autoscaler template: freeform tag $EPHEMERAL_STORAGE_TAG_KEY=${eph_gb}Gi"
+            create_node_pool gpu NODE_POOL_ID "$NODE_POOL_NAME" "$compartment_id" "$cluster_id" \
+                --node-shape "$GPU_SHAPE" \
+                --size "$gpu_pool_size" \
+                --placement-configs "$placement" \
+                --node-source-details "{\"sourceType\": \"IMAGE\", \"imageId\": \"$OKE_GPU_IMAGE_ID\", \"bootVolumeSizeInGBs\": $OKE_BOOT_VOLUME_SIZE_GB}" \
+                --initial-node-labels "[{\"key\": \"${GPU_NODE_LABEL_KEY}\", \"value\": \"true\"}]" \
+                --node-metadata "$node_metadata" \
+                --freeform-tags "$gpu_extra_tags"
+        else
+            create_node_pool gpu NODE_POOL_ID "$NODE_POOL_NAME" "$compartment_id" "$cluster_id" \
+                --node-shape "$GPU_SHAPE" \
+                --size "$gpu_pool_size" \
+                --placement-configs "$placement" \
+                --node-source-details "{\"sourceType\": \"IMAGE\", \"imageId\": \"$OKE_GPU_IMAGE_ID\", \"bootVolumeSizeInGBs\": $OKE_BOOT_VOLUME_SIZE_GB}" \
+                --initial-node-labels "[{\"key\": \"${GPU_NODE_LABEL_KEY}\", \"value\": \"true\"}]" \
+                --node-metadata "$node_metadata"
+        fi
+        node_pool_id="$CREATED_POOL_ID"
     fi
+
 
     # All billable resources exist and are recorded. From here a failure must
     # not delete them; it fails loudly and 'make teardown' removes them.
@@ -763,22 +998,34 @@ main() {
     record_info KUBE_CONTEXT "$kube_ctx"
     log_info "kubectl context for this cluster: $kube_ctx (recorded as KUBE_CONTEXT)"
     KCTL=(kubectl --context "$kube_ctx" --request-timeout=30s)
-    KCTL_STREAM=(kubectl --context "$kube_ctx")
 
     "${KCTL[@]}" cluster-info &>/dev/null \
         || die "Cluster API unreachable via context $kube_ctx. The cluster is billing; re-run or run 'make teardown'."
 
-    log_info "Waiting for GPU node(s) to register and become Ready..."
-    wait_gpu_nodes_ready
-    ensure_ephemeral_storage
-    ensure_gpu_allocatable
+    log_info "Waiting for the system pool node to register and become Ready..."
+    wait_system_node_ready
+    if [[ "$autoscale" == "yes" ]]; then
+        # No GPU node exists yet; the autoscaler adds one when a GPU pod is Pending.
+        ensure_cluster_autoscaler "$cluster_id" "$node_pool_id"
+        ensure_device_plugin_daemonset
+    else
+        log_info "Waiting for GPU node(s) to register and become Ready..."
+        wait_gpu_nodes_ready
+        verify_ephemeral_storage
+        ensure_gpu_allocatable
+    fi
     ensure_cluster_dns
 
     log_success "OKE cluster provisioning complete!"
     echo ""
     log_info "Cluster details:"
     log_info "  Cluster ID: $cluster_id"
-    log_info "  GPU Nodes: $NODE_COUNT × $GPU_SHAPE (${gpus_per_node}x NVIDIA A10 GPU per node)"
+    log_info "  System pool: $system_pool_id (1 × $SYSTEM_SHAPE)"
+    if [[ "$autoscale" == "yes" ]]; then
+        log_info "  GPU pool: $node_pool_id, autoscaled 0..$MAX_GPU_NODES × $GPU_SHAPE (now 0 nodes; select with $GPU_NODE_SELECTOR)"
+    else
+        log_info "  GPU Nodes: $NODE_COUNT × $GPU_SHAPE (${gpus_per_node}x NVIDIA A10 GPU per node)"
+    fi
     log_info "  Hourly cost: \$$(format_cost "$hourly_cost") (LB and storage portions are estimates, unverified)"
     echo ""
     log_info "Budget tracking:"

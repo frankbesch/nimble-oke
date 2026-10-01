@@ -3,6 +3,7 @@
 # The "kubeconfig" at $KUBECONFIG is a TSV: context, cluster, user, cluster OCID;
 # its current context is in "$KUBECONFIG.current". Node state lives in $SIM_STATE.
 # Knobs: SIM_DNS=pending   kube-dns (CoreDNS) pods never become Ready
+#        (system node: "$SIM_STATE/sysnode"; add-on state: "$SIM_STATE/addon")
 #        SIM_PV_STUCK=1    PVs survive their PVC's deletion (CSI never deletes them)
 # PersistentVolumes: "$SIM_STATE/pvs", TSV name, volumeHandle, bound PVC ("-" if none).
 set -u
@@ -36,6 +37,10 @@ case "$a" in
   "config "*) : ;;
   *cluster-info*) ctx_ok || exit 1; [ -f "$st/cluster" ] || exit 1 ;;
 
+  "get nodes -l !nvidia.com/gpu.present "*)
+      ctx_ok || exit 1
+      [ -f "$st/sysnode" ] && printf 'system-node-1\tTrue\n'
+      exit 0 ;;
   "get nodes -l "*)
       ctx_ok || exit 1
       node_up || exit 0
@@ -50,13 +55,18 @@ case "$a" in
   "get node "*ephemeral-storage*)
       ctx_ok || exit 1; node_up || exit 1; printf '%s' "$(cat "$st/node.eph")" ;;
 
-  "-n kube-system run "*)
-      case "$a" in
-        *oci-growfs*) touch "$st/growfs.ran" ;;
-        *systemctl*restart*kubelet*) [ -f "$st/growfs.ran" ] && [ -z "${SIM_GROWFS_NOEFFECT:-}" ] && echo 476Gi > "$st/node.eph" ;;
-      esac
-      echo "pod/${args[3]} created" ;;
-  "-n kube-system wait "*|"-n kube-system delete pod "*|"-n kube-system logs "*) : ;;
+  "-n kube-system get pods -o jsonpath="*)
+      ctx_ok || exit 1
+      [ -f "$st/sysnode" ] && [ "${SIM_DNS:-ready}" != pending ] && printf 'coredns-sim\tRunning\tsystem-node-1\n'
+      if [ "$(cat "$st/addon" 2>/dev/null)" = ACTIVE ] && [ -f "$st/sysnode" ]; then
+          printf 'cluster-autoscaler-sim-1\tRunning\tsystem-node-1\n'
+      elif [ -f "$st/addon" ]; then
+          printf 'cluster-autoscaler-sim-1\tPending\t\n'
+      fi ;;
+  "-n kube-system get daemonsets -o jsonpath="*)
+      ctx_ok || exit 1
+      printf 'kube-proxy\n'
+      if [ -f "$st/dp.applied" ] || [ "${SIM_GPU:-after-apply}" = preinstalled ]; then printf 'nvidia-device-plugin-daemonset\n'; fi ;;
 
   "apply -f "*nvidia-device-plugin*)
       touch "$st/dp.applied"
@@ -69,7 +79,9 @@ case "$a" in
   "get pods -n kube-system -o wide")
       ctx_ok || exit 1
       if [ "${SIM_DNS:-ready}" = pending ]; then st_dns=Pending; else st_dns=Running; fi
-      printf 'NAME          READY   STATUS    NODE\ncoredns-sim   0/1     %s   <none>\n' "$st_dns" ;;
+      printf 'NAME          READY   STATUS    NODE\ncoredns-sim   0/1     %s   <none>\n' "$st_dns"
+      [ -f "$st/addon" ] && [ "$(cat "$st/addon")" != ACTIVE ] && printf 'cluster-autoscaler-sim-1   0/1     Pending   <none>\n'
+      exit 0 ;;
   "describe pods -n kube-system -l k8s-app=kube-dns")
       ctx_ok || exit 1
       printf 'Name: coredns-sim\nTolerations: CriticalAddonsOnly op=Exists\nEvents:\n  Warning  FailedScheduling  0/1 nodes are available: 1 node(s) had untolerated taint {nvidia.com/gpu: present}\n' ;;

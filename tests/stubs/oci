@@ -3,6 +3,7 @@
 # Never touches the network.
 #   STUB_CLUSTER=present  cluster list reports one live cluster (default absent)
 #   STUB_GPU_AVAILABLE    value for `limits resource-availability get` (default 1)
+#   STUB_NODEPOOL_SIZE    value for `ce node-pool get` size query (default 0)
 #   STUB_K8S_VERSIONS     JSON list for `ce cluster-options get` (default ["v1.33.1","v1.34.1"])
 echo "oci $*" >> "${STUB_LOG:-/dev/null}"
 # Region each call would target (the OCI CLI reads OCI_CLI_REGION; --region wins).
@@ -19,6 +20,7 @@ case "$*" in
     fi
     ;;
   "ce node-pool list"*) echo '[]' ;;
+  "ce node-pool get"*) echo "${STUB_NODEPOOL_SIZE:-0}" ;;   # --query size --raw-output form
   "ce cluster-options get"*)
     echo "{\"data\":{\"kubernetes-versions\":${STUB_K8S_VERSIONS:-[\"v1.33.1\",\"v1.34.1\"]}}}"
     ;;

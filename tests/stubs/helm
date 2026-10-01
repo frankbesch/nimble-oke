@@ -1,5 +1,16 @@
 #!/bin/bash
 # Stub helm for tests: logs and refuses, so an unexpected real deploy path is visible.
+#   STUB_HELM_OK=1  succeed instead (tests/run_measured_autoscale_test.sh U9); a
+#                   values file read from stdin (-f -) is not stored: only its
+#                   size and whether it holds an apiKey line are logged
 echo "helm $*" >> "${STUB_LOG:-/dev/null}"
+if [[ "${STUB_HELM_OK:-}" == "1" ]]; then
+  if [[ " $* " == *" -f - "* ]]; then
+    in="$(cat)"
+    has=no; [[ "${in}" == *"apiKey:"* ]] && has=yes
+    echo "helm-stdin bytes=${#in} apiKey_line=${has}" >> "${STUB_LOG:-/dev/null}"
+  fi
+  exit 0
+fi
 echo "helm stub: not available in tests" >&2
 exit 1

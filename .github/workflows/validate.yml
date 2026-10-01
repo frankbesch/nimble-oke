@@ -34,6 +34,7 @@ jobs:
         run: |
           bash tests/run_measured_test.sh
           bash tests/run_measured_reliability_test.sh
+          bash tests/run_measured_autoscale_test.sh
           bash tests/live_path_test.sh
 
   validate-chart:

@@ -9,20 +9,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/_lib.sh"
 source "${SCRIPT_DIR}/_lib_audit.sh"
 
-# Kube context pin: provision-cluster.sh records KUBE_CONTEXT=<name> in
-# cluster-info.txt. When present, every kubectl/helm call made by this script
-# (including the _lib.sh helpers it calls) targets that context. The user's
-# current-context is never changed. No KUBE_CONTEXT line: behaviour unchanged.
-# NIMBLE_CLUSTER_INFO overrides the file path (tests only).
-NIMBLE_CLUSTER_INFO="${NIMBLE_CLUSTER_INFO:-${SCRIPT_DIR}/cluster-info.txt}"
-KUBE_CONTEXT_PIN=""
-if [[ -f "$NIMBLE_CLUSTER_INFO" ]]; then
-    KUBE_CONTEXT_PIN="$(sed -n 's/^KUBE_CONTEXT=//p' "$NIMBLE_CLUSTER_INFO" | tail -1)"
-fi
-if [[ -n "$KUBE_CONTEXT_PIN" ]]; then
-    export HELM_KUBECONTEXT="$KUBE_CONTEXT_PIN"
-    kubectl() { command kubectl --context "$KUBE_CONTEXT_PIN" "$@"; }
-fi
+# Kube context pin and per-request kubectl timeout (scripts/_lib.sh):
+# KUBE_CONTEXT from cluster-info.txt (NIMBLE_CLUSTER_INFO in tests), the
+# user's current-context never changed. Sets KUBE_CONTEXT_PIN.
+nimble_pin_kube_context
 
 readonly DEFAULT_GPU_SHAPE="VM.GPU.A10.1"
 readonly DEFAULT_REQUIRED_GPUS=1

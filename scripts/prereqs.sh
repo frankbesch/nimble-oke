@@ -8,20 +8,10 @@ source "${SCRIPT_DIR}/_lib.sh"
 # list_availability_domains, check_gpu_shape_capacity) live here.
 source "${SCRIPT_DIR}/_lib_audit.sh"
 
-# Kube context pin: provision-cluster.sh records KUBE_CONTEXT=<name> in
-# cluster-info.txt. When present, every kubectl/helm call made by this script
-# (including the _lib.sh helpers it calls) targets that context. The user's
-# current-context is never changed. No KUBE_CONTEXT line: behaviour unchanged.
-# NIMBLE_CLUSTER_INFO overrides the file path (tests only).
-NIMBLE_CLUSTER_INFO="${NIMBLE_CLUSTER_INFO:-${SCRIPT_DIR}/cluster-info.txt}"
-KUBE_CONTEXT_PIN=""
-if [[ -f "$NIMBLE_CLUSTER_INFO" ]]; then
-    KUBE_CONTEXT_PIN="$(sed -n 's/^KUBE_CONTEXT=//p' "$NIMBLE_CLUSTER_INFO" | tail -1)"
-fi
-if [[ -n "$KUBE_CONTEXT_PIN" ]]; then
-    export HELM_KUBECONTEXT="$KUBE_CONTEXT_PIN"
-    kubectl() { command kubectl --context "$KUBE_CONTEXT_PIN" "$@"; }
-fi
+# Kube context pin and per-request kubectl timeout (scripts/_lib.sh):
+# KUBE_CONTEXT from cluster-info.txt (NIMBLE_CLUSTER_INFO in tests), the
+# user's current-context never changed. Sets KUBE_CONTEXT_PIN.
+nimble_pin_kube_context
 
 check_tool() {
     local tool="$1"
@@ -258,6 +248,15 @@ sys.exit(0 if ok else 1)
     return 0
 }
 
+# Autoscale mode (AUTOSCALE=1 in the environment or in cluster-info.txt): the
+# GPU pool starts at 0 nodes, so the GPU-node and GPU-allocatable checks are
+# skipped; the cluster autoscaler adds the node once the NIM pod is Pending.
+prereq_autoscale() {
+    local info="${NIMBLE_CLUSTER_INFO:-${SCRIPT_DIR}/cluster-info.txt}"
+    [[ "${AUTOSCALE:-0}" == "1" ]] && return 0
+    [[ -f "$info" ]] && [[ "$(sed -n 's/^AUTOSCALE=//p' "$info" | tail -1)" == "1" ]]
+}
+
 main() {
     log_info "Checking prerequisites..."
     
@@ -297,8 +296,13 @@ main() {
     
     echo ""
     echo "=== Cluster Requirements ==="
-    check_cluster_gpu_nodes || failed=$((failed + 1))
-    check_nvidia_device_plugin || failed=$((failed + 1))
+    if prereq_autoscale; then
+        log_info "GPU nodes: skipped (autoscale: GPU pool starts at 0)"
+        log_info "NVIDIA GPU allocatable: skipped (autoscale: GPU pool starts at 0)"
+    else
+        check_cluster_gpu_nodes || failed=$((failed + 1))
+        check_nvidia_device_plugin || failed=$((failed + 1))
+    fi
     
     echo ""
     echo "=== OCI Service Limits ==="
