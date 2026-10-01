@@ -407,7 +407,7 @@ provision_preemptible_cluster() {
         setup_preemption_monitoring
         
         # Monitor initial status
-        monitor_preemptible_status
+        monitor_preemptible_status "${PREEMPTIBLE_POOL_NAME:-nim-preemptible-gpu-pool}"
         
         return 0
     else
@@ -428,7 +428,7 @@ provision_preemptible_cluster() {
 # status; before, it was passed on as the node count.
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     if [[ "${1:-}" == "monitor" ]]; then
-        monitor_preemptible_status
+        monitor_preemptible_status "${PREEMPTIBLE_POOL_NAME:-nim-preemptible-gpu-pool}"
     else
         provision_preemptible_cluster "$@"
     fi
