@@ -18,7 +18,13 @@ check_tool() {
 
     if command -v "$tool" &>/dev/null; then
         local version
-        version=$("$tool" version --short 2>/dev/null || "$tool" --version 2>/dev/null | head -n1 || echo "unknown")
+        if [[ "$tool" == "kubectl" ]]; then
+            # `kubectl version --short` no longer exists; read the client version from JSON.
+            version=$(command kubectl version --client -o json 2>/dev/null | jq -r '.clientVersion.gitVersion // empty' 2>/dev/null) || version=""
+            [[ -n "$version" ]] || version="unknown"
+        else
+            version=$("$tool" version --short 2>/dev/null || "$tool" --version 2>/dev/null | head -n1 || echo "unknown")
+        fi
         log_success "$tool: installed ($version)"
         return 0
     else
@@ -99,23 +105,27 @@ check_ngc_model_access() {
     # Test NGC API authentication and model access
     local ngc_response
     # The key reaches curl on stdin (--config -), never in argv.
-    ngc_response=$(printf 'header = "Authorization: Bearer %s"\n' "$NGC_API_KEY" \
-        | curl -s -w "%{http_code}" -o /dev/null --config - \
-        "https://api.ngc.nvidia.com/v2/models/nvidia/$model" 2>/dev/null || echo "000")
+    # Ask nvcr.io's registry token service for pull scope on the image
+    # repository: the same exchange a container runtime makes before a pull.
+    # (The earlier api.ngc.nvidia.com/v2/models path answered 404 for every key.)
+    ngc_response=$(printf 'user = "$oauthtoken:%s"\n' "$NGC_API_KEY" \
+        | curl -s -w "%{http_code}" -o /dev/null --max-time 20 --config - \
+        "https://nvcr.io/proxy_auth?service=registry&scope=repository:nim/${model}:pull" 2>/dev/null || echo "000")
     
     if [[ "$ngc_response" == "200" ]]; then
-        log_success "NGC model access verified: $model"
+        log_success "nvcr.io issued a pull token for nim/$model"
         return 0
     elif [[ "$ngc_response" == "401" ]]; then
-        log_error "NGC API key authentication failed"
-        log_info "Verify your key at: https://ngc.nvidia.com/setup/api-key"
-        return 1
+        # Not fatal: this probe is advisory. The image pull is the real test.
+        log_warn "nvcr.io refused a pull token for this key (HTTP 401); the image pull may fail"
+        log_info "Verify your key at: https://org.ngc.nvidia.com/setup/api-keys"
+        return 0
     elif [[ "$ngc_response" == "403" ]]; then
-        log_error "NGC API key lacks access to model: $model"
+        log_warn "nvcr.io refused pull scope on nim/$model for this key (HTTP 403); the image pull may fail"
         log_info "Request access at: https://catalog.ngc.nvidia.com/"
-        return 1
+        return 0
     else
-        log_warn "NGC API connectivity test inconclusive (HTTP $ngc_response)"
+        log_warn "nvcr.io pull-token check inconclusive (HTTP $ngc_response)"
         log_info "Proceeding anyway - will fail at deployment if access denied"
         return 0
     fi

@@ -507,11 +507,18 @@ get_oke_cluster_quota() {
         return 1
     fi
     
-    local value
-    if ! value=$(oci limits value list \
-            --compartment-id "$compartment_id" \
-            --service-name container-engine \
-            --query 'data[?name==`cluster-count`].value | [0]' \
+    # Service limits are read with the tenancy OCID, not a compartment
+    # (live run 2026-10-01: "'compartmentId' must be the tenancy OCID").
+    # The kit creates enhanced clusters, so that is the limit to read.
+    local value tenancy="${OCI_TENANCY_ID:-}"
+    if [[ -z "$tenancy" ]]; then
+        tenancy=$(awk -F= '/^[ \t]*tenancy[ \t]*=/{gsub(/[ \t]/,"",$2); print $2; exit}' \
+            "${OCI_CLI_CONFIG_FILE:-$HOME/.oci/config}" 2>/dev/null) || tenancy=""
+    fi
+    if [[ -z "$tenancy" ]] || ! value=$(oci limits value list \
+            --compartment-id "$tenancy" \
+            --service-name container-engine --all \
+            --query 'data[?name==`enhanced-cluster-count`].value | [0]' \
             --raw-output 2>/dev/null) || ! [[ "$value" =~ ^[0-9]+$ ]]; then
         echo "[NIM-OKE][ERROR] get_oke_cluster_quota: limit query failed or returned '${value:-}'" >&2
         echo "0"

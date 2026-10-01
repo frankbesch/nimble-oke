@@ -161,7 +161,8 @@ validate_kubernetes_connectivity() {
     
     # Check cluster version
     local k8s_version
-    k8s_version=$(kubectl version --short 2>/dev/null | grep "Server Version" | awk '{print $3}' || echo "unknown")
+    k8s_version=$(kubectl version -o json 2>/dev/null | jq -r '.serverVersion.gitVersion // empty' 2>/dev/null) || k8s_version=""
+    [[ -n "$k8s_version" ]] || k8s_version="unknown"
     record_validation "k8s_version" "INFO" "Kubernetes version: $k8s_version"
     
     if [[ "$k8s_ok" == "true" ]]; then

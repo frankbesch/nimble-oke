@@ -184,7 +184,7 @@ OCI API; the measured run does that.
 
 | Defect | Fix |
 |--------|-----|
-| An NGC API key was committed in `helm/values.yaml` | Removed. The chart now requires the key at install. CI scans for key-shaped strings. |
+| An NGC API key was committed in `helm/values.yaml` | Removed, and the key deleted at NGC. The chart now requires the key at install. CI scans for key-shaped strings. |
 | A failed provision left the cluster running with no local record | Each OCID is recorded when it is created. The failure trap deletes what the run started. |
 | Teardown printed "charges stopped" when deletes failed | Each delete is confirmed. On failure, teardown keeps its state file and exits non-zero. |
 | Teardown waited on a state the OCI CLI does not accept, so cluster deletes failed silently | It now waits on the work request, then checks the resource is deleted. |

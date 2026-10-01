@@ -11,7 +11,8 @@ source "${SCRIPT_DIR}/_lib.sh"
 check_kubectl_installed() {
     if command -v kubectl &>/dev/null; then
         local version
-        version=$(kubectl version --client --short 2>/dev/null || kubectl version --client 2>/dev/null | head -1 || echo "unknown")
+        version=$(kubectl version --client -o json 2>/dev/null | jq -r '.clientVersion.gitVersion // empty' 2>/dev/null) || version=""
+        [[ -n "$version" ]] || version="unknown"
         log_success "kubectl: installed ($version)"
         return 0
     else

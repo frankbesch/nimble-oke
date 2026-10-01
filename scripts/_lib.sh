@@ -460,7 +460,7 @@ get_cluster_info() {
     
     case "$key" in
         version)
-            kubectl version --short 2>/dev/null | grep "Server Version" | awk '{print $3}'
+            kubectl version -o json 2>/dev/null | jq -r '.serverVersion.gitVersion // empty'
             ;;
         nodes)
             kubectl get nodes --no-headers 2>/dev/null | wc -l | tr -d ' '
