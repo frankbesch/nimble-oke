@@ -199,25 +199,37 @@ OCI API; the measured run does that.
 ## OKE compared with GKE
 
 This kit has a companion, [nim-gke](https://github.com/frankbesch/nim-gke),
-that does the same job on Google Kubernetes Engine. The two platforms reach
-the same result. OKE needs more explicit setup. The table lists what each kit
-has to do itself.
+that does the same job on Google Kubernetes Engine: deploy NIM with Helm,
+track cost, clean up, and measure GPU node autoscaling. The two platforms
+reach the same result. OKE needs more explicit setup. The table lists what
+each kit has to do itself.
 
-| Task | OKE, this kit | GKE, nim-gke |
-|------|---------------|--------------|
-| Network rules for node registration | The kit creates two security lists: workers to the API endpoint on 6443 and 12250, the control plane to workers, and node to node. | The cluster create command sets up the rules. |
-| Subnets | The kit creates an API endpoint subnet and a worker subnet. A node pool cannot share the service load-balancer subnet. | The cluster create command uses the default network. |
-| Root filesystem on a large boot volume | The node pool runs `oci-growfs` in cloud-init. Without it the filesystem stays near 35 GB. | The disk size flag takes effect without a further step. |
-| GPU device plugin | The kit checks for an allocatable GPU and applies the NVIDIA device plugin if none is reported. | The platform installs the device plugin on GPU node pools. |
-| Cluster autoscaler | The kit installs the Cluster Autoscaler add-on, which runs on a worker node. It needs a node pool it does not manage. | Autoscaling is a flag on the node pool. It runs in the managed control plane. |
-| Autoscaler permissions | A dynamic group and a six-statement policy, created once by the account owner. | None to create. |
-| Scale from zero GPU nodes | Supported by the autoscaler's code. Oracle's documentation does not state it. The pool carries a tag that tells the autoscaler the node's storage. | Documented. Minimum nodes can be zero. |
-| Deleted-resource checks | A delete is confirmed by its work request, then by reading the resource state. | A delete command waits for completion. |
+| Task | OKE, nimble-oke | GKE, nim-gke |
+|------|-----------------|--------------|
+| Hardware and image | `VM.GPU.A10.1`, one NVIDIA A10 (24 GB). Own Helm chart. `llama3-8b-instruct:1.0.3`. | `g2-standard-4`, one NVIDIA L4 (24 GB). NVIDIA's `nim-llm` chart 1.3.0. `llama3-8b-instruct:1.0.0`. |
+| Network rules for node registration | The kit creates two security lists: workers to the API endpoint on 6443 and 12250, the control plane to workers, and node to node. | GKE creates the ingress firewall rules when it creates the cluster. The kit sets none. |
+| Subnets | The kit creates an API endpoint subnet and a worker subnet. A node pool cannot use the cluster's service load-balancer subnet. | The kit passes no network flags and uses the project's default network. |
+| Root filesystem | The GPU node pool runs `oci-growfs` in cloud-init. Without it the root filesystem stays near 35 GB whatever the boot volume size. | The kit uses the default boot disk and has no resize step. |
+| GPU drivers and device plugin | The GPU node image carries the drivers. The kit checks for an allocatable GPU and applies the NVIDIA device plugin if none is reported. | The node pool sets `gpu-driver-version`, and GKE installs the drivers. The kit applies no device plugin. |
+| GPU taint and toleration | The autoscaler treats GPU nodes as tainted `nvidia.com/gpu:NoSchedule`. The chart carries the toleration. | GKE adds the taint `nvidia.com/gpu=present:NoSchedule` and adds the toleration to pods that request a GPU. |
+| System node | One CPU node pool that the autoscaler does not manage. Oracle requires it to run the autoscaler and cluster add-ons. | The default CPU node pool runs system pods. Google states that a Standard cluster keeps at least one node for them. |
+| Cluster autoscaler | The kit installs the Cluster Autoscaler add-on with `min:max:pool` and its scale-down timers. | Three flags on the node pool: `--enable-autoscaling`, `--min-nodes`, `--max-nodes`. The kit deploys no autoscaler. |
+| Autoscaler permissions | A dynamic group and a six-statement policy, created once by the account owner. | The kit creates none. |
+| GPU pool from zero nodes | Supported by the autoscaler's code. Oracle's documentation does not state it. The pool carries a tag that tells the autoscaler the node's storage. | Measured once: 0 to 1 to 0 on one L4, in nim-gke run 3. |
+| GPU quota | A service limit per availability domain, `gpu-a10-count`. The default is 0. | A project quota, `GPUS_ALL_REGIONS`, plus the regional GPU quota. |
+| Confirming a delete | A delete returns a work request. The kit waits for it, then reads the resource state. | `gcloud` waits for the delete. The kit then checks for a leftover model-store disk. |
+| Cluster fee | $0.10 per hour for an enhanced cluster. Basic clusters are free and cannot run the add-on. | The zonal cluster fee applies on both paths. |
 
 None of these is a defect in either platform. They are the steps a script
-must own on OKE and can leave to the platform on GKE. Each row for OKE is
-covered by a stubbed test here. The measured runs in [docs/runs/](docs/runs/)
-show which rows are proven against the real API.
+must own on OKE and can leave to the platform on GKE. The same table appears
+in both repositories.
+
+Sources: each kit's own scripts for what the kit does. For platform
+behaviour, Google's GKE documentation on GPUs, firewall rules, and the
+cluster autoscaler, and Oracle's OKE documentation on the Cluster Autoscaler
+add-on, custom cloud-init, and GPU workloads, read on 2026-10-01. The measured
+runs in each repository's `docs/runs/` show which rows are proven against the
+real API.
 
 ## Repository layout
 
