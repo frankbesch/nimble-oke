@@ -6,6 +6,9 @@
 #   R8 preflight fails R9 NGC key never in OUT_DIR files or child argv
 #   D1/D2 preflight detectors vs fixtures   R12 --preflight-only
 #   B1 bench.py against a local stub NIM server (127.0.0.1 only)
+#   R1 also: receipt.md (no OCIDs/IPs) and kube context pinning
+#   R13 busy NIM_LOCAL_PORT -> free port, passed to bench   R14 port-forward dies -> fast fail
+#   P1 bc / curl missing -> preflight FAIL   D3 pinned Kubernetes version not offered
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -40,7 +43,11 @@ mkfake() {  # $1 name, $2 body (after logging the call)
   chmod +x "${FAKE_DIR}/$1"
 }
 mkfake fake_preflight 'exit "${FAKE_PREFLIGHT_EXIT:-0}"'
-mkfake fake_provision 'sleep "${FAKE_PROVISION_SLEEP:-0}"; exit "${FAKE_PROVISION_EXIT:-0}"'
+mkfake fake_provision '
+if [[ -n "${FAKE_PROVISION_INFO:-}" ]]; then
+  printf "CLUSTER_ID=ocid1.cluster.oc1.phx.fakeclusterid\nNODE_POOL_ID=ocid1.nodepool.oc1.phx.fakepoolid\nGPU_SHAPE=VM.GPU.A10.1\nKUBE_CONTEXT=stub-ctx\n" > "${NIMBLE_CLUSTER_INFO}"
+fi
+sleep "${FAKE_PROVISION_SLEEP:-0}"; exit "${FAKE_PROVISION_EXIT:-0}"'
 cat > "${FAKE_DIR}/fake_deploy" <<'EOF2'
 #!/bin/bash
 echo "fake_deploy $*" >> "${CALLS_LOG}"
@@ -75,7 +82,8 @@ FAIL=0
 reset() {
   : > "${STUB_LOG}"; : > "${CALLS_LOG}"
   unset FAKE_PREFLIGHT_EXIT FAKE_PROVISION_SLEEP FAKE_PROVISION_EXIT FAKE_DEPLOY_LEAK \
-        FAKE_DEPLOY_SLEEP FAKE_DEPLOY_EXIT FAKE_READY_EXIT FAKE_BENCH_EXIT FAKE_TEARDOWN_EXIT
+        FAKE_DEPLOY_SLEEP FAKE_DEPLOY_EXIT FAKE_READY_EXIT FAKE_BENCH_EXIT FAKE_TEARDOWN_EXIT \
+        FAKE_PROVISION_INFO NIMBLE_CLUSTER_INFO NIM_LOCAL_PORT STUB_PF_EXIT STUB_PF_SERVE STUB_K8S_VERSIONS
   export STUB_CLUSTER=absent
 }
 count() { grep -c "^fake_$1" "${CALLS_LOG}" 2>/dev/null || true; }
@@ -97,11 +105,33 @@ report() {  # $1 id, $2 pass(true/false), $3 detail, $4 OUT_DIR
   fi
 }
 
+receipt_ok() {  # $1 OUT_DIR: receipt.md exists, has every section, no OCID/IP/dummy key
+  local r="$1/receipt.md"
+  [[ -f "${r}" ]] || return 1
+  python3 - "${r}" <<'PY2' || return 1
+import re, sys
+t = open(sys.argv[1]).read()
+need = ["# Measured run receipt", "- Date (UTC): ", "- Region: ", "- Shape: ", "- Image: ",
+        "- Kubernetes version: ", "## Phases (seconds)", "## Cost", "- Billable seconds",
+        "- Estimated cost (USD): ", "- Rate basis: ", "## Bench", "## Teardown", "- Result: "]
+missing = [n for n in need if n not in t]
+assert not missing, missing
+assert re.search(r"^- bench: \d+ \(rc 0\)$", t, re.M), "bench phase line"
+assert re.search(r"^- Estimated cost \(USD\): [0-9.]+$", t, re.M), "cost line"
+assert "ocid1." not in t and "DUMMYKEY" not in t
+assert not re.search(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", t), "IPv4 in receipt"
+PY2
+}
+
 # --- R1: success path ---
 reset
 O="${TMP_DIR}/outR1"
+export FAKE_PROVISION_INFO=1 NIMBLE_CLUSTER_INFO="${TMP_DIR}/r1-cluster-info.txt"
 set +e; "${RUNNER}" "${O}" > "${TMP_DIR}/r1.out" 2>&1; rc=$?; set -e
 pass=true
+receipt_ok "${O}" || pass=false
+grep -q '^kubectl --context stub-ctx version' "${STUB_LOG}" || pass=false
+grep -q '^KUBE_CONTEXT=stub-ctx$' "${O}/.oke_ids" || pass=false
 [[ "${rc}" -eq 0 ]] || pass=false
 [[ "$(count teardown)" -eq 1 ]] || pass=false
 order="$(grep ' START ' "${O}/phases.log" | awk '{print $2}' | tr '\n' ' ')"
@@ -114,6 +144,8 @@ echo "  phases.log:"; sed 's/^/    /' "${O}/phases.log"
 echo "  summary.json (excerpt):"
 python3 -c 'import json,sys; s=json.load(open(sys.argv[1])); print("    " + json.dumps({k: s[k] for k in ("live_run","runner_exit_code","shape","region","image","k8s_version","phase_seconds","billable_seconds","estimated_cost_usd","bench_ok","teardown")}))' "${O}/summary.json"
 echo "  watchdog.log last line: $(tail -1 "${O}/watchdog.log")"
+echo "  receipt.md:"; sed 's/^/    /' "${O}/receipt.md"
+echo "  stub kubectl calls: $(grep '^kubectl' "${STUB_LOG}" | tr '\n' ';')"
 
 # --- R2: deploy hook fails ---
 reset
@@ -186,6 +218,8 @@ pass=true
 [[ "${argv_hits}" -eq 0 ]] || pass=false
 [[ "${saw_deploy}" -gt 0 && "${saw_watchdog}" -gt 0 ]] || pass=false
 [[ "${redacted}" -ge 4 && "${leak_ran}" -eq 1 ]] || pass=false
+{ [[ -f "${O}/receipt.md" ]] && ! grep -q DUMMYKEY "${O}/receipt.md"; } || pass=false
+! ls -d "${TMPDIR:-/tmp}"/nimble-deploy.* >/dev/null 2>&1 || pass=false
 report R9 "${pass}" "rc=${rc} files_with_key=[${file_hits}] ps_samples=${samples} argv_lines_with_key=${argv_hits} sampled_fake_deploy_lines=${saw_deploy} sampled_watchdog_lines=${saw_watchdog} redacted_lines_in_deploy.log=${redacted}" "${O}"
 echo "  deploy.log (the fake printed the key 4 ways):"; sed 's/^/    /' "${O}/deploy.log"
 
@@ -309,6 +343,103 @@ pass=true
 python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["ok"] and d["n_ok"]==3 and d["tokens_per_s"]["p50"]>0 and "p50" in d["ttfr_s"]' "${TMP_DIR}/b1.json" || pass=false
 ! grep -q DUMMYKEY "${TMP_DIR}/b1.json" "${TMP_DIR}/b1.out" || pass=false
 report B1 "${pass}" "rc=${brc} $(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print("model=%s n_ok=%s ttfr_s=%s tokens_per_s=%s" % (d["model"], d["n_ok"], d["ttfr_s"], d["tokens_per_s"]))' "${TMP_DIR}/b1.json")" "${TMP_DIR}"
+
+# --- R13: NIM_LOCAL_PORT busy -> runner picks a free port, forwards it, and passes it to bench ---
+reset
+O="${TMP_DIR}/outR13"
+BUSY_FILE="${TMP_DIR}/busyport"
+python3 -c 'import socket,sys,time; s=socket.socket(); s.bind(("127.0.0.1",0)); s.listen(1); open(sys.argv[1],"w").write(str(s.getsockname()[1])); time.sleep(120)' "${BUSY_FILE}" &
+busy_pid=$!
+for _ in 1 2 3 4 5 6 7 8 9 10; do [[ -s "${BUSY_FILE}" ]] && break; sleep 0.3; done
+busy="$(cat "${BUSY_FILE}")"
+export NIM_LOCAL_PORT="${busy}" STUB_PF_SERVE=1 READY_TIMEOUT_SEC=30
+export FAKE_PROVISION_INFO=1 NIMBLE_CLUSTER_INFO="${TMP_DIR}/r13-cluster-info.txt"
+set +e; env -u RUNNER_READY "${RUNNER}" "${O}" > "${TMP_DIR}/r13.out" 2>&1; rc=$?; set -e
+kill "${busy_pid}" 2>/dev/null || true; wait "${busy_pid}" 2>/dev/null || true
+export READY_TIMEOUT_SEC=3
+pf_line="$(grep '^kubectl .*port-forward' "${STUB_LOG}" | head -1)"
+pf_port="$(printf '%s' "${pf_line}" | sed -n 's/.* \([0-9][0-9]*\):8000.*/\1/p')"
+pass=true
+[[ "${rc}" -eq 0 ]] || pass=false
+[[ -n "${pf_port}" && "${pf_port}" != "${busy}" ]] || pass=false
+[[ "${pf_line}" == "kubectl --context stub-ctx port-forward"* ]] || pass=false
+grep -q "^fake_bench --url http://127.0.0.1:${pf_port} --out " "${CALLS_LOG}" || pass=false
+grep -q "NIM_LOCAL_PORT ${busy} is in use" "${O}/runner.log" || pass=false
+receipt_ok "${O}" || pass=false
+[[ -z "$(wd_alive "${O}")" ]] || pass=false
+report R13 "${pass}" "rc=${rc} busy=${busy} forwarded=${pf_port} | ${pf_line} | $(grep '^fake_bench' "${CALLS_LOG}")" "${O}"
+
+# --- R14: port-forward dies at once -> ready fails fast (not after READY_TIMEOUT_SEC) ---
+reset
+O="${TMP_DIR}/outR14"
+export STUB_PF_EXIT=1 READY_TIMEOUT_SEC=300
+t0=$(date +%s)
+set +e; env -u RUNNER_READY "${RUNNER}" "${O}" > "${TMP_DIR}/r14.out" 2>&1; rc=$?; set -e
+el=$(( $(date +%s) - t0 ))
+export READY_TIMEOUT_SEC=3
+pass=true
+[[ "${rc}" -ne 0 ]] || pass=false
+(( el < 60 )) || pass=false
+grep -q "port-forward to svc/nvidia-nim exited at once 3 times" "${O}/runner.log" || pass=false
+grep -q "^PHASE ready END [0-9]* rc=1$" "${O}/phases.log" || pass=false
+[[ "$(count teardown)" -eq 1 && "$(count bench)" -eq 0 ]] || pass=false
+[[ -z "$(wd_alive "${O}")" ]] || pass=false
+report R14 "${pass}" "rc=${rc} elapsed=${el}s (READY_TIMEOUT_SEC=300) teardown_calls=$(count teardown) | $(grep -h 'ready FAILED' "${O}/runner.log" | cut -d' ' -f2-)" "${O}"
+
+pass=true
+left="$(pgrep -f 'port-forward-stub' || true)"
+[[ -z "${left}" ]] || pass=false
+report R13b "${pass}" "stub port-forward server stopped by the runner: leftover pids=[${left}]" "${TMP_DIR}"
+
+# --- R15: teardown exit 2 (GPU billing stopped, possible orphans) is reported distinctly ---
+reset
+O="${TMP_DIR}/outR15"
+export FAKE_TEARDOWN_EXIT=2
+set +e; "${RUNNER}" "${O}" > "${TMP_DIR}/r15.out" 2>&1; rc=$?; set -e
+pass=true
+[[ "${rc}" -eq 3 ]] || pass=false
+python3 -c 'import json,sys; t=json.load(open(sys.argv[1]))["teardown"]; assert t["result"]=="partial" and t["last_exit_code"]==2 and t["gpu_billing_stopped_possible_orphans"] is True' "${O}/summary.json" || pass=false
+grep -q '^- Result: PARTIAL (teardown exit 2): GPU billing stopped' "${O}/receipt.md" || pass=false
+pkill -f "watchdog-for .*${O}" 2>/dev/null || true
+report R15 "${pass}" "rc=${rc} receipt: $(grep '^- Result:' "${O}/receipt.md" | cut -c1-90)" "${O}"
+
+# --- P1: bc or curl missing -> default preflight fails naming the tool ---
+ORIG_PATH="${PATH}"
+mk_path_without() {  # $1 tool to omit; prints a PATH of symlinked tools
+  local d="${TMP_DIR}/bin-no-$1" t p
+  mkdir -p "${d}"
+  for t in bash env sh date mkdir ls sed awk ps tail head cat rm tr wc grep python3 printf sleep \
+           dirname basename uname mktemp cut sort jq bc curl caffeinate pgrep kill; do
+    [[ "${t}" == "$1" ]] && continue
+    p="$(PATH="${ORIG_PATH}" command -v "${t}" 2>/dev/null || true)"
+    if [[ -n "${p}" && "${p}" == /* ]]; then ln -sf "${p}" "${d}/${t}"; fi
+  done
+  echo "${STUB_DIR}:${FAKE_DIR}:${d}"
+}
+for tool in bc curl; do
+  reset
+  O="${TMP_DIR}/outP1-${tool}"
+  rc=0
+  PATH="$(mk_path_without "${tool}")" env -u RUNNER_PREFLIGHT -u NGC_API_KEY OKE_GPU_SHAPE=VM.GPU.A10.1 \
+    bash "${RUNNER}" --preflight-only "${O}" > "${O}.out" 2>&1 || rc=$?
+  pass=true
+  [[ "${rc}" -ne 0 ]] || pass=false
+  grep -q "^FAIL: required tool not found: ${tool}$" "${O}/preflight.log" || pass=false
+  no_side_effects "${O}" || pass=false
+  report "P1-${tool}" "${pass}" "rc=${rc} | $(grep -m1 '^FAIL' "${O}/preflight.log")" "${O}"
+done
+
+# --- D3: pinned Kubernetes version not offered by OKE -> preflight fails ---
+reset
+O="${TMP_DIR}/outD3"
+export STUB_K8S_VERSIONS='["v1.32.1","v1.33.1"]'
+rc="$(pf_only_default "${O}" "${REAL_CFG}")"
+pass=true
+[[ "${rc}" -ne 0 ]] || pass=false
+grep -q "^FAIL: Kubernetes v[0-9.]* (pinned in provision-cluster.sh) is not offered by OKE" "${O}/preflight.log" || pass=false
+grep -q '^oci ce cluster-options get --cluster-option-id all' "${STUB_LOG}" || pass=false
+no_side_effects "${O}" || pass=false
+report D3 "${pass}" "rc=${rc} | $(grep -m1 '^FAIL' "${O}/preflight.log")" "${O}"
 
 if [[ "${FAIL}" -ne 0 ]]; then echo "RESULT: FAIL"; exit 1; fi
 echo "RESULT: all passed"

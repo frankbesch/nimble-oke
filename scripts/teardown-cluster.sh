@@ -55,13 +55,19 @@ warn_k8s_orphans() {
 cleanup_nim_k8s_resources() {
     log_info "Removing Kubernetes-owned cloud resources before cluster deletion..."
 
-    local ctx_line
-    ctx_line=$(kube_contexts_for_cluster "${CLUSTER_ID:-}" | head -1)
-    if [[ -z "$ctx_line" ]]; then
+    local ctx_lines
+    ctx_lines=$(kube_contexts_for_cluster "${CLUSTER_ID:-}")
+    if [[ -z "$ctx_lines" ]]; then
         warn_k8s_orphans "no kubeconfig context found for cluster ${CLUSTER_ID:-unknown}"
         return 1
     fi
-    KUBE_CTX="${ctx_line%%$'\t'*}"
+    # Prefer the context provision recorded (KUBE_CONTEXT) if it still
+    # authenticates to this cluster; otherwise the first matching context.
+    if [[ -n "${KUBE_CONTEXT:-}" ]] && printf '%s\n' "$ctx_lines" | cut -f1 | grep -Fqx -- "$KUBE_CONTEXT"; then
+        KUBE_CTX="$KUBE_CONTEXT"
+    else
+        KUBE_CTX=$(printf '%s\n' "$ctx_lines" | head -1 | cut -f1)
+    fi
 
     if ! kubectl --context "$KUBE_CTX" --request-timeout=20s cluster-info &>/dev/null; then
         warn_k8s_orphans "context $KUBE_CTX did not answer"
@@ -134,14 +140,43 @@ cleanup_nim_k8s_resources() {
     [[ "$ok" == "yes" ]]
 }
 
-# Delete a subnet or VCN and wait for TERMINATED. $1 kind, $2 flag, $3 OCID.
+# Delete a subnet, security list or VCN and wait for TERMINATED.
+# $1 kind, $2 flag, $3 OCID. A 404 / NotAuthorizedOrNotFound answer means
+# it is already gone (e.g. a previous teardown run deleted it).
 delete_network_resource() {
-    local kind="$1" flag="$2" id="$3"
-    if oci network "$kind" delete "$flag" "$id" --force --wait-for-state TERMINATED --max-wait-seconds 600 >&2; then
+    local kind="$1" flag="$2" id="$3" err rc=0
+    err=$(mktemp "${TMPDIR:-/tmp}/oci-err.XXXXXX")
+    oci network "$kind" delete "$flag" "$id" --force --wait-for-state TERMINATED --max-wait-seconds 600 \
+        2>"$err" >&2 || rc=$?
+    if [[ $rc -eq 0 ]]; then
+        rm -f "$err"
         log_success "$kind deleted: $id"
         return 0
     fi
+    if oci_is_not_found_error < "$err"; then
+        rm -f "$err"
+        log_info "$kind already deleted (not found): $id"
+        return 0
+    fi
+    cat "$err" >&2
+    rm -f "$err"
     log_error "$kind delete failed: $id"
+    return 1
+}
+
+# Print the lifecycle-state of the VCN, NOTFOUND on 404; non-zero otherwise.
+vcn_state() {
+    local err out rc=0
+    err=$(mktemp "${TMPDIR:-/tmp}/oci-err.XXXXXX")
+    out=$(oci network vcn get --vcn-id "$1" --query 'data."lifecycle-state"' --raw-output 2>"$err") || rc=$?
+    if [[ $rc -eq 0 ]]; then
+        rm -f "$err"; printf '%s\n' "$out"; return 0
+    fi
+    if oci_is_not_found_error < "$err"; then
+        rm -f "$err"; printf 'NOTFOUND\n'; return 0
+    fi
+    cat "$err" >&2
+    rm -f "$err"
     return 1
 }
 
@@ -157,13 +192,38 @@ delete_network() {
         log_warn "API_SUBNET_ID not recorded in $INFO_FILE; the API subnet may block VCN deletion"
     fi
 
+    # Security lists can be deleted only after the subnets using them.
+    log_info "Deleting security lists..."
+    local slid any_sl="no"
+    for slid in "${WORKER_SECLIST_ID:-}" "${API_SECLIST_ID:-}"; do
+        [[ -n "$slid" ]] || continue
+        any_sl="yes"
+        if [[ "$ok" != "yes" ]]; then
+            log_error "Skipping security list $slid: a subnet delete is not confirmed"
+            continue
+        fi
+        delete_network_resource security-list --security-list-id "$slid" || ok="no"
+    done
+    [[ "$any_sl" == "yes" ]] || log_info "No security lists recorded"
+
     if [[ -z "${VCN_ID:-}" ]]; then
-        log_warn "VCN_ID not recorded; skipping gateway and VCN deletion"
+        log_info "VCN_ID not recorded; no gateway or VCN to delete"
         [[ "$ok" == "yes" ]]
         return
     fi
-    if [[ "${VCN_CREATED:-yes}" == "no" ]]; then
-        log_info "VCN $VCN_ID was supplied by the user (VCN_OCID); not deleting it or its gateway"
+    if [[ "${VCN_CREATED:-}" != "yes" ]]; then
+        log_info "VCN $VCN_ID was not created by this project (VCN_OCID or a pre-existing VCN); not deleting it, its gateway or its route rules"
+        [[ "$ok" == "yes" ]]
+        return
+    fi
+
+    local vstate
+    if ! vstate=$(vcn_state "$VCN_ID"); then
+        log_error "Could not read VCN $VCN_ID state"
+        return 1
+    fi
+    if [[ "$vstate" == "NOTFOUND" || "$vstate" == "TERMINATED" ]]; then
+        log_info "VCN already deleted (${vstate}): $VCN_ID"
         [[ "$ok" == "yes" ]]
         return
     fi
@@ -191,12 +251,7 @@ delete_network() {
         --raw-output); then
         igw_ids=$(printf '%s' "$igw_ids" | tr -d '[]",' | tr '\t' '\n')
         for igw_id in $igw_ids; do
-            if oci network internet-gateway delete --ig-id "$igw_id" --force --wait-for-state TERMINATED --max-wait-seconds 300 >&2; then
-                log_success "Internet gateway deleted: $igw_id"
-            else
-                log_error "Internet gateway delete failed: $igw_id"
-                ok="no"
-            fi
+            delete_network_resource internet-gateway --ig-id "$igw_id" || ok="no"
         done
     else
         log_error "Listing internet gateways failed"
@@ -232,9 +287,8 @@ main() {
     log_warn "OKE Cluster Teardown"
 
     if [[ ! -f "$INFO_FILE" ]]; then
-        log_error "cluster-info.txt not found"
-        log_info "Cannot determine cluster resources to delete"
-        log_info "Manual cleanup required via OCI Console"
+        log_info "Nothing to tear down: $INFO_FILE not found (no recorded resources)."
+        log_info "A completed teardown removes that file. If resources exist without a record, check the OCI Console."
         exit 1
     fi
 
@@ -253,7 +307,8 @@ main() {
     log_warn "  - NIM Helm release, its PVC (block volume) and Service (load balancer), if reachable"
     log_warn "  - GPU Node Pool: ${NODE_POOL_NAME:-unknown}"
     log_warn "  - OKE Cluster: ${CLUSTER_NAME:-unknown}"
-    log_warn "  - Subnets, internet gateway and VCN: ${VCN_NAME:-unknown}"
+    log_warn "  - Subnets, security lists, internet gateway and VCN: ${VCN_NAME:-unknown}"
+    log_warn "    (the VCN and gateway only if this project created them)"
     echo ""
 
     local force="${FORCE:-no}"
@@ -268,7 +323,26 @@ main() {
 
     local k8s_ok="yes" np_ok="yes" cl_ok="yes" net_ok="yes" verify_ok="yes"
 
-    cleanup_nim_k8s_resources || k8s_ok="no"
+    # N5: Kubernetes-owned cloud resources can exist only on a live cluster.
+    # A cluster never recorded/found, already DELETED or 404 means nothing to do.
+    local cluster_state="UNKNOWN"
+    if [[ -z "${CLUSTER_ID:-}" && -n "${CLUSTER_NAME:-}" ]]; then
+        if CLUSTER_ID=$(oci_find_cluster_id "$OCI_COMPARTMENT_ID" "$CLUSTER_NAME"); then
+            [[ -z "$CLUSTER_ID" ]] && cluster_state="NONE"
+        else
+            log_error "Cluster lookup by name failed"
+            CLUSTER_ID=""
+        fi
+    fi
+    if [[ -n "${CLUSTER_ID:-}" ]]; then
+        cluster_state=$(oci_ce_get_state cluster "$CLUSTER_ID") || cluster_state="UNKNOWN"
+    fi
+    case "$cluster_state" in
+        NONE|DELETED|NOTFOUND)
+            log_info "Kubernetes resources: nothing to do (cluster ${cluster_state}: ${CLUSTER_ID:-never created})" ;;
+        *)
+            cleanup_nim_k8s_resources || k8s_ok="no" ;;
+    esac
 
     log_info "Deleting node pool..."
     if [[ -z "${NODE_POOL_ID:-}" && -n "${NODE_POOL_NAME:-}" ]]; then

@@ -4,6 +4,24 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/_lib.sh"
+# GPU service-limit helpers (get_gpu_service_limit, get_oke_cluster_quota,
+# list_availability_domains, check_gpu_shape_capacity) live here.
+source "${SCRIPT_DIR}/_lib_audit.sh"
+
+# Kube context pin: provision-cluster.sh records KUBE_CONTEXT=<name> in
+# cluster-info.txt. When present, every kubectl/helm call made by this script
+# (including the _lib.sh helpers it calls) targets that context. The user's
+# current-context is never changed. No KUBE_CONTEXT line: behaviour unchanged.
+# NIMBLE_CLUSTER_INFO overrides the file path (tests only).
+NIMBLE_CLUSTER_INFO="${NIMBLE_CLUSTER_INFO:-${SCRIPT_DIR}/cluster-info.txt}"
+KUBE_CONTEXT_PIN=""
+if [[ -f "$NIMBLE_CLUSTER_INFO" ]]; then
+    KUBE_CONTEXT_PIN="$(sed -n 's/^KUBE_CONTEXT=//p' "$NIMBLE_CLUSTER_INFO" | tail -1)"
+fi
+if [[ -n "$KUBE_CONTEXT_PIN" ]]; then
+    export HELM_KUBECONTEXT="$KUBE_CONTEXT_PIN"
+    kubectl() { command kubectl --context "$KUBE_CONTEXT_PIN" "$@"; }
+fi
 
 check_tool() {
     local tool="$1"
@@ -46,7 +64,11 @@ check_kubectl_config() {
     fi
     
     local context
-    context=$(kubectl config current-context 2>/dev/null || echo "none")
+    if [[ -n "$KUBE_CONTEXT_PIN" ]]; then
+        context="$KUBE_CONTEXT_PIN (pinned from cluster-info.txt)"
+    else
+        context=$(kubectl config current-context 2>/dev/null || echo "none")
+    fi
     log_success "kubectl: connected to cluster (context: $context)"
     return 0
 }
@@ -129,8 +151,12 @@ check_service_limits() {
     
     log_info "Verifying OCI service limits..."
     
-    local gpu_limit
-    gpu_limit=$(get_gpu_service_limit "${GPU_SHAPE:-VM.GPU.A10.1}")
+    local gpu_limit=""
+    if ! gpu_limit=$(get_gpu_service_limit "${GPU_SHAPE:-VM.GPU.A10.1}") \
+        || ! [[ "$gpu_limit" =~ ^[0-9]+$ ]]; then
+        log_warn "GPU service limit: unknown (query failed or returned '${gpu_limit}')"
+        return 1
+    fi
     
     if [[ "$gpu_limit" == "0" ]]; then
         log_error "GPU service limit is 0 for ${GPU_SHAPE:-VM.GPU.A10.1}"
@@ -140,8 +166,11 @@ check_service_limits() {
     
     log_success "GPU service limit: $gpu_limit"
     
-    local oke_limit
-    oke_limit=$(get_oke_cluster_quota)
+    local oke_limit=""
+    if ! oke_limit=$(get_oke_cluster_quota) || ! [[ "$oke_limit" =~ ^[0-9]+$ ]]; then
+        log_warn "OKE cluster limit: unknown (query failed or returned '${oke_limit}')"
+        return 1
+    fi
     
     if [[ "$oke_limit" == "0" ]]; then
         log_error "OKE cluster limit is 0"
@@ -154,6 +183,10 @@ check_service_limits() {
     log_info "Checking GPU capacity in availability domains..."
     local ads
     ads=$(list_availability_domains)
+    if [[ -z "$ads" ]]; then
+        log_warn "Availability domains: none listed (query failed); GPU capacity not checked"
+        return 1
+    fi
     local capacity_found=false
     
     for ad in $ads; do
@@ -186,38 +219,56 @@ check_cluster_gpu_nodes() {
     return 0
 }
 
+# The real requirement: the device plugin (whatever installed it) has made at
+# least one node advertise allocatable nvidia.com/gpu >= 1. A DaemonSet label
+# query is not used: the upstream DaemonSet object carries no labels (only its
+# pod template does), so a label selector never matches.
+# Needs kubectl and python3 (python3 parses the node list JSON).
 check_nvidia_device_plugin() {
-    if kubectl get daemonset -n kube-system -l name=nvidia-device-plugin-ds &>/dev/null; then
-        local ready
-        ready=$(kubectl get daemonset -n kube-system -l name=nvidia-device-plugin-ds -o jsonpath='{.items[0].status.numberReady}' 2>/dev/null || echo "0")
-        local desired
-        desired=$(kubectl get daemonset -n kube-system -l name=nvidia-device-plugin-ds -o jsonpath='{.items[0].status.desiredNumberScheduled}' 2>/dev/null || echo "0")
-        
-        if [[ "$ready" == "$desired" ]] && [[ "$ready" != "0" ]]; then
-            log_success "NVIDIA device plugin: installed and ready ($ready/$desired)"
-            return 0
-        else
-            log_warn "NVIDIA device plugin: installed but not fully ready ($ready/$desired)"
-            return 1
-        fi
-    else
-        log_error "NVIDIA device plugin: not installed"
-        log_info "Install with: kubectl apply -f https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.14.0/nvidia-device-plugin.yml"
+    local nodes_json summary
+    if ! nodes_json=$(kubectl get nodes -o json 2>/dev/null); then
+        log_error "NVIDIA GPU allocatable: cannot list nodes (kubectl failed)"
         return 1
     fi
+    if ! summary=$(printf '%s' "$nodes_json" | python3 -c '
+import json, sys
+try:
+    items = json.load(sys.stdin).get("items", [])
+except ValueError:
+    sys.exit(2)
+ok = []
+for n in items:
+    v = n.get("status", {}).get("allocatable", {}).get("nvidia.com/gpu", "0")
+    try:
+        g = int(str(v))
+    except ValueError:
+        g = 0
+    if g >= 1:
+        ok.append("%s=%d" % (n["metadata"]["name"], g))
+print(" ".join(ok))
+sys.exit(0 if ok else 1)
+'); then
+        log_error "NVIDIA GPU allocatable: no node reports allocatable nvidia.com/gpu >= 1"
+        log_info "The NVIDIA device plugin is missing or not ready on the GPU nodes."
+        log_info "Check: kubectl get nodes -o custom-columns=NAME:.metadata.name,GPU:.status.allocatable.nvidia\\.com/gpu"
+        log_info "       kubectl get pods -A | grep -i nvidia"
+        return 1
+    fi
+    log_success "NVIDIA GPU allocatable: $summary"
+    return 0
 }
 
 main() {
     log_info "Checking prerequisites..."
     
-    # Enhanced validation if available
+    # Enhanced validation is advisory. It treats missing GPU nodes as INFO,
+    # so a pass must not skip the critical checks below (GPU allocatable).
     if [[ -x "${SCRIPT_DIR}/pre-execution-validation.sh" ]]; then
-        log_info "Running enhanced validation..."
+        log_info "Running enhanced validation (advisory)..."
         if "${SCRIPT_DIR}/pre-execution-validation.sh" 5 1; then
             log_success "Enhanced validation passed"
-            return 0
         else
-            log_warn "Enhanced validation failed, falling back to basic checks"
+            log_warn "Enhanced validation reported failures (advisory); running critical checks"
         fi
     fi
     
@@ -225,18 +276,19 @@ main() {
     
     echo ""
     echo "=== Required Tools ==="
-    check_tool kubectl || ((failed++))
-    check_tool helm || ((failed++))
-    check_tool oci || ((failed++))
-    check_tool jq || ((failed++))
-    check_tool bc || ((failed++))
+    check_tool kubectl || failed=$((failed + 1))
+    check_tool helm || failed=$((failed + 1))
+    check_tool oci || failed=$((failed + 1))
+    check_tool jq || failed=$((failed + 1))
+    check_tool bc || failed=$((failed + 1))
+    check_tool python3 || failed=$((failed + 1))
     
     echo ""
     echo "=== Configuration ==="
-    check_oci_config || ((failed++))
-    check_kubectl_config || ((failed++))
-    check_oci_compartment || ((failed++))
-    check_ngc_credentials || ((failed++))
+    check_oci_config || failed=$((failed + 1))
+    check_kubectl_config || failed=$((failed + 1))
+    check_oci_compartment || failed=$((failed + 1))
+    check_ngc_credentials || failed=$((failed + 1))
     check_ngc_model_access || log_warn "NGC model access check inconclusive (non-fatal)"
     
     echo ""
@@ -245,8 +297,8 @@ main() {
     
     echo ""
     echo "=== Cluster Requirements ==="
-    check_cluster_gpu_nodes || ((failed++))
-    check_nvidia_device_plugin || ((failed++))
+    check_cluster_gpu_nodes || failed=$((failed + 1))
+    check_nvidia_device_plugin || failed=$((failed + 1))
     
     echo ""
     echo "=== OCI Service Limits ==="

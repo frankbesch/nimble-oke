@@ -3,6 +3,7 @@
 # Never touches the network.
 #   STUB_CLUSTER=present  cluster list reports one live cluster (default absent)
 #   STUB_GPU_AVAILABLE    value for `limits resource-availability get` (default 1)
+#   STUB_K8S_VERSIONS     JSON list for `ce cluster-options get` (default ["v1.33.1","v1.34.1"])
 echo "oci $*" >> "${STUB_LOG:-/dev/null}"
 case "$*" in
   "ce cluster list"*"| [0]"*)   # oci_find_cluster_id form: one id or nothing
@@ -16,6 +17,9 @@ case "$*" in
     fi
     ;;
   "ce node-pool list"*) echo '[]' ;;
+  "ce cluster-options get"*)
+    echo "{\"data\":{\"kubernetes-versions\":${STUB_K8S_VERSIONS:-[\"v1.33.1\",\"v1.34.1\"]}}}"
+    ;;
   "iam region list"*) echo '{"data":[]}' ;;
   "iam availability-domain list"*) echo "Stub:PHX-AD-1" ;;
   "limits resource-availability get"*) echo "${STUB_GPU_AVAILABLE:-1}" ;;

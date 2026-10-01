@@ -165,11 +165,11 @@ main() {
     local failed=0
     
     echo "=== Required Tools ==="
-    check_kubectl_installed || ((failed++))
-    check_helm_installed || ((failed++))
-    check_oci_installed || ((failed++))
-    check_jq_installed || ((failed++))
-    check_bc_installed || ((failed++))
+    check_kubectl_installed || failed=$((failed + 1))
+    check_helm_installed || failed=$((failed + 1))
+    check_oci_installed || failed=$((failed + 1))
+    check_jq_installed || failed=$((failed + 1))
+    check_bc_installed || failed=$((failed + 1))
     
     echo ""
     echo "=== OCI Configuration ==="

@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install shellcheck
-        run: sudo apt-get update && sudo apt-get install -y shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck bc
 
       - name: Syntax check
         run: |
@@ -30,10 +30,11 @@ jobs:
           shellcheck -x -S warning scripts/*.sh setup-env.sh fix-oci-auth.sh
           shellcheck -x -S warning tests/*.sh
 
-      - name: Run runner tests (stubs only, no cloud calls)
+      - name: Run tests (stubs only, no cloud calls)
         run: |
           bash tests/run_measured_test.sh
           bash tests/run_measured_reliability_test.sh
+          bash tests/live_path_test.sh
 
   validate-chart:
     name: Validate Helm chart

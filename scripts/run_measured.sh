@@ -32,6 +32,12 @@
 # RUNNER_DEPLOY, RUNNER_READY (readiness probe, polled until it exits 0),
 # RUNNER_BENCH (called with --out FILE), RUNNER_TEARDOWN, and RUNNER_OKE_CONFIG
 # (fixture path for the preflight detectors). Defaults are this repo's files. summary.json records which hooks were set.
+# NIMBLE_CLUSTER_INFO (test-only, honoured only together with RUNNER_PROVISION)
+# replaces scripts/cluster-info.txt as the file the runner reads.
+#
+# OUT_DIR may sit inside the repo (docs/runs/...). OCIDs appear only in files
+# .gitignore covers there (*.log, .oke_ids). receipt.md is the committable
+# artifact: no OCIDs, no IP addresses, no key.
 set -euo pipefail
 # A dead stdout (closed pane, killed `| tee`) must never kill the runner.
 trap '' PIPE
@@ -54,7 +60,10 @@ Env (optional): OCI_REGION (us-phoenix-1), OKE_GPU_SHAPE (VM.GPU.A10.1),
   NODE_COUNT (1), CLUSTER_NAME (nimble-oke-cluster), OCI_TENANCY_OCID (for the
   GPU limit query; default OCI_COMPARTMENT_ID), WATCHDOG_SEC (5400),
   READY_TIMEOUT_SEC (1800), POLL_SEC (15), CLEANUP_RETRY_SEC (1800),
-  TEARDOWN_RETRY_PAUSE_SEC (30), STEP_STOP_WAIT_SEC (900), NIM_LOCAL_PORT (8000)
+  TEARDOWN_RETRY_PAUSE_SEC (30), STEP_STOP_WAIT_SEC (900),
+  NIM_LOCAL_PORT (empty: a free local port; a busy port is replaced by a free one)
+Tools: oci kubectl helm jq python3 curl bc (macOS: caffeinate, if present, keeps
+  the laptop from idle-sleeping while the runner and watchdog live)
 EOF
 }
 
@@ -111,9 +120,11 @@ CLEANUP_RETRY_SEC="${CLEANUP_RETRY_SEC:-1800}"
 TEARDOWN_RETRY_PAUSE_SEC="${TEARDOWN_RETRY_PAUSE_SEC:-30}"
 STEP_STOP_WAIT_SEC="${STEP_STOP_WAIT_SEC:-900}"
 CLEANUP_LOCK_WAIT_SEC="${CLEANUP_LOCK_WAIT_SEC:-3600}"
-NIM_LOCAL_PORT="${NIM_LOCAL_PORT:-8000}"
+NIM_LOCAL_PORT="${NIM_LOCAL_PORT:-}"
+[[ -z "${NIM_LOCAL_PORT}" || "${NIM_LOCAL_PORT}" =~ ^[0-9]+$ ]] \
+  || { echo "ERROR: NIM_LOCAL_PORT must be empty or a port number" >&2; exit 2; }
 for v in NODE_COUNT WATCHDOG_SEC READY_TIMEOUT_SEC POLL_SEC CLEANUP_RETRY_SEC \
-         TEARDOWN_RETRY_PAUSE_SEC STEP_STOP_WAIT_SEC CLEANUP_LOCK_WAIT_SEC NIM_LOCAL_PORT; do
+         TEARDOWN_RETRY_PAUSE_SEC STEP_STOP_WAIT_SEC CLEANUP_LOCK_WAIT_SEC; do
   [[ "${!v}" =~ ^[0-9]+$ ]] || { echo "ERROR: ${v} must be a non-negative integer" >&2; exit 2; }
 done
 export OCI_REGION OKE_GPU_SHAPE NODE_COUNT CLUSTER_NAME WATCHDOG_SEC READY_TIMEOUT_SEC \
@@ -121,6 +132,12 @@ export OCI_REGION OKE_GPU_SHAPE NODE_COUNT CLUSTER_NAME WATCHDOG_SEC READY_TIMEO
        CLEANUP_LOCK_WAIT_SEC NIM_LOCAL_PORT
 
 INFO_FILE="${SCRIPT_DIR}/cluster-info.txt"   # written by provision, read by teardown
+if [[ -n "${RUNNER_PROVISION:-}" && -n "${NIMBLE_CLUSTER_INFO:-}" ]]; then
+  INFO_FILE="${NIMBLE_CLUSTER_INFO}"          # test-only: fake provision writes here
+  export NIMBLE_CLUSTER_INFO
+else
+  unset NIMBLE_CLUSTER_INFO
+fi
 PHASES="${OUT_DIR}/phases.log"
 WATCHDOG_STOP="${OUT_DIR}/.watchdog_stop"
 WATCHDOG_ARMED="${OUT_DIR}/.watchdog_armed"
@@ -130,6 +147,7 @@ BILLABLE_END="${OUT_DIR}/.billable_end"
 STEP_PID_FILE="${OUT_DIR}/.step.pid"
 PF_PID_FILE="${OUT_DIR}/.pf.pid"
 CLEANUP_LOCK_DIR="${OUT_DIR}/.cleanup_lock"
+DEPLOY_TMP_MARKER="${OUT_DIR}/.deploy_tmpdir"
 
 # ---------------------------------------------------------------- helpers
 now() { date +%s; }
@@ -199,6 +217,51 @@ info_get() {  # read KEY from cluster-info.txt (or the OUT_DIR snapshot) without
   echo "${v}"
 }
 effective_shape() { local s; s="$(info_get GPU_SHAPE)"; echo "${s:-${OKE_GPU_SHAPE}}"; }
+
+# Kube context pin: provision-cluster.sh records KUBE_CONTEXT=<name> in
+# cluster-info.txt. When present, the runner's own kubectl calls use
+# --context and helm children get HELM_KUBECONTEXT; deploy.sh reads the same
+# file itself. The user's current-context is never changed.
+KCTX_ARGS=()
+load_kube_context() {
+  local c
+  c="$(info_get KUBE_CONTEXT)"
+  KCTX_ARGS=()
+  if [[ -n "${c}" ]]; then
+    KCTX_ARGS=(--context "${c}")
+    export HELM_KUBECONTEXT="${c}"
+    note "kube context pinned to ${c} (from cluster-info.txt)"
+  fi
+}
+
+port_is_free() {  # $1 port: true if 127.0.0.1:$1 can be bound now
+  python3 -c 'import socket,sys; s=socket.socket(); s.bind(("127.0.0.1", int(sys.argv[1]))); s.close()' "$1" 2>/dev/null
+}
+free_local_port() {  # an unused 127.0.0.1 TCP port, chosen by the kernel
+  python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()'
+}
+
+# macOS: hold an idle-sleep assertion while pid $1 lives (caffeinate -i -w),
+# so laptop sleep cannot stall a teardown. No-op where caffeinate is absent.
+hold_awake() {
+  [[ "$(uname -s 2>/dev/null)" == "Darwin" ]] || return 0
+  command -v caffeinate >/dev/null 2>&1 || return 0
+  caffeinate -i -w "$1" < /dev/null > /dev/null 2>&1 &
+  return 0
+}
+
+# The deploy step runs with TMPDIR set to a private directory the runner
+# creates; any file left there by a stopped deploy (helm temp files, older
+# deploy.sh values files) is removed by the runner or the watchdog.
+remove_deploy_tmp() {
+  local d=""
+  [[ -f "${DEPLOY_TMP_MARKER}" ]] && d="$(cat "${DEPLOY_TMP_MARKER}" 2>/dev/null || true)"
+  case "${d}" in
+    */nimble-deploy.*) [[ -d "${d}" ]] && rm -rf "${d}" ;;
+  esac
+  rm -f "${DEPLOY_TMP_MARKER}"
+  return 0
+}
 
 # mkdir lock shared by the runner trap and the watchdog, so their teardowns
 # never overlap. A dead owner's lock (no longer a run_measured process) is broken.
@@ -273,7 +336,10 @@ run_step() {
   local log="${OUT_DIR}/${name}.log"
   case "${name}" in
     deploy)
-      ( NGC_API_KEY="${NGC_KEY_VALUE}" CONFIRM_COST=yes "$@" < /dev/null 2>&1 \
+      local dtmp
+      dtmp="$(mktemp -d "${TMPDIR:-/tmp}/nimble-deploy.XXXXXX")" || return 1
+      echo "${dtmp}" > "${DEPLOY_TMP_MARKER}"
+      ( TMPDIR="${dtmp}" NGC_API_KEY="${NGC_KEY_VALUE}" CONFIRM_COST=yes "$@" < /dev/null 2>&1 \
           | NIMBLE_REDACT_VALUE="${NGC_KEY_VALUE}" python3 -c "${REDACT_PY}" >> "${log}" ) &
       ;;
     provision)
@@ -288,6 +354,7 @@ run_step() {
   wait "${STEP_PID}" || rc=$?
   STEP_PID=""
   rm -f "${STEP_PID_FILE}"
+  [[ "${name}" == "deploy" ]] && remove_deploy_tmp
   return "${rc}"
 }
 
@@ -299,6 +366,7 @@ stop_running_step() {  # $1 = who; stops a step still running (orphaned or inter
     wait "${pid}" 2>/dev/null || true
   fi
   rm -f "${STEP_PID_FILE}"
+  remove_deploy_tmp
   pid=""
   [[ -f "${PF_PID_FILE}" ]] && read -r pid < "${PF_PID_FILE}"
   if [[ -n "${pid}" ]] && is_running "${pid}" \
@@ -511,6 +579,7 @@ s = {
         "attempts": num(E.get("S_TD_ATTEMPTS")),
         "verify_clean": E.get("S_VERIFY") == "1",
         "cleanup_complete_marker": rd("CLEANUP_COMPLETE") or None,
+        "gpu_billing_stopped_possible_orphans": E["S_TD_RESULT"] == "partial",
     },
 }
 tmp = os.path.join(out, ".summary.json.tmp")
@@ -518,6 +587,57 @@ with open(tmp, "w") as f:
     json.dump(s, f, indent=2)
     f.write("\n")
 os.replace(tmp, os.path.join(out, "summary.json"))
+
+# receipt.md: the committable artifact. Whitelisted fields only, then a scrub
+# for OCIDs and IPv4 addresses as a second line of defence.
+td_text = {
+    "clean": "clean: GPU node pool, cluster and network deleted; verified",
+    "partial": "PARTIAL (teardown exit 2): GPU billing stopped (node pool and cluster deleted); "
+               "a block volume, load balancer or network may be orphaned - check the OCI console",
+    "failed": "FAILED: teardown not confirmed; GPU billing may continue",
+    "no-info": "no cluster-info recorded; verified by cluster name only",
+    "not-needed": "not needed: nothing billable was started",
+}.get(s["teardown"]["result"], s["teardown"]["result"])
+def fmt(v):
+    return "n/a" if v is None else str(v)
+L = ["# Measured run receipt", ""]
+L.append("- Date (UTC): %s" % time.strftime("%Y-%m-%d %H:%M", time.gmtime(b_start or time.time())))
+L.append("- Live run: %s%s" % ("yes" if s["live_run"] else "no",
+         "" if s["live_run"] else " (test hooks: %s)" % ", ".join(hooks)))
+L.append("- Region: %s" % s["region"])
+L.append("- Shape: %s x %s" % (s["shape"], fmt(s["node_count"])))
+L.append("- Image: %s" % fmt(image))
+L.append("- Kubernetes version: %s" % fmt(s["k8s_version"]))
+L.append("- Runner exit code: %s" % fmt(rc))
+L += ["", "## Phases (seconds)", ""]
+for name in order:
+    L.append("- %s: %s (rc %s)" % (name, fmt(secs.get(name)), fmt(rcs.get(name))))
+L += ["", "## Cost", ""]
+L.append("- Billable seconds (provision start to verified teardown): %s" % fmt(billable))
+if billable is None and so_far is not None:
+    L.append("- Billing stop NOT confirmed; seconds so far: %s" % so_far)
+L.append("- Hourly rate (USD): %s" % fmt(hourly))
+L.append("- Estimated cost (USD): %s" % fmt(s["estimated_cost_usd"]))
+L.append("- Rate basis: %s" % s["cost_note"])
+L += ["", "## Bench", ""]
+if isinstance(bench, dict) and "error" not in bench:
+    for k in ("model", "n_requested", "n_ok", "ttfr_s", "tokens_per_s"):
+        if k in bench:
+            L.append("- %s: %s" % (k, json.dumps(bench[k], sort_keys=True)))
+else:
+    L.append("- no bench result (%s)" % ("unparseable" if bench else "not run"))
+L += ["", "## Teardown", ""]
+L.append("- Result: %s" % td_text)
+L.append("- Last teardown exit code: %s; attempts: %s; verify-clean: %s" % (
+    fmt(s["teardown"]["last_exit_code"]), fmt(s["teardown"]["attempts"]),
+    "yes" if s["teardown"]["verify_clean"] else "no"))
+txt = "\n".join(L) + "\n"
+txt = re.sub(r"ocid1\.[^\s\"',)]*", "[ocid-redacted]", txt)
+txt = re.sub(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", "[ip-redacted]", txt)
+tmp = os.path.join(out, ".receipt.md.tmp")
+with open(tmp, "w") as f:
+    f.write(txt)
+os.replace(tmp, os.path.join(out, "receipt.md"))
 PY
 }
 
@@ -544,6 +664,7 @@ watchdog_main() {
   trap '' HUP INT
   local me="watchdog:$$" start reason g
   echo "$$" > "${OUT_DIR}/watchdog.pid"
+  hold_awake "$$"
   : > "${WATCHDOG_ARMED}"
   echo "$(ts) watchdog armed: runner pid ${WD_MAIN_PID}, deadline ${WATCHDOG_SEC}s"
   start="$(now)"
@@ -677,7 +798,7 @@ on_exit() {
 # RUNNER_OKE_CONFIG (test hook) points the detectors at a fixture copy of
 # oke-optimized-config.sh; the default is the file provision-cluster.sh sources.
 default_preflight() {
-  local t gpus need eff ad_out ad avail img lim_cid cid fail=0
+  local t gpus need eff ad_out ad avail img lim_cid cid k8s opts fail=0
   local cfg="${RUNNER_OKE_CONFIG:-${SCRIPT_DIR}/oke-optimized-config.sh}"
   echo "check: required tools"
   for t in oci kubectl helm jq python3 curl bc; do
@@ -718,6 +839,18 @@ default_preflight() {
   echo "check: oci auth (oci iam region list)"
   oci iam region list >/dev/null || { echo "FAIL: oci CLI not configured or credentials invalid"; return 1; }
   echo "ok: oci auth"
+  echo "check: pinned Kubernetes version is offered by OKE in ${OCI_REGION}"
+  k8s="${K8S_VERSION:-$(sed -n 's/.*K8S_VERSION:-\(v[0-9][0-9.]*\)}.*/\1/p' "${SCRIPT_DIR}/provision-cluster.sh" | head -1)}"
+  [[ -n "${k8s}" ]] || { echo "FAIL: cannot read the pinned Kubernetes version (K8S_VERSION) from provision-cluster.sh"; return 1; }
+  opts="$(oci ce cluster-options get --cluster-option-id all --region "${OCI_REGION}")" \
+    || { echo "FAIL: oci ce cluster-options get failed"; return 1; }
+  printf '%s' "${opts}" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+d = d.get("data", d)
+sys.exit(0 if sys.argv[1] in (d.get("kubernetes-versions") or []) else 1)' "${k8s}" \
+    || { echo "FAIL: Kubernetes ${k8s} (pinned in provision-cluster.sh) is not offered by OKE in ${OCI_REGION}"; return 1; }
+  echo "ok: Kubernetes ${k8s} offered"
   echo "check: no existing cluster named ${CLUSTER_NAME}"
   cid="$(lib_call oci_find_cluster_id "${OCI_COMPARTMENT_ID}" "${CLUSTER_NAME}")" || { echo "FAIL: cluster list failed"; return 1; }
   [[ -z "${cid}" ]] || { echo "FAIL: a cluster named ${CLUSTER_NAME} already exists in the compartment"; return 1; }
@@ -751,18 +884,29 @@ default_preflight() {
   echo "preflight checks passed"
 }
 
+# Returns 0 ready, 1 not ready yet, 2 the port-forward exited right after start.
 default_ready_probe() {
-  local code
+  local code i
   if ! is_running "${PF_PID}"; then
-    kubectl port-forward -n "${NIM_NAMESPACE}" "svc/${NIM_RELEASE}" "${NIM_LOCAL_PORT}:8000" \
-      < /dev/null >> "${OUT_DIR}/port-forward.log" 2>&1 &
+    # exec in a subshell: $! is kubectl itself, so stop_running_step finds it.
+    ( exec kubectl ${KCTX_ARGS[@]+"${KCTX_ARGS[@]}"} port-forward -n "${NIM_NAMESPACE}" \
+        "svc/${NIM_RELEASE}" "${LOCAL_PORT}:8000" < /dev/null >> "${OUT_DIR}/port-forward.log" 2>&1 ) &
     PF_PID=$!
     echo "${PF_PID}" > "${PF_PID_FILE}"
-    sleep 3
+    for i in 1 2 3 4 5 6; do
+      sleep 0.5
+      if ! is_running "${PF_PID}"; then
+        wait "${PF_PID}" 2>/dev/null || true
+        echo "$(ts) kubectl port-forward exited at once (local port ${LOCAL_PORT}); last lines:"
+        tail -3 "${OUT_DIR}/port-forward.log" 2>/dev/null || true
+        PF_PID=""
+        return 2
+      fi
+    done
   fi
   code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
-           "http://127.0.0.1:${NIM_LOCAL_PORT}/v1/health/ready" 2>/dev/null || true)"
-  echo "$(ts) GET /v1/health/ready -> ${code:-none}"
+           "http://127.0.0.1:${LOCAL_PORT}/v1/health/ready" 2>/dev/null || true)"
+  echo "$(ts) GET /v1/health/ready on 127.0.0.1:${LOCAL_PORT} -> ${code:-none}"
   [[ "${code}" == "200" ]]
 }
 
@@ -792,9 +936,12 @@ if [[ "${PREFLIGHT_ONLY}" == "1" ]]; then
 fi
 
 trap on_exit EXIT
-trap 'SIGNAL_NAME=INT; exit 130' INT
-trap 'SIGNAL_NAME=TERM; exit 143' TERM
-trap 'SIGNAL_NAME=HUP; exit 129' HUP
+# Each handler first ignores the other signals: a pane close delivers INT and
+# HUP together, and a second handler's `exit` inside on_exit would end the
+# runner before its teardown starts.
+trap 'trap "" INT TERM HUP; SIGNAL_NAME=INT; exit 130' INT
+trap 'trap "" INT TERM HUP; SIGNAL_NAME=TERM; exit 143' TERM
+trap 'trap "" INT TERM HUP; SIGNAL_NAME=HUP; exit 129' HUP
 
 note "run start: region=${OCI_REGION} shape=${OKE_GPU_SHAPE} out=${OUT_DIR}"
 phase preflight START 0
@@ -831,6 +978,7 @@ if [[ ! -f "${WATCHDOG_ARMED}" ]]; then
 fi
 WATCHDOG_PID="$(cat "${OUT_DIR}/watchdog.pid" 2>/dev/null || true)"
 note "watchdog armed (pid ${WATCHDOG_PID})"
+hold_awake "$$"
 phase preflight END 0
 
 # Billable from here: the watchdog now has something to clean up.
@@ -840,10 +988,11 @@ rc=0
 run_step provision "${RUNNER_PROVISION:-${SCRIPT_DIR}/provision-cluster.sh}" || rc=$?
 phase provision END "${rc}"
 if [[ -f "${INFO_FILE}" ]]; then
-  grep -E '^(CLUSTER_ID|NODE_POOL_ID|GPU_SHAPE)=' "${INFO_FILE}" > "${OUT_DIR}/.oke_ids" 2>/dev/null || true
+  grep -E '^(CLUSTER_ID|NODE_POOL_ID|GPU_SHAPE|KUBE_CONTEXT)=' "${INFO_FILE}" > "${OUT_DIR}/.oke_ids" 2>/dev/null || true
 fi
 [[ "${rc}" == "0" ]] || { note "provision FAILED (see provision.log)"; exit 1; }
-kubectl version -o json --request-timeout=20s 2>/dev/null \
+load_kube_context
+kubectl ${KCTX_ARGS[@]+"${KCTX_ARGS[@]}"} version -o json --request-timeout=20s 2>/dev/null \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["serverVersion"]["gitVersion"])' \
   > "${OUT_DIR}/k8s-version.txt" 2>/dev/null || true
 
@@ -855,13 +1004,37 @@ phase deploy END "${rc}"
 [[ "${rc}" == "0" ]] || { note "deploy FAILED (see deploy.log)"; exit 1; }
 
 phase ready START 0
+# Local port for the port-forward and bench: NIM_LOCAL_PORT if free, else a
+# kernel-chosen free port (8000 is often taken on a workstation).
+LOCAL_PORT="${NIM_LOCAL_PORT}"
+if [[ -n "${LOCAL_PORT}" ]] && ! port_is_free "${LOCAL_PORT}"; then
+  note "NIM_LOCAL_PORT ${LOCAL_PORT} is in use; picking a free port"
+  LOCAL_PORT=""
+fi
+if [[ -z "${LOCAL_PORT}" ]]; then
+  LOCAL_PORT="$(free_local_port)" || { note "could not pick a free local port"; phase ready END 1; exit 1; }
+fi
+note "local port for port-forward and bench: ${LOCAL_PORT}"
 deadline=$(( $(now) + READY_TIMEOUT_SEC ))
 ready=0
+pf_deaths=0
 while :; do
   if [[ -n "${RUNNER_READY:-}" ]]; then
     if "${RUNNER_READY}" < /dev/null >> "${OUT_DIR}/ready.log" 2>&1; then ready=1; break; fi
   else
-    if default_ready_probe >> "${OUT_DIR}/ready.log" 2>&1; then ready=1; break; fi
+    prc=0
+    default_ready_probe >> "${OUT_DIR}/ready.log" 2>&1 || prc=$?
+    [[ "${prc}" == "0" ]] && { ready=1; break; }
+    if [[ "${prc}" == "2" ]]; then
+      pf_deaths=$((pf_deaths + 1))
+      if (( pf_deaths >= 3 )); then
+        note "ready FAILED: kubectl port-forward to svc/${NIM_RELEASE} exited at once ${pf_deaths} times in a row (see port-forward.log)"
+        phase ready END 1
+        exit 1
+      fi
+    else
+      pf_deaths=0
+    fi
   fi
   (( $(now) >= deadline )) && break
   isleep "${POLL_SEC}"
@@ -876,9 +1049,9 @@ phase ready END 0
 phase bench START 0
 rc=0
 if [[ -n "${RUNNER_BENCH:-}" ]]; then
-  run_step bench "${RUNNER_BENCH}" --out "${OUT_DIR}/bench.json" || rc=$?
+  run_step bench "${RUNNER_BENCH}" --url "http://127.0.0.1:${LOCAL_PORT}" --out "${OUT_DIR}/bench.json" || rc=$?
 else
-  run_step bench python3 "${SCRIPT_DIR}/bench.py" --url "http://127.0.0.1:${NIM_LOCAL_PORT}" \
+  run_step bench python3 "${SCRIPT_DIR}/bench.py" --url "http://127.0.0.1:${LOCAL_PORT}" \
     --out "${OUT_DIR}/bench.json" || rc=$?
 fi
 if [[ "${rc}" == "0" ]] && ! python3 -m json.tool "${OUT_DIR}/bench.json" >/dev/null 2>&1; then

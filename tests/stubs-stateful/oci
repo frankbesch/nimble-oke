@@ -1,0 +1,158 @@
+#!/usr/bin/env bash
+# Stateful offline stand-in for the OCI CLI (tests/live_path_test.sh).
+# No network. State lives in $SIM_STATE; every call is logged to $SIM_LOG.
+# Knobs (environment):
+#   SIM_CL_WR=FAILED         cluster create work request ends FAILED
+#   SIM_NP_CREATE_FAIL=1     node-pool create errors before any work request
+#   SIM_NP_DELETE_FAIL=1     node-pool delete errors
+#   SIM_GONE_AS_404=1        a deleted cluster/node pool answers 404 on get
+#   SIM_GET_AUTH_FAIL=KIND   `ce KIND get` answers 401 NotAuthenticated
+#   SIM_GPU=after-apply|preinstalled|never   (node allocatable nvidia.com/gpu)
+#   SIM_EPH_INITIAL=36Gi     node ephemeral-storage before oci-growfs
+set -u
+st="${SIM_STATE:?}"
+printf 'oci %s\n' "$*" >> "${SIM_LOG:?}"
+
+arg() {  # arg FLAG "$@" -> value after FLAG
+    local want="$1"; shift
+    while [ $# -gt 0 ]; do
+        if [ "$1" = "$want" ]; then printf '%s' "${2:-}"; return 0; fi
+        shift
+    done
+    return 1
+}
+has() { local want="$1"; shift; for a in "$@"; do [ "$a" = "$want" ] && return 0; done; return 1; }
+notfound() {
+    printf 'ServiceError:\n{\n    "code": "NotAuthorizedOrNotFound",\n    "message": "Authorization failed or requested resource not found.",\n    "status": 404\n}\n' >&2
+    exit 1
+}
+conflict() {
+    printf 'ServiceError:\n{\n    "code": "Conflict",\n    "message": "%s",\n    "status": 409\n}\n' "$1" >&2
+    exit 1
+}
+authfail() {
+    printf 'ServiceError:\n{\n    "code": "NotAuthenticated",\n    "message": "The required information to complete authentication was not provided.",\n    "status": 401\n}\n' >&2
+    exit 1
+}
+short() { case "$1" in *-api*|*.api) echo api ;; *-workers*|*.workers) echo workers ;; *) echo unknown ;; esac; }
+wr() {  # wr STATUS ENTITY ID
+    printf '{"data":{"id":"ocid1.clustersworkrequest.oc1.phx.wr","status":"%s","resources":[{"action-type":"CREATED","entity-type":"%s","identifier":"%s"}]}}\n' "$1" "$2" "$3"
+}
+
+VCN=ocid1.vcn.oc1.phx.sim
+IGW=ocid1.internetgateway.oc1.phx.sim
+RT=ocid1.routetable.oc1.phx.sim
+CL=ocid1.cluster.oc1.phx.sim
+NP=ocid1.nodepool.oc1.phx.sim
+
+case "$1 $2 $3" in
+  "iam region list") echo '{"data":[]}' ;;
+  "iam availability-domain list") echo "Stub:PHX-AD-1" ;;
+  "limits resource-availability get") echo "1" ;;
+  "compute image get") echo '{}' ;;
+
+  "network vcn list") [ -f "$st/vcn" ] && echo "$VCN" ;;
+  "network vcn create")
+      arg --cidr-blocks "$@" >/dev/null || { echo "Error: --cidr-blocks required (stub rejects deprecated --cidr-block)" >&2; exit 2; }
+      echo AVAILABLE > "$st/vcn"; echo '[]' > "$st/rt-rules"; echo "$VCN" ;;
+  "network vcn get")
+      [ -f "$st/vcn" ] || notfound
+      case "$*" in *default-route-table-id*) echo "$RT" ;; *) cat "$st/vcn" ;; esac ;;
+  "network vcn delete")
+      [ -f "$st/vcn" ] || notfound
+      ls "$st"/subnet.* "$st"/sl.* "$st/igw" >/dev/null 2>&1 && conflict "VCN has dependent resources"
+      rm -f "$st/vcn" "$st/rt-rules" ;;
+
+  "network internet-gateway list")
+      [ -f "$st/igw" ] || { case "$*" in *'data[*]'*) echo '[]' ;; esac; exit 0; }
+      case "$*" in *'data[0].id'*) echo "$IGW" ;; *) printf '[\n  "%s"\n]\n' "$IGW" ;; esac ;;
+  "network internet-gateway create") touch "$st/igw"; echo "$IGW" ;;
+  "network internet-gateway delete")
+      [ -f "$st/igw" ] || notfound
+      grep -q "$IGW" "$st/rt-rules" 2>/dev/null && conflict "gateway is a route target"
+      rm -f "$st/igw" ;;
+
+  "network route-table get") [ -f "$st/vcn" ] || notfound; cat "$st/rt-rules" ;;
+  "network route-table update")
+      [ -f "$st/vcn" ] || notfound
+      [ -n "${SIM_RT_UPDATE_FAIL:-}" ] && { echo "ServiceError: route update failed" >&2; exit 1; }
+      arg --route-rules "$@" | jq -c 'map({destination, "network-entity-id": .networkEntityId})' > "$st/rt-rules" ;;
+
+  "network security-list list")
+      s=$(short "$(arg --display-name "$@")"); [ -f "$st/sl.$s" ] && echo "ocid1.securitylist.oc1.phx.$s" ;;
+  "network security-list create")
+      s=$(short "$(arg --display-name "$@")")
+      arg --egress-security-rules "$@" > "$st/sl.$s.egress" || { echo "Error: --egress-security-rules required" >&2; exit 2; }
+      arg --ingress-security-rules "$@" > "$st/sl.$s" || { echo "Error: --ingress-security-rules required" >&2; exit 2; }
+      echo "ocid1.securitylist.oc1.phx.$s" ;;
+  "network security-list update")
+      id=$(arg --security-list-id "$@"); s=$(short "$id"); [ -f "$st/sl.$s" ] || notfound
+      arg --ingress-security-rules "$@" > "$st/sl.$s" ;;
+  "network security-list delete")
+      id=$(arg --security-list-id "$@"); s=$(short "$id"); [ -f "$st/sl.$s" ] || notfound
+      grep -l "$id" "$st"/subnet.* >/dev/null 2>&1 && conflict "security list in use by a subnet"
+      rm -f "$st/sl.$s" "$st/sl.$s.egress" ;;
+
+  "network subnet list")
+      s=$(short "$(arg --display-name "$@")"); [ -f "$st/subnet.$s" ] && echo "ocid1.subnet.oc1.phx.$s" ;;
+  "network subnet create")
+      s=$(short "$(arg --display-name "$@")")
+      arg --security-list-ids "$@" > "$st/subnet.$s" || echo "DEFAULT-SECURITY-LIST" > "$st/subnet.$s"
+      echo "ocid1.subnet.oc1.phx.$s" ;;
+  "network subnet update")
+      s=$(short "$(arg --subnet-id "$@")"); [ -f "$st/subnet.$s" ] || notfound
+      arg --security-list-ids "$@" > "$st/subnet.$s" ;;
+  "network subnet delete")
+      s=$(short "$(arg --subnet-id "$@")"); [ -f "$st/subnet.$s" ] || notfound
+      rm -f "$st/subnet.$s" ;;
+
+  "ce cluster list")
+      s=$(cat "$st/cluster" 2>/dev/null || true)
+      case "$*" in
+        *'| [0]'*) [ -n "$s" ] && [ "$s" != DELETED ] && [ "$s" != DELETING ] && echo "$CL" ;;
+        *ACTIVE*) if [ "$s" = ACTIVE ]; then printf '[\n  "%s"\n]\n' "$CL"; else echo '[]'; fi ;;
+        *) if [ -n "$s" ] && [ "$s" != DELETED ]; then printf '[\n  "%s"\n]\n' "$CL"; else echo '[]'; fi ;;
+      esac ;;
+  "ce cluster create-kubeconfig")
+      f=$(arg --file "$@"); cid=$(arg --cluster-id "$@")
+      grep -v "^context-csim	" "$f" 2>/dev/null > "$f.tmp" || true
+      printf 'context-csim\tcluster-csim\tuser-csim\t%s\n' "$cid" >> "$f.tmp"
+      mv "$f.tmp" "$f"; echo context-csim > "$f.current"
+      echo "New config written to the Kube config file $f" ;;
+  "ce cluster create")
+      if [ "${SIM_CL_WR:-}" = FAILED ]; then echo FAILED > "$st/cluster"; wr FAILED cluster "$CL"
+      else echo ACTIVE > "$st/cluster"; wr SUCCEEDED cluster "$CL"; fi ;;
+  "ce cluster get")
+      [ "${SIM_GET_AUTH_FAIL:-}" = cluster ] && authfail
+      [ -f "$st/cluster" ] || notfound; cat "$st/cluster" ;;
+  "ce cluster delete")
+      [ -f "$st/cluster" ] || notfound
+      if [ -n "${SIM_GONE_AS_404:-}" ]; then rm -f "$st/cluster"; else echo DELETED > "$st/cluster"; fi
+      wr SUCCEEDED cluster "$CL" ;;
+
+  "ce node-pool list")
+      s=$(cat "$st/np" 2>/dev/null || true)
+      case "$*" in
+        *'| [0]'*) [ -n "$s" ] && [ "$s" != DELETED ] && [ "$s" != DELETING ] && echo "$NP" ;;
+        *) if [ -n "$s" ] && [ "$s" != DELETED ]; then printf '[\n  "%s"\n]\n' "$NP"; else echo '[]'; fi ;;
+      esac ;;
+  "ce node-pool create")
+      [ -n "${SIM_NP_CREATE_FAIL:-}" ] && { printf 'ServiceError:\n{\n    "code": "InternalError",\n    "message": "Out of host capacity.",\n    "status": 500\n}\n' >&2; exit 1; }
+      echo ACTIVE > "$st/np"
+      echo "${SIM_EPH_INITIAL:-36Gi}" > "$st/node.eph"
+      if [ "${SIM_GPU:-after-apply}" = preinstalled ]; then echo 1 > "$st/node.gpu"; else echo 0 > "$st/node.gpu"; fi
+      arg --initial-node-labels "$@" > "$st/node.labels" || echo '[]' > "$st/node.labels"
+      wr SUCCEEDED nodepool "$NP" ;;
+  "ce node-pool get")
+      [ "${SIM_GET_AUTH_FAIL:-}" = node-pool ] && authfail
+      [ -f "$st/np" ] || notfound; cat "$st/np" ;;
+  "ce node-pool delete")
+      [ -f "$st/np" ] || notfound
+      [ -n "${SIM_NP_DELETE_FAIL:-}" ] && { printf 'ServiceError:\n{\n    "code": "InternalError",\n    "message": "simulated delete failure",\n    "status": 500\n}\n' >&2; exit 1; }
+      if [ -n "${SIM_GONE_AS_404:-}" ]; then rm -f "$st/np"; else echo DELETED > "$st/np"; fi
+      rm -f "$st"/node.*
+      wr SUCCEEDED nodepool "$NP" ;;
+
+  *) echo "SIM-OCI-UNHANDLED: $*" >&2; exit 1 ;;
+esac
+exit 0

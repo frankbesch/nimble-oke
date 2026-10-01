@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Offline stand-in for helm (tests/live_path_test.sh). No release ever exists.
+set -u
+printf 'helm %s\n' "$*" >> "${SIM_LOG:?}"
+case "$*" in
+  *" list "*|"list "*) : ;;
+  *" uninstall "*|"uninstall "*) : ;;
+  "version"*) echo "v3.sim" ;;
+  *) echo "SIM-HELM-UNHANDLED: $*" >&2; exit 1 ;;
+esac
+exit 0

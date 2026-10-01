@@ -24,7 +24,7 @@ imagePullSecrets: []
 #   <release fullname>-ngc-registry  (dockerconfigjson, used to pull from nvcr.io)
 # ngc.apiKey is required; rendering fails without it.
 ngc:
-  apiKey: "" # supplied at install time: --set ngc.apiKey=$NGC_API_KEY or a values file kept out of git
+  apiKey: "" # supplied at install time; scripts/deploy.sh pipes it to helm on stdin (-f -), never argv or disk
   registry: nvcr.io
   username: "$oauthtoken"
 
@@ -40,7 +40,10 @@ resources:
     nvidia.com/gpu: 1
     memory: "16Gi"
     cpu: "4"
-    ephemeral-storage: "100Gi"  # Updated to 100Gi for NIM model loading
+    # Scheduler input. The model cache lives on the PVC, not on node disk.
+    # 20Gi fits an OKE node whose root filesystem was not grown to the boot
+    # volume size (about 40 GB usable); 100Gi left the pod Pending there.
+    ephemeral-storage: "20Gi"
 
 service:
   type: ClusterIP  # Cost optimization - use port-forward for testing
@@ -65,14 +68,22 @@ persistence:
   size: 100Gi  # Sufficient for NIM model storage
   mountPath: /model-cache
 
-# Security context - NOT HARDENED.
-# Pod level: nothing is set. The container runs as the image's default user,
-# with no fsGroup and no seccomp profile. This is the configuration the
-# deployment has actually run with. (Earlier values listed runAsNonRoot: false,
-# runAsUser: 0 and fsGroup: 0, but the old template dropped them because they
-# are falsy, so they were never applied.) The template renders this map as-is,
-# so any key set here, including runAsUser: 0, is applied.
-podSecurityContext: {}
+# Pod security context. Matches NVIDIA's nim-deploy OKE values
+# (cloud-service-providers/oracle/oke: runAsUser/runAsGroup/fsGroup 1000).
+# fsGroup 1000 makes the kubelet give group 1000 write access to the fresh
+# root-owned oci-bv block volume, so the NIM user (uid 1000) can write the
+# model cache. No seccomp profile or runAsNonRoot is set (not hardened).
+# The template renders this map as-is, so any key set here is applied.
+podSecurityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+# Shared memory for NIM: a memory-backed emptyDir mounted at /dev/shm (the
+# container runtime default is 64Mi). It counts against the memory limit.
+sharedMemory:
+  enabled: true
+  sizeLimit: 2Gi
 
 # Container level: only readOnlyRootFilesystem: false is applied (NIM writes
 # temp files). Privilege escalation is allowed and no capabilities are dropped.
@@ -81,8 +92,12 @@ podSecurityContext: {}
 securityContext:
   readOnlyRootFilesystem: false
 
-nodeSelector:
-  nvidia.com/gpu.present: "true"  # Flexible GPU selection (any NVIDIA GPU)
+# No node label is required: the nvidia.com/gpu resource request already
+# restricts scheduling to nodes whose device plugin advertises a GPU. A
+# selector on nvidia.com/gpu.present needs GPU feature discovery to set that
+# label; without it the pod stays Pending. Add a selector here only for a
+# label you have confirmed on the nodes.
+nodeSelector: {}
   # Oracle list price is $2.00 per A10 GPU-hour:
   #   VM.GPU.A10.1 (1x A10) = $2.00/hour; VM.GPU.A10.2 (2x A10) = $4.00/hour.
   #   The 4-GPU A10 shape is bare metal: BM.GPU.A10.4.
@@ -95,15 +110,7 @@ tolerations:
     operator: Exists
     effect: NoSchedule
 
-affinity:
-  nodeAffinity:
-    requiredDuringSchedulingIgnoredDuringExecution:
-      nodeSelectorTerms:
-        - matchExpressions:
-            - key: nvidia.com/gpu.present
-              operator: In
-              values:
-                - "true"
+affinity: {}
 
 topologySpreadConstraints:
   enabled: false  # DISABLED for single-zone development/testing
@@ -153,8 +160,9 @@ serviceAccount:
     oci.oraclecloud.com/principal-type: "instance"
   name: "nim-service-account"
 
+# Extra pod labels. app.kubernetes.io/name and app.kubernetes.io/instance come
+# from the chart's selector labels; do not repeat them here.
 labels:
-  app.kubernetes.io/name: nvidia-nim
   app.kubernetes.io/component: inference
   app.kubernetes.io/part-of: nim-deployment
 

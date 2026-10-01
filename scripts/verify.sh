@@ -7,6 +7,82 @@ source "${SCRIPT_DIR}/_lib.sh"
 
 readonly RELEASE_NAME="nvidia-nim"
 readonly NAMESPACE="default"
+readonly VALUES_FILE="${SCRIPT_DIR}/../helm/values.yaml"
+
+# Kube context pin: provision-cluster.sh records KUBE_CONTEXT=<name> in
+# cluster-info.txt. When present, every kubectl/helm call made by this script
+# (including the _lib.sh helpers it calls) targets that context. The user's
+# current-context is never changed. No KUBE_CONTEXT line: behaviour unchanged.
+# NIMBLE_CLUSTER_INFO overrides the file path (tests only).
+NIMBLE_CLUSTER_INFO="${NIMBLE_CLUSTER_INFO:-${SCRIPT_DIR}/cluster-info.txt}"
+KUBE_CONTEXT_PIN=""
+if [[ -f "$NIMBLE_CLUSTER_INFO" ]]; then
+    KUBE_CONTEXT_PIN="$(sed -n 's/^KUBE_CONTEXT=//p' "$NIMBLE_CLUSTER_INFO" | tail -1)"
+fi
+if [[ -n "$KUBE_CONTEXT_PIN" ]]; then
+    export HELM_KUBECONTEXT="$KUBE_CONTEXT_PIN"
+    kubectl() { command kubectl --context "$KUBE_CONTEXT_PIN" "$@"; }
+fi
+
+# Port-forward state for the API checks; cleanup runs on every exit path.
+PF_PID=""
+LOCAL_PORT=""
+RESP_FILE=""
+cleanup_api_access() {
+    if [[ -n "$PF_PID" ]]; then
+        kill "$PF_PID" 2>/dev/null || true
+        wait "$PF_PID" 2>/dev/null || true
+        PF_PID=""
+    fi
+    if [[ -n "$RESP_FILE" ]]; then
+        rm -f "$RESP_FILE"
+        RESP_FILE=""
+    fi
+}
+trap cleanup_api_access EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+free_local_port() {  # an unused 127.0.0.1 TCP port, chosen by the kernel
+    python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()'
+}
+
+# Model id for the inference request: NIM_MODEL, else the chart image
+# repository without its "nim/" prefix (nim/meta/llama3-8b-instruct -> meta/llama3-8b-instruct).
+chart_model_id() {
+    if [[ -n "${NIM_MODEL:-}" ]]; then
+        echo "$NIM_MODEL"
+        return 0
+    fi
+    local repo
+    repo=$(sed -n 's/^  repository:[[:space:]]*"\{0,1\}\([^"#[:space:]]*\).*/\1/p' "$VALUES_FILE" | head -1)
+    echo "${repo#nim/}"
+}
+
+# Port-forward the ClusterIP service to a free local port; wait until it listens.
+start_port_forward() {
+    local ctx=() _
+    [[ -n "$KUBE_CONTEXT_PIN" ]] && ctx=(--context "$KUBE_CONTEXT_PIN")
+    LOCAL_PORT=$(free_local_port) || { log_warn "Could not pick a free local port"; return 1; }
+    # exec in a subshell: $! is kubectl itself, so the cleanup kill reaches it.
+    ( exec kubectl ${ctx[@]+"${ctx[@]}"} port-forward -n "$NAMESPACE" "svc/${RELEASE_NAME}" \
+        "${LOCAL_PORT}:8000" </dev/null >/dev/null 2>&1 ) &
+    PF_PID=$!
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        if ! kill -0 "$PF_PID" 2>/dev/null; then
+            wait "$PF_PID" 2>/dev/null || true
+            PF_PID=""
+            log_warn "kubectl port-forward to svc/${RELEASE_NAME} exited (local port ${LOCAL_PORT})"
+            return 1
+        fi
+        if curl -s -o /dev/null --max-time 1 "http://127.0.0.1:${LOCAL_PORT}/" 2>/dev/null; then
+            return 0
+        fi
+        sleep 1
+    done
+    log_warn "Port-forward on 127.0.0.1:${LOCAL_PORT} not answering after 10s"
+    return 1
+}
 
 verify_deployment_exists() {
     # A label query exits 0 with no rows when nothing matches; require a name.
@@ -109,23 +185,58 @@ verify_pvc_bound() {
 }
 
 verify_api_health() {
-    local external_ip
-    external_ip=$(get_service_external_ip "$RELEASE_NAME" "$NAMESPACE")
-    
-    if [[ -z "$external_ip" ]]; then
-        log_warn "No external IP, skipping API health check"
+    log_info "Testing API health endpoint through a port-forward..."
+    if [[ -z "$PF_PID" ]] && ! start_port_forward; then
+        log_warn "API health check: no port-forward"
         return 1
     fi
-    
-    log_info "Testing API health endpoint..."
-    
-    if curl -sf "http://${external_ip}:8000/v1/health/ready" --max-time 10 &>/dev/null; then
-        log_success "API health check: PASSED"
+    local code
+    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
+        "http://127.0.0.1:${LOCAL_PORT}/v1/health/ready" 2>/dev/null || true)
+    if [[ "$code" == "200" ]]; then
+        log_success "API health check: PASSED (HTTP 200 on /v1/health/ready)"
         return 0
-    else
-        log_warn "API health check: FAILED (service may still be starting)"
+    fi
+    log_warn "API health check: FAILED (HTTP ${code:-none}; service may still be starting)"
+    return 1
+}
+
+# One real inference request. Success only on HTTP 200 with a non-empty completion.
+verify_inference() {
+    log_info "Sending one chat completion request..."
+    if [[ -z "$PF_PID" ]] && ! start_port_forward; then
+        log_error "Inference check: no port-forward"
         return 1
     fi
+    local model body code text
+    model=$(chart_model_id)
+    if [[ -z "$model" ]]; then
+        log_error "Inference check: no model id (set NIM_MODEL)"
+        return 1
+    fi
+    body=$(python3 -c 'import json,sys; print(json.dumps({"model": sys.argv[1], "messages": [{"role": "user", "content": "Reply with one word: ready"}], "max_tokens": 8, "temperature": 0}))' "$model")
+    RESP_FILE=$(mktemp "${TMPDIR:-/tmp}/nim-verify.XXXXXX") || { log_error "mktemp failed"; return 1; }
+    code=$(curl -s -o "$RESP_FILE" -w '%{http_code}' --max-time 120 \
+        -H 'Content-Type: application/json' -d "$body" \
+        "http://127.0.0.1:${LOCAL_PORT}/v1/chat/completions" 2>/dev/null || true)
+    text=$(python3 -c '
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+    c = d["choices"][0]
+    t = (c.get("message") or {}).get("content") or c.get("text") or ""
+except Exception:
+    t = ""
+print(t.strip().replace("\n", " ")[:80])
+' "$RESP_FILE" 2>/dev/null || true)
+    rm -f "$RESP_FILE"
+    RESP_FILE=""
+    if [[ "$code" == "200" && -n "$text" ]]; then
+        log_success "Inference check: PASSED (model $model, HTTP 200, completion: \"$text\")"
+        return 0
+    fi
+    log_error "Inference check: FAILED (model $model, HTTP ${code:-none}, completion empty=$([[ -z "$text" ]] && echo yes || echo no))"
+    return 1
 }
 
 verify_model_loading() {
@@ -178,6 +289,8 @@ main() {
     echo ""
     echo "=== API Verification ==="
     verify_api_health || warnings=$((warnings + 1))
+    verify_inference || failed=$((failed + 1))
+    cleanup_api_access
     verify_model_loading || warnings=$((warnings + 1))
     
     echo ""

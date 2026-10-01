@@ -11,11 +11,68 @@ readonly NAMESPACE="default"
 readonly DEPLOY_TIMEOUT=1200
 readonly NIM_SELECTOR="app.kubernetes.io/instance=${RELEASE_NAME}"
 
-# Exit-time state. TEMP_VALUES holds the NGC key and is always removed.
-# Destructive cleanup runs only when ARMED (this run is installing a release
-# that did not exist before); an existing release is never uninstalled.
-TEMP_VALUES=""
+# Kube context pin: provision-cluster.sh records KUBE_CONTEXT=<name> in
+# cluster-info.txt. When present, every kubectl/helm call made by this script
+# (including the _lib.sh helpers it calls) targets that context. The user's
+# current-context is never changed. No KUBE_CONTEXT line: behaviour unchanged.
+# NIMBLE_CLUSTER_INFO overrides the file path (tests only).
+NIMBLE_CLUSTER_INFO="${NIMBLE_CLUSTER_INFO:-${SCRIPT_DIR}/cluster-info.txt}"
+KUBE_CONTEXT_PIN=""
+if [[ -f "$NIMBLE_CLUSTER_INFO" ]]; then
+    KUBE_CONTEXT_PIN="$(sed -n 's/^KUBE_CONTEXT=//p' "$NIMBLE_CLUSTER_INFO" | tail -1)"
+fi
+if [[ -n "$KUBE_CONTEXT_PIN" ]]; then
+    export HELM_KUBECONTEXT="$KUBE_CONTEXT_PIN"
+    kubectl() { command kubectl --context "$KUBE_CONTEXT_PIN" "$@"; }
+fi
+
+# The NGC key never touches disk and never appears in argv: ngc_values_yaml
+# prints it with the printf builtin into a pipe, and helm reads that pipe as
+# a values file (-f -). All non-secret settings come from helm/values.yaml.
+#
+# Exit-time state. Destructive cleanup runs only when ARMED (this run is
+# installing a release that did not exist before); an existing release is
+# never uninstalled. INSTALL_ATTEMPTED gates the failure diagnostics.
 DESTRUCTIVE_CLEANUP_ARMED="no"
+INSTALL_ATTEMPTED="no"
+
+ngc_values_yaml() {
+    local k="$NGC_API_KEY"
+    k="${k//\\/\\\\}"
+    k="${k//\"/\\\"}"
+    printf 'ngc:\n  apiKey: "%s"\n' "$k"
+}
+
+# Failure evidence, printed to stdout (the runner logs it) BEFORE any
+# uninstall or PVC delete. Never reads Secrets: no describe/get secret, and
+# pod descriptions show only the secretKeyRef, not its value.
+capture_failure_diagnostics() {
+    echo "===== NIM FAILURE DIAGNOSTICS $(date -u +%FT%TZ) (captured before cleanup) ====="
+    echo "--- kubectl get pods -o wide ---"
+    kubectl get pods -n "$NAMESPACE" -o wide 2>&1 || true
+    echo "--- kubectl describe pod -l ${NIM_SELECTOR} ---"
+    kubectl describe pod -n "$NAMESPACE" -l "$NIM_SELECTOR" 2>&1 || true
+    echo "--- kubectl get events (last 50 by lastTimestamp) ---"
+    kubectl get events -n "$NAMESPACE" --sort-by=.lastTimestamp 2>&1 | tail -50 || true
+    echo "--- kubectl logs --tail=200 ---"
+    kubectl logs -n "$NAMESPACE" -l "$NIM_SELECTOR" --all-containers --tail=200 2>&1 \
+        || echo "(no current logs)"
+    echo "--- kubectl logs --previous --tail=200 ---"
+    kubectl logs -n "$NAMESPACE" -l "$NIM_SELECTOR" --all-containers --previous --tail=200 2>&1 \
+        || echo "(no previous container logs)"
+    echo "--- node allocatable / taints ---"
+    kubectl get nodes -o 'custom-columns=NAME:.metadata.name,GPU:.status.allocatable.nvidia\.com/gpu,CPU:.status.allocatable.cpu,MEMORY:.status.allocatable.memory,EPHEMERAL:.status.allocatable.ephemeral-storage,TAINTS:.spec.taints[*].key' 2>&1 || true
+    echo "--- kubectl describe nodes (GPU nodes: taints, allocatable, allocated) ---"
+    local n
+    for n in $(get_gpu_nodes); do
+        kubectl describe node "$n" 2>&1 \
+            | sed -n '/^Name:/p;/^Taints:/,/^Unschedulable:/p;/^Allocatable:/,/^System Info:/p;/^Allocated resources:/,/^Events:/p' \
+            || true
+    done
+    echo "--- kubectl get pvc ---"
+    kubectl get pvc -n "$NAMESPACE" 2>&1 || true
+    echo "===== END NIM FAILURE DIAGNOSTICS ====="
+}
 
 cleanup_on_failure() {
     log_warn "Deployment failed, removing the release this run created..."
@@ -26,8 +83,10 @@ cleanup_on_failure() {
 on_exit() {
     local rc=$?
     set +e
-    if [[ -n "$TEMP_VALUES" ]]; then
-        rm -f "$TEMP_VALUES"
+    trap '' INT TERM
+    if [[ $rc -ne 0 && "$INSTALL_ATTEMPTED" == "yes" ]]; then
+        INSTALL_ATTEMPTED="no"
+        capture_failure_diagnostics
     fi
     if [[ $rc -ne 0 && "$DESTRUCTIVE_CLEANUP_ARMED" == "yes" ]]; then
         DESTRUCTIVE_CLEANUP_ARMED="no"
@@ -51,9 +110,9 @@ main() {
     # Check model cache for cost optimization
     log_info "Checking model cache for cost optimization..."
     if "${SCRIPT_DIR}/model-cache-manager.sh" check; then
-        log_success "Model cache hit - saving \$1.50 in download costs"
+        log_success "Model cache hit - model download skipped"
     else
-        log_info "Model cache miss - download required (\$1.50 cost)"
+        log_info "Model cache miss - model download required (adds startup time on billed GPU hours)"
     fi
     
     log_info "Estimating deployment cost..."
@@ -106,56 +165,6 @@ main() {
         die "Helm values.yaml not found at ${HELM_CHART_DIR}"
     fi
     
-    log_info "Creating temporary values file with NGC credentials..."
-    TEMP_VALUES=$(mktemp "${TMPDIR:-/tmp}/nim-values.XXXXXX") || die "mktemp failed"
-    chmod 600 "$TEMP_VALUES"
-    local temp_values="$TEMP_VALUES"
-    
-    cat > "$temp_values" <<EOF
-# NIM Deployment Configuration - Updated based on 2025-10-19 learnings
-ngc:
-  apiKey: "${NGC_API_KEY}"
-
-image:
-  pullPolicy: IfNotPresent
-
-# CRITICAL: Single pod strategy prevents rolling update issues
-replicaCount: 1
-
-# CRITICAL: Enable persistence with 100Gi PVC for model caching
-persistence:
-  enabled: true
-  size: 100Gi
-  storageClass: oci-bv
-
-# CRITICAL: NIM-specific resource configuration (VM.GPU.A10.2 with 2 GPUs)
-resources:
-  limits:
-    nvidia.com/gpu: 1  # Single GPU per pod for cost optimization
-    memory: 24Gi
-    cpu: 8
-    ephemeral-storage: 200Gi  # Updated based on 2025-10-19 learnings
-  requests:
-    nvidia.com/gpu: 1
-    memory: 16Gi
-    cpu: 4
-    ephemeral-storage: 100Gi  # Updated based on 2025-10-19 learnings
-
-# podSecurityContext and podLimiter are intentionally not overridden here;
-# the chart defaults apply.
-
-nodeSelector:
-  nvidia.com/gpu.present: "true"
-
-tolerations:
-  - key: nvidia.com/gpu
-    operator: Exists
-    effect: NoSchedule
-  - key: node.kubernetes.io/disk-pressure
-    operator: Exists
-    effect: NoSchedule
-EOF
-    
     log_info "Running pre-deployment safety checks..."
     
     # CRITICAL: Disk usage check to prevent disk pressure
@@ -171,12 +180,13 @@ EOF
     
     # CRITICAL: Dry run validation to prevent catastrophic failures
     log_info "Validating deployment with dry-run..."
-    if ! helm upgrade --install "$RELEASE_NAME" "$HELM_CHART_DIR" \
+    # stdout discarded: the rendered Secrets hold the NGC key.
+    if ! ngc_values_yaml | helm upgrade --install "$RELEASE_NAME" "$HELM_CHART_DIR" \
         -n "$NAMESPACE" \
         -f "${HELM_CHART_DIR}/values.yaml" \
-        -f "$temp_values" \
+        -f - \
         --dry-run \
-        --timeout 60s >/dev/null; then  # the rendered Secrets hold the NGC key
+        --timeout 60s >/dev/null; then
         log_error "🚨 DRY RUN FAILED - Deployment blocked for safety"
         log_error "   Fix configuration issues before proceeding"
         die "Dry run validation failed"
@@ -193,23 +203,20 @@ EOF
         log_info "Release $RELEASE_NAME already exists; a failure will NOT uninstall it"
     fi
     
-    log_info "Deploying NIM with Helm..."
-    helm_install_or_upgrade \
-        "$RELEASE_NAME" \
-        "$HELM_CHART_DIR" \
-        "$NAMESPACE" \
+    log_info "Deploying NIM with Helm (waits up to ${DEPLOY_TIMEOUT}s)..."
+    INSTALL_ATTEMPTED="yes"
+    ngc_values_yaml | helm upgrade --install "$RELEASE_NAME" "$HELM_CHART_DIR" \
+        -n "$NAMESPACE" \
         -f "${HELM_CHART_DIR}/values.yaml" \
-        -f "$temp_values" \
+        -f - \
         --wait \
         --timeout "${DEPLOY_TIMEOUT}s"
-    
-    rm -f "$TEMP_VALUES"
     
     log_info "Waiting for pods to be ready..."
     
     # CRITICAL: Monitor pod count to detect rolling update issues
     local pod_count
-    pod_count=$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=nvidia-nim --no-headers | wc -l)
+    pod_count=$(kubectl get pods -n "$NAMESPACE" -l "$NIM_SELECTOR" --no-headers | wc -l)
     log_info "Initial pod count: $pod_count"
     
     if [[ "$pod_count" -gt 1 ]]; then
@@ -229,14 +236,14 @@ EOF
         fi
     fi
     
-    if ! wait_for_pod_ready "app.kubernetes.io/name=nvidia-nim" "$NAMESPACE" "$DEPLOY_TIMEOUT"; then
+    if ! wait_for_pod_ready "$NIM_SELECTOR" "$NAMESPACE" "$DEPLOY_TIMEOUT"; then
         log_error "Pods failed to become ready"
         log_info "Checking pod status..."
-        kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=nvidia-nim
+        kubectl get pods -n "$NAMESPACE" -l "$NIM_SELECTOR"
         
         # Check for pod eviction issues
         local evicted_pods
-        evicted_pods=$(kubectl get pods -n "$NAMESPACE" -l app.kubernetes.io/name=nvidia-nim --no-headers | grep -c "Evicted" || true)
+        evicted_pods=$(kubectl get pods -n "$NAMESPACE" -l "$NIM_SELECTOR" --no-headers | grep -c "Evicted" || true)
         if [[ "$evicted_pods" -gt 0 ]]; then
             log_error "🚨 Pod eviction detected ($evicted_pods pods)"
             log_error "   This may indicate disk pressure issues"
@@ -244,7 +251,7 @@ EOF
         fi
         
         log_info "Recent logs:"
-        get_pod_logs "app.kubernetes.io/name=nvidia-nim" "$NAMESPACE" 50
+        get_pod_logs "$NIM_SELECTOR" "$NAMESPACE" 50
         die "Deployment failed - pods not ready"
     fi
     
@@ -279,6 +286,7 @@ EOF
     fi
     
     DESTRUCTIVE_CLEANUP_ARMED="no"
+    INSTALL_ATTEMPTED="no"
     
     log_info "Recording deployment timestamp for cost tracking..."
     date +%s > "${SCRIPT_DIR}/.nim-deployed-at"

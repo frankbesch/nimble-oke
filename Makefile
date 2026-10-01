@@ -354,7 +354,7 @@ measured-run:
 	@$(SCRIPTS_DIR)/run_measured.sh --help
 
 test:
-	bash tests/run_measured_test.sh && bash tests/run_measured_reliability_test.sh
+	bash tests/run_measured_test.sh && bash tests/run_measured_reliability_test.sh && bash tests/live_path_test.sh
 
 lint:
 	shellcheck -x -S warning $(SCRIPTS_DIR)/*.sh setup-env.sh fix-oci-auth.sh

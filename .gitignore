@@ -104,3 +104,10 @@ Desktop.ini
 cost-report.txt
 usage-report.json
 
+# Measured-run output under docs/runs/: OCIDs live only in these files.
+# receipt.md (no OCIDs, no IPs, no key) and summary.json stay committable.
+docs/runs/**/.oke_ids
+docs/runs/**/cluster-info.txt*
+docs/runs/**/*.log
+docs/runs/**/.*
+.oke_ids

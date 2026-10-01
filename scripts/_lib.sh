@@ -9,6 +9,12 @@ readonly CONFIRM_COST="${CONFIRM_COST:-}"
 readonly DEBUG="${DEBUG:-false}"
 readonly DRY_RUN="${DRY_RUN:-false}"
 
+# Every `oci` call targets OCI_REGION (default us-phoenix-1, where the pinned
+# GPU image lives), not the profile's region. The OCI CLI reads
+# OCI_CLI_REGION and lets it override the config-file region; an explicit
+# --region flag still wins (oci_cli/cli_constants.py, cli_util.py).
+export OCI_CLI_REGION="${OCI_REGION:-us-phoenix-1}"
+
 # Session tracking
 readonly SESSION_DIR="${HOME}/.nimble-oke/sessions"
 # shellcheck disable=SC2034  # read by scripts that source _lib.sh
@@ -714,9 +720,47 @@ oci_find_node_pool_id() {
     printf '%s\n' "$out"
 }
 
-# Delete an OKE cluster or node pool and confirm it reached DELETED.
+# Return 0 if the OCI CLI error text on stdin says the resource does not
+# exist. Only NotFound / NotAuthorizedOrNotFound / HTTP status 404 count;
+# auth (401), throttling (429), timeouts and network errors do not.
+oci_is_not_found_error() {
+    # Deliberately not a bare "NotFound": the CLI's local ConfigFileNotFound
+    # error must never read as "resource already deleted".
+    grep -Eq 'NotAuthorizedOrNotFound|"code": *"NotFound"|"status": *404([^0-9]|$)'
+}
+
+# Print the lifecycle-state of an OKE cluster or node pool.
 #   $1 = cluster | node-pool    $2 = OCID
-# Returns 0 only when the resource is confirmed DELETED.
+# Prints NOTFOUND (rc 0) when OCI answers 404 / NotAuthorizedOrNotFound.
+# Returns 1 (and logs the error) for any other failure.
+oci_ce_get_state() {
+    local kind="$1" id="$2" flag out err rc
+    case "$kind" in
+        cluster) flag="--cluster-id" ;;
+        node-pool) flag="--node-pool-id" ;;
+        *) log_error "oci_ce_get_state: unknown kind '$kind'"; return 1 ;;
+    esac
+    err=$(mktemp "${TMPDIR:-/tmp}/oci-err.XXXXXX")
+    rc=0
+    out=$(oci ce "$kind" get "$flag" "$id" --query 'data."lifecycle-state"' --raw-output 2>"$err") || rc=$?
+    if [[ $rc -eq 0 ]]; then
+        rm -f "$err"
+        printf '%s\n' "$out"
+        return 0
+    fi
+    if oci_is_not_found_error < "$err"; then
+        rm -f "$err"
+        printf 'NOTFOUND\n'
+        return 0
+    fi
+    log_error "oci ce $kind get failed (rc $rc) for $id: $(tr '\n' ' ' < "$err" | cut -c1-300)"
+    rm -f "$err"
+    return 1
+}
+
+# Delete an OKE cluster or node pool and confirm it is gone.
+#   $1 = cluster | node-pool    $2 = OCID
+# Returns 0 only when a get reports DELETED or 404 (NotFound).
 oci_ce_delete_confirmed() {
     local kind="$1" id="$2" flag state
     case "$kind" in
@@ -725,9 +769,9 @@ oci_ce_delete_confirmed() {
         *) log_error "oci_ce_delete_confirmed: unknown kind '$kind'"; return 1 ;;
     esac
 
-    state=$(oci ce "$kind" get "$flag" "$id" --query 'data."lifecycle-state"' --raw-output 2>/dev/null) || state=""
-    if [[ "$state" == "DELETED" ]]; then
-        log_info "$kind already DELETED: $id"
+    state=$(oci_ce_get_state "$kind" "$id") || state=""
+    if [[ "$state" == "DELETED" || "$state" == "NOTFOUND" ]]; then
+        log_info "$kind already deleted (${state}): $id"
         return 0
     fi
 
@@ -740,15 +784,15 @@ oci_ce_delete_confirmed() {
         return 1
     fi
 
-    if ! state=$(oci ce "$kind" get "$flag" "$id" --query 'data."lifecycle-state"' --raw-output); then
+    if ! state=$(oci_ce_get_state "$kind" "$id"); then
         log_error "Could not confirm $kind deletion (get call failed): $id"
         return 1
     fi
-    if [[ "$state" != "DELETED" ]]; then
+    if [[ "$state" != "DELETED" && "$state" != "NOTFOUND" ]]; then
         log_error "$kind is in state '${state:-unknown}', not DELETED: $id"
         return 1
     fi
-    log_success "$kind confirmed DELETED: $id"
+    log_success "$kind confirmed DELETED (${state}): $id"
     return 0
 }
 

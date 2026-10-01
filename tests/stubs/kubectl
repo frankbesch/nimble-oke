@@ -1,9 +1,27 @@
 #!/bin/bash
 # Stub kubectl for tests. Never touches the network.
+#   STUB_PF_EXIT=N   port-forward exits at once with status N
+#   STUB_PF_SERVE=1  port-forward serves HTTP 200 on its local port (127.0.0.1);
+#                    its argv keeps "port-forward" so the runner's cleanup finds it
 echo "kubectl $*" >> "${STUB_LOG:-/dev/null}"
+# A pinned context (--context NAME) may come first.
+if [[ "${1:-}" == "--context" ]]; then shift 2; fi
 case "${1:-}" in
   version) echo '{"serverVersion":{"gitVersion":"v1.34.1-stub"}}' ;;
-  port-forward) exec sleep 3600 ;;
+  port-forward)
+    [[ -n "${STUB_PF_EXIT:-}" ]] && { echo "stub: error: unable to forward port" >&2; exit "${STUB_PF_EXIT}"; }
+    if [[ "${STUB_PF_SERVE:-}" == "1" ]]; then
+      lp=""
+      for a in "$@"; do [[ "${a}" =~ ^([0-9]+):[0-9]+$ ]] && lp="${BASH_REMATCH[1]}"; done
+      exec python3 -c '
+import http.server, sys
+class H(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *a): pass
+    def do_GET(self):
+        self.send_response(200); self.send_header("Content-Length", "0"); self.end_headers()
+http.server.HTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()' "${lp}" port-forward-stub
+    fi
+    exec sleep 3600 ;;
   *) : ;;
 esac
 exit 0

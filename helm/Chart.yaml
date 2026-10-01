@@ -28,4 +28,4 @@ sources:
 
 annotations:
   category: AI/ML
-  licenses: Apache-2.0
+  licenses: MIT  # matches the repository LICENSE

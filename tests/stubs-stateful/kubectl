@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# Stateful offline stand-in for kubectl (tests/live_path_test.sh). No cluster.
+# The "kubeconfig" at $KUBECONFIG is a TSV: context, cluster, user, cluster OCID;
+# its current context is in "$KUBECONFIG.current". Node state lives in $SIM_STATE.
+set -u
+st="${SIM_STATE:?}"
+printf 'kubectl %s\n' "$*" >> "${SIM_LOG:?}"
+kc="${KUBECONFIG:?}"
+
+ctx=""
+args=()
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --context) ctx="$2"; shift 2 ;;
+        --context=*) ctx="${1#--context=}"; shift ;;
+        --request-timeout=*) shift ;;
+        *) args+=("$1"); shift ;;
+    esac
+done
+a="${args[*]:-}"
+node_up() { [ -f "$st/node.eph" ]; }
+ctx_ok() { [ -z "$ctx" ] || awk -F'\t' -v c="$ctx" '$1 == c {f = 1} END {exit !f}' "$kc" 2>/dev/null; }
+
+case "$a" in
+  "config view"*".users"*)
+      [ -f "$kc" ] && awk -F'\t' 'NF >= 4 {printf "%s\t[\"ce\",\"cluster\",\"generate-token\",\"--cluster-id\",\"%s\",\"--region\",\"us-phoenix-1\"]\n", $3, $4}' "$kc" ;;
+  "config view"*".contexts"*)
+      [ -f "$kc" ] && awk -F'\t' 'NF >= 3 {printf "%s\t%s\t%s\n", $1, $2, $3}' "$kc" ;;
+  "config current-context") [ -s "$kc.current" ] || { echo "error: current-context is not set" >&2; exit 1; }; cat "$kc.current" ;;
+  "config delete-context "*)
+      c="${args[2]}"; awk -F'\t' -v c="$c" '$1 != c' "$kc" > "$kc.tmp" && mv "$kc.tmp" "$kc" ;;
+  "config unset current-context") : > "$kc.current" ;;
+  "config "*) : ;;
+  *cluster-info*) ctx_ok || exit 1; [ -f "$st/cluster" ] || exit 1 ;;
+
+  "get nodes -l "*)
+      ctx_ok || exit 1
+      node_up || exit 0
+      grep -q 'gpu.present' "$st/node.labels" 2>/dev/null || exit 0
+      case "$a" in
+        *conditions*) printf 'gpu-node-1\tTrue\n' ;;
+        *) printf 'gpu-node-1\n' ;;
+      esac ;;
+  "get nodes -o jsonpath="*allocatable*)
+      ctx_ok || exit 1
+      node_up && printf 'gpu-node-1\t%s\n' "$(cat "$st/node.gpu")" ;;
+  "get node "*ephemeral-storage*)
+      ctx_ok || exit 1; node_up || exit 1; printf '%s' "$(cat "$st/node.eph")" ;;
+
+  "-n kube-system run "*)
+      case "$a" in
+        *oci-growfs*) touch "$st/growfs.ran" ;;
+        *systemctl*restart*kubelet*) [ -f "$st/growfs.ran" ] && [ -z "${SIM_GROWFS_NOEFFECT:-}" ] && echo 476Gi > "$st/node.eph" ;;
+      esac
+      echo "pod/${args[3]} created" ;;
+  "-n kube-system wait "*|"-n kube-system delete pod "*|"-n kube-system logs "*) : ;;
+
+  "apply -f "*nvidia-device-plugin*)
+      touch "$st/dp.applied"
+      [ "${SIM_GPU:-after-apply}" = after-apply ] && node_up && echo 1 > "$st/node.gpu"
+      echo "daemonset.apps/nvidia-device-plugin-daemonset created" ;;
+
+  "-n default get pvc "*) : ;;
+  "-n default delete "*) : ;;
+  "wait --for=delete "*) : ;;
+  "get svc -A "*) : ;;
+
+  *) echo "SIM-KUBECTL-UNHANDLED: $a" >&2; exit 1 ;;
+esac
+exit 0

@@ -12,10 +12,10 @@ provisioning a GPU node pool and proving it was deleted.
 
 | Item | State |
 |------|-------|
-| First deployment | October 2025. NIM served inference on OKE. No run receipt was kept from that period. |
-| Measured rerun | Pending. `scripts/run_measured.sh` writes a timed receipt to `docs/runs/`. None is committed yet. |
+| First deployment | October 2025, on a cluster made with the Console's Quick Create. NIM served inference. No run receipt was kept. |
+| Measured rerun | Pending. `scripts/run_measured.sh` writes a timed receipt to [docs/runs/](docs/runs/). None is committed yet. It will be the first proof of the scripted provisioning path. |
 | Review pass | October 2026. Teardown, provisioning, and secret handling were reworked. See [What changed in October 2026](#what-changed-in-october-2026). |
-| CI | Shellcheck, stubbed runner tests, Helm lint and render, secret scan. |
+| CI | Shellcheck, stubbed tests of the runner and of the provision and teardown scripts, Helm lint and render, secret scan. |
 
 Timing and cost figures elsewhere in this repository that come from the
 simulation scripts are estimates from static assumptions. They are labelled
@@ -68,7 +68,7 @@ node pool and the cluster.
 - An OCI paid account and a compartment. The default GPU limit is 0. Request
   an increase for `gpu-a10-count` in the Console under Limits, Quotas and Usage.
 - An NGC API key with access to `nvcr.io`.
-- `oci`, `kubectl`, `helm`, `jq`, and `python3` on the path.
+- `oci`, `kubectl`, `helm`, `jq`, `python3`, `curl`, and `bc` on the path.
 
 Details: [docs/setup-prerequisites.md](docs/setup-prerequisites.md).
 
@@ -82,15 +82,16 @@ export OCI_REGION=us-phoenix-1
 
 | Step | Command | Bills |
 |------|---------|-------|
-| Check tools and access | `make prereqs` | No |
+| Check access, quota, and configuration | `scripts/run_measured.sh --preflight-only /tmp/preflight` | No |
 | Create the cluster and GPU node pool | `make provision CONFIRM_COST=yes` | Yes, from here |
+| Check the cluster, the GPU, and registry access | `make prereqs` | Yes |
 | Deploy NIM | `make install CONFIRM_COST=yes` | Yes |
-| Check health and send a request | `make verify` | Yes |
+| Check health and send one inference request | `make verify` | Yes |
 | Remove NIM, keep the cluster | `make cleanup` | Yes |
 | Delete the node pool and cluster | `make teardown` | Stops here |
 
-The NGC key is passed to Helm at install time. The chart has no default key
-and refuses to render without one.
+The NGC key is passed to Helm on standard input at install time. It is not
+written to disk. The chart has no default key and refuses to render without one.
 
 ## Measured run
 
@@ -124,7 +125,9 @@ make no cloud call.
 ## What changed in October 2026
 
 A review found defects that could leave a GPU billing or damage unrelated
-resources. Each is fixed and covered by a stubbed test or a CI check.
+resources. Each is fixed. The provision, teardown, and runner fixes have
+stubbed tests in [tests/](tests/). No stub proves behaviour against the real
+OCI API; the measured run does that.
 
 | Defect | Fix |
 |--------|-----|
@@ -135,7 +138,9 @@ resources. Each is fixed and covered by a stubbed test or a CI check.
 | Teardown deleted the user's whole `~/.kube/config` | It removes only this cluster's entries. |
 | Emergency cleanup force-deleted every instance, volume, and load balancer in the first compartment it found | It is scoped to `OCI_COMPARTMENT_ID` and to OKE resources, and asks for a typed confirmation. |
 | An early exit from deploy uninstalled a healthy release and deleted its model cache | Destructive cleanup is armed only for a release that this run created. |
-| Deploy left the NGC key in a temp file, and setup printed it | The temp file is removed on every exit path. Scripts print only "set" or "not set". |
+| Deploy left the NGC key in a temp file, and setup printed it | The key goes to Helm on standard input and is never written to disk. Scripts print only "set" or "not set". |
+| The scripted subnets had no OKE security rules, so nodes could not register | Provisioning creates security lists that mirror the rules Oracle's Quick Create generates. |
+| A failed install uninstalled the release before anyone could see why | Deploy captures pod state, events, and logs before it cleans up. |
 | Prices and shapes disagreed across files, and `VM.GPU.A10.4` is not an Oracle shape | One rate table. Three valid shapes. |
 
 ## Repository layout
@@ -151,42 +156,45 @@ docs/runs/          Receipts from measured runs
 ```
 
 Several documents at the repository root and in `docs/` are working notes
-from October 2025. Each carries a note saying so. Their figures were
-corrected in October 2026.
+from October 2025. The session summaries and reports carry a note saying so.
+Their figures were corrected in October 2026.
 
 ## Makefile targets
 
 | Target | Purpose | Cost guard |
 |--------|---------|------------|
-| `make prereqs` | Check tools, credentials, and access | No |
 | `make provision` | Create the cluster and GPU node pool | Yes |
+| `make prereqs` | Check the cluster, the GPU, and registry access | No |
 | `make install` | Deploy NIM with Helm | Yes |
-| `make verify` | Check health and run an inference request | No |
+| `make verify` | Check health and send one inference request | No |
 | `make status` / `make logs` | Show pod state and recent logs | No |
 | `make troubleshoot` | Run diagnostics | No |
 | `make cleanup` | Remove the NIM release; the cluster keeps billing | No |
-| `make teardown` | Delete the node pool and cluster | Yes |
+| `make teardown` | Delete the node pool and cluster | Typed confirmation |
 | `make lint` | Shellcheck and Helm lint | No |
-| `make test` | Run the stubbed runner tests | No |
+| `make test` | Run the stubbed tests | No |
 | `make help` | List every target | No |
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `OCI_COMPARTMENT_ID` | required | Compartment that owns every resource |
 | `NGC_API_KEY` | required | NGC key, passed to Helm at install |
-| `OCI_REGION` | `us-phoenix-1` | Region. The pinned node image is Phoenix-only. |
+| `OCI_REGION` | `us-phoenix-1` | Region for every `oci` call. The pinned node image is Phoenix-only. |
+| `API_ALLOWED_CIDR` | `0.0.0.0/0` | Source range allowed to reach the Kubernetes API on 6443 |
 | `OKE_GPU_SHAPE` | `VM.GPU.A10.1` | GPU node shape |
-| `CONFIRM_COST` | `no` | Set `yes` to pass the cost guard without a prompt |
+| `CONFIRM_COST` | `no` | Set `yes` to pass the cost guard. Otherwise a billable step exits. |
 | `KEEP_CACHE` | `no` | Keep the model-cache volume during `make cleanup` |
 | `FORCE` | `no` | Skip confirmation prompts |
 
 ## Known gaps
 
-- No measured receipt is committed yet.
+- No measured receipt is committed yet. Until one is, the scripted provisioning path is untested against the real OCI API.
+- The Kubernetes API endpoint is public and open on 6443 by default. Set `API_ALLOWED_CIDR` to narrow it.
 - The node image OCID is pinned to Phoenix. Other regions need a different image.
-- The pod runs with the image's default user and no hardening. The chart says so.
+- The pod runs as uid 1000 with no further hardening. The chart says so.
 - The NVIDIA device plugin is pinned at v0.14.0 and has not been re-tested against newer releases.
 - The scripts are tested on bash 3.2. Bash 5 is exercised only in CI.
+- The watchdog runs on the machine that starts the run. If that machine loses power, nothing tears the cluster down.
 
 ## References
 

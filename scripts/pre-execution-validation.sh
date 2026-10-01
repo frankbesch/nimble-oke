@@ -9,11 +9,28 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/_lib.sh"
 source "${SCRIPT_DIR}/_lib_audit.sh"
 
+# Kube context pin: provision-cluster.sh records KUBE_CONTEXT=<name> in
+# cluster-info.txt. When present, every kubectl/helm call made by this script
+# (including the _lib.sh helpers it calls) targets that context. The user's
+# current-context is never changed. No KUBE_CONTEXT line: behaviour unchanged.
+# NIMBLE_CLUSTER_INFO overrides the file path (tests only).
+NIMBLE_CLUSTER_INFO="${NIMBLE_CLUSTER_INFO:-${SCRIPT_DIR}/cluster-info.txt}"
+KUBE_CONTEXT_PIN=""
+if [[ -f "$NIMBLE_CLUSTER_INFO" ]]; then
+    KUBE_CONTEXT_PIN="$(sed -n 's/^KUBE_CONTEXT=//p' "$NIMBLE_CLUSTER_INFO" | tail -1)"
+fi
+if [[ -n "$KUBE_CONTEXT_PIN" ]]; then
+    export HELM_KUBECONTEXT="$KUBE_CONTEXT_PIN"
+    kubectl() { command kubectl --context "$KUBE_CONTEXT_PIN" "$@"; }
+fi
+
 readonly DEFAULT_GPU_SHAPE="VM.GPU.A10.1"
 readonly DEFAULT_REQUIRED_GPUS=1
 
-# Validation results tracking (using temporary file for compatibility)
-readonly VALIDATION_RESULTS_FILE="/tmp/nimble-oke-validation-$$.json"
+# Validation results tracking. main() creates the file with mktemp and an
+# EXIT trap removes it; /dev/null applies when functions are sourced and
+# called without main().
+VALIDATION_RESULTS_FILE="${VALIDATION_RESULTS_FILE:-/dev/null}"
 
 record_validation() {
     local test_name="$1"
@@ -193,11 +210,14 @@ local shape="${GPU_SHAPE:-$DEFAULT_GPU_SHAPE}"
         record_validation "gpu_nodes" "INFO" "No GPU nodes found (expected before cluster provisioning)"
     fi
     
-    # Check NVIDIA device plugin (optional before GPU nodes exist)
-    if kubectl get daemonset -n kube-system -l name=nvidia-device-plugin-ds &>/dev/null 2>&1; then
-        record_validation "nvidia_device_plugin" "PASS" "NVIDIA device plugin installed"
+    # Device plugin evidence: a node advertising allocatable nvidia.com/gpu
+    # (the upstream DaemonSet object has no labels, so a label query proves nothing).
+    local gpu_alloc
+    gpu_alloc=$(kubectl get nodes -o jsonpath='{.items[*].status.allocatable.nvidia\.com/gpu}' 2>/dev/null || echo "")
+    if [[ "$gpu_alloc" =~ [1-9] ]]; then
+        record_validation "nvidia_device_plugin" "PASS" "Allocatable nvidia.com/gpu reported: $gpu_alloc"
     else
-        record_validation "nvidia_device_plugin" "INFO" "NVIDIA device plugin not installed (will be installed with GPU nodes)"
+        record_validation "nvidia_device_plugin" "INFO" "No node reports allocatable nvidia.com/gpu yet (prereqs.sh enforces this)"
     fi
     
     # GPU validation is informational only at this stage
@@ -227,7 +247,10 @@ validate_storage_resources() {
     fi
 }
 
-validate_network_connectivity() {
+# Named differently from the _lib.sh helper validate_network_connectivity
+# (target, port), which this function calls. The old shared name made this
+# function call itself until bash crashed.
+validate_network_checks() {
     log_info "=== Validating Network Connectivity ==="
     
     local network_ok=true
@@ -428,8 +451,10 @@ main() {
     local duration="${1:-5}"
     local gpu_count="${2:-1}"
     
-    # Initialize results file
-    : > "$VALIDATION_RESULTS_FILE"
+    # Results file: private temp file, removed on every exit path.
+    VALIDATION_RESULTS_FILE="$(mktemp "${TMPDIR:-/tmp}/nimble-oke-validation.XXXXXX")" \
+        || die "mktemp failed"
+    trap 'rm -f "$VALIDATION_RESULTS_FILE"' EXIT
     
     log_info "Starting pre-execution validation..."
     log_info "Mode: ${DRY_RUN:+DRY-RUN }${DEBUG:+DEBUG }${ENVIRONMENT}"
@@ -443,7 +468,7 @@ main() {
     validate_kubernetes_connectivity
     validate_gpu_resources
     validate_storage_resources
-    validate_network_connectivity
+    validate_network_checks
     validate_ngc_credentials
     validate_helm_charts
     validate_cost_estimation "$duration" "$gpu_count"

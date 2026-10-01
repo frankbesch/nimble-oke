@@ -70,6 +70,10 @@ spec:
         - name: model-cache
           mountPath: {{ .Values.persistence.mountPath }}
         {{- end }}
+        {{- if .Values.sharedMemory.enabled }}
+        - name: dshm
+          mountPath: /dev/shm
+        {{- end }}
         {{- if .Values.readinessProbe }}
         readinessProbe:
           {{- toYaml .Values.readinessProbe | nindent 10 }}
@@ -89,6 +93,12 @@ spec:
       - name: model-cache
         persistentVolumeClaim:
           claimName: {{ include "nvidia-nim.fullname" . }}-model-cache
+      {{- end }}
+      {{- if .Values.sharedMemory.enabled }}
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: {{ .Values.sharedMemory.sizeLimit }}
       {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
