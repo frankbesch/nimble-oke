@@ -12,11 +12,11 @@
       "label": "Client",
       "sublabel": "curl or OpenAI SDK",
       "pos": [
-        40,
-        240
+        80,
+        40
       ],
       "size": [
-        150,
+        170,
         64
       ]
     },
@@ -26,11 +26,11 @@
       "label": "NGC registry",
       "sublabel": "nvcr.io/nim/meta",
       "pos": [
-        600,
-        50
+        280,
+        40
       ],
       "size": [
-        180,
+        170,
         64
       ]
     },
@@ -40,11 +40,11 @@
       "label": "NIM pod",
       "sublabel": "llama3-8b-instruct 1.0.3",
       "pos": [
-        600,
-        240
+        80,
+        196
       ],
       "size": [
-        180,
+        370,
         64
       ],
       "tag": "port 8000"
@@ -55,8 +55,8 @@
       "label": "Block volume",
       "sublabel": "100 Gi model cache",
       "pos": [
-        900,
-        240
+        80,
+        308
       ],
       "size": [
         170,
@@ -69,11 +69,11 @@
       "label": "GPU node",
       "sublabel": "VM.GPU.A10.1, one A10 24 GB",
       "pos": [
-        600,
-        430
+        280,
+        308
       ],
       "size": [
-        180,
+        170,
         64
       ],
       "tag": "pool size 0 to 1"
@@ -84,8 +84,8 @@
       "label": "Cluster Autoscaler",
       "sublabel": "on the E4.Flex system node",
       "pos": [
-        300,
-        430
+        280,
+        420
       ],
       "size": [
         170,
@@ -96,14 +96,14 @@
   "boundaries": [
     {
       "kind": "region",
-      "label": "OKE enhanced cluster, Kubernetes v1.34.1",
+      "label": "OKE enhanced cluster, v1.34.1",
       "wraps": [
         "nim",
         "cache",
         "gpu",
         "autoscaler"
       ],
-      "pad": 44
+      "pad": 40
     }
   ],
   "connections": [
@@ -112,7 +112,9 @@
       "from": "client",
       "to": "nim",
       "label": "OpenAI-compatible API",
-      "variant": "emphasis"
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top"
     },
     {
       "id": "image-pull",
@@ -120,14 +122,15 @@
       "to": "nim",
       "label": "image pull",
       "fromSide": "bottom",
-      "toSide": "top",
-      "labelDy": 80
+      "toSide": "top"
     },
     {
       "id": "nim-to-cache",
       "from": "nim",
       "to": "cache",
-      "label": "model files"
+      "label": "model files",
+      "fromSide": "bottom",
+      "toSide": "top"
     },
     {
       "id": "nim-on-gpu",
@@ -135,15 +138,16 @@
       "to": "gpu",
       "label": "scheduled on",
       "fromSide": "bottom",
-      "toSide": "top",
-      "labelDy": 80
+      "toSide": "top"
     },
     {
       "id": "scale",
       "from": "autoscaler",
       "to": "gpu",
       "label": "adds and removes",
-      "variant": "dashed"
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom"
     }
   ]
 }

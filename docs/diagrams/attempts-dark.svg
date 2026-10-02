@@ -1,30 +1,33 @@
-<svg viewBox="0 0 1000 394" xmlns="http://www.w3.org/2000/svg" role="img" font-family='ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, monospace'>
+<svg viewBox="0 0 640 408" xmlns="http://www.w3.org/2000/svg" role="img" font-family='ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, monospace'>
 <title>Every attempt on 2026-10-01</title>
 <desc>Six starts on 2026-10-01. 18:46 fixed pool failed at node pool create, $0.0017. 19:00 fixed pool passed, $0.63. About 20:00 IAM apply failed with 403. About 20:05 IAM check gave a false fail. 20:07 autoscale failed in preflight. 20:12 autoscale passed, $0.53.</desc>
-<rect width="1000" height="394" rx="6" fill="#0E1C2B"/>
-<text x="40" y="44" font-size="17" fill="#E8E2D6" font-weight="600">Every attempt on 2026-10-01</text>
-<line x1="40" y1="60" x2="960" y2="60" stroke="#2D4152"/>
-<line x1="398.5" y1="78" x2="398.5" y2="322" stroke="#2D4152" stroke-dasharray="3 4"/>
-<text x="398.46153846153845" y="342" font-size="11" fill="#A8A296" text-anchor="middle">19:00 UTC</text>
-<line x1="693.8" y1="78" x2="693.8" y2="322" stroke="#2D4152" stroke-dasharray="3 4"/>
-<text x="693.8461538461538" y="342" font-size="11" fill="#A8A296" text-anchor="middle">20:00 UTC</text>
-<text x="40" y="101" font-size="12.5" fill="#E8E2D6">1  Fixed pool</text>
-<rect x="329.5" y="84" width="62.4" height="24" rx="2" fill="#D17276"/>
-<text x="401.9138461538465" y="101" font-size="11.5" fill="#E8E2D6">FAIL at node pool create · $0.0017</text>
-<text x="40" y="141" font-size="12.5" fill="#E8E2D6">2  Fixed pool</text>
-<rect x="398.5" y="124" width="266.8" height="24" rx="2" fill="#6DA361"/>
-<text x="675.292307692308" y="141" font-size="11.5" fill="#E8E2D6">PASS · $0.63</text>
-<text x="40" y="181" font-size="12.5" fill="#E8E2D6">3  IAM setup, apply</text>
-<rect x="693.8" y="164" width="6.0" height="24" rx="2" fill="#D17276"/>
-<text x="709.8461538461538" y="181" font-size="11.5" fill="#E8E2D6">FAIL, 403 · $0</text>
-<text x="40" y="221" font-size="12.5" fill="#E8E2D6">4  IAM setup, check</text>
-<rect x="718.5" y="204" width="6.0" height="24" rx="2" fill="#D17276"/>
-<text x="734.4615384615385" y="221" font-size="11.5" fill="#E8E2D6">false FAIL · $0</text>
-<text x="40" y="261" font-size="12.5" fill="#E8E2D6">5  Autoscale</text>
-<rect x="728.3" y="244" width="6.0" height="24" rx="2" fill="#D17276"/>
-<text x="744.3076923076924" y="261" font-size="11.5" fill="#E8E2D6">FAIL in preflight · $0</text>
-<text x="40" y="301" font-size="12.5" fill="#E8E2D6">6  Autoscale</text>
-<rect x="752.9" y="284" width="175.1" height="24" rx="2" fill="#6DA361"/>
-<text x="742.9230769230769" y="301" font-size="11.5" fill="#E8E2D6" text-anchor="end">PASS · $0.53</text>
-<text x="40" y="372" font-size="11.5" fill="#A8A296">Attempts 3 and 4 have no phase log; their times come from the fix commits. The day&#x27;s posted total is $1.17.</text>
+<rect width="640" height="408" rx="6" fill="#0E1C2B"/>
+<text x="28" y="42" font-size="17" fill="#E8E2D6" font-weight="600">Every attempt on 2026-10-01</text>
+<line x1="28" y1="58" x2="612" y2="58" stroke="#2D4152"/>
+<line x1="262.2" y1="76" x2="262.2" y2="322" stroke="#2D4152" stroke-dasharray="3 4"/>
+<text x="262.15384615384613" y="342" font-size="11.5" fill="#A8A296" text-anchor="middle">19:00 UTC</text>
+<line x1="448.6" y1="76" x2="448.6" y2="322" stroke="#2D4152" stroke-dasharray="3 4"/>
+<text x="448.61538461538464" y="342" font-size="11.5" fill="#A8A296" text-anchor="middle">20:00 UTC</text>
+<text x="28" y="101" font-size="12.5" fill="#E8E2D6">1  Fixed pool</text>
+<rect x="218.6" y="84" width="39.4" height="24" rx="2" fill="#D17276"/>
+<text x="268.0206153846156" y="101" font-size="11.5" fill="#E8E2D6">FAIL at node pool create · $0.0017</text>
+<text x="28" y="141" font-size="12.5" fill="#E8E2D6">2  Fixed pool</text>
+<rect x="262.2" y="124" width="168.4" height="24" rx="2" fill="#6DA361"/>
+<text x="440.59076923076935" y="141" font-size="11.5" fill="#E8E2D6">PASS · $0.63</text>
+<text x="28" y="181" font-size="12.5" fill="#E8E2D6">3  IAM setup, apply</text>
+<rect x="448.6" y="164" width="6.0" height="24" rx="2" fill="#D17276"/>
+<text x="464.61538461538464" y="181" font-size="11.5" fill="#E8E2D6">FAIL, 403 · $0</text>
+<text x="28" y="221" font-size="12.5" fill="#E8E2D6">4  IAM setup, check</text>
+<rect x="464.2" y="204" width="6.0" height="24" rx="2" fill="#D17276"/>
+<text x="480.15384615384613" y="221" font-size="11.5" fill="#E8E2D6">false FAIL · $0</text>
+<text x="28" y="261" font-size="12.5" fill="#E8E2D6">5  Autoscale</text>
+<rect x="470.4" y="244" width="6.0" height="24" rx="2" fill="#D17276"/>
+<rect x="302.4" y="246" width="162.0" height="20" rx="0" fill="#0E1C2B"/>
+<text x="460.3692307692308" y="261" font-size="11.5" fill="#E8E2D6" text-anchor="end">FAIL in preflight · $0</text>
+<text x="28" y="301" font-size="12.5" fill="#E8E2D6">6  Autoscale</text>
+<rect x="485.9" y="284" width="110.5" height="24" rx="2" fill="#6DA361"/>
+<rect x="387.9" y="286" width="92.0" height="20" rx="0" fill="#0E1C2B"/>
+<text x="475.9076923076923" y="301" font-size="11.5" fill="#E8E2D6" text-anchor="end">PASS · $0.53</text>
+<text x="28" y="372" font-size="11.5" fill="#A8A296">Attempts 3 and 4 have no phase log; their times come from the fix commits. The day&#x27;s</text>
+<text x="28" y="390" font-size="11.5" fill="#A8A296">posted total is $1.17.</text>
 </svg>

@@ -1,0 +1,231 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "How the runner ends",
+    "quality_profile": "showcase",
+    "legend": {
+      "entries": {
+        "backend": {
+          "label": "Runner step"
+        },
+        "security": {
+          "label": "Check"
+        },
+        "messagebus": {
+          "label": "Watchdog action"
+        },
+        "cloud": {
+          "label": "Clean exit"
+        },
+        "external": {
+          "label": "Manual follow-up"
+        }
+      }
+    }
+  },
+  "components": [
+    {
+      "id": "preflight",
+      "type": "security",
+      "label": "Preflight",
+      "sublabel": "timeouts fit the limit",
+      "pos": [
+        80,
+        60
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "arm",
+      "type": "security",
+      "label": "Arm watchdog",
+      "sublabel": "before any cost",
+      "pos": [
+        340,
+        60
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "steps",
+      "type": "backend",
+      "label": "Run steps",
+      "sublabel": "each has a hard timeout",
+      "pos": [
+        80,
+        172
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "teardown",
+      "type": "backend",
+      "label": "Teardown",
+      "sublabel": "trap on every exit",
+      "pos": [
+        80,
+        284
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "confirm",
+      "type": "security",
+      "label": "Deletes confirmed",
+      "sublabel": "retried until yes",
+      "pos": [
+        80,
+        396
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "done",
+      "type": "cloud",
+      "label": "Exit 0",
+      "sublabel": "cluster deleted",
+      "pos": [
+        80,
+        544
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "takeover",
+      "type": "messagebus",
+      "label": "Watchdog teardown",
+      "sublabel": "runner died or time limit",
+      "pos": [
+        340,
+        396
+      ],
+      "size": [
+        170,
+        64
+      ]
+    },
+    {
+      "id": "manual",
+      "type": "external",
+      "label": "Exit non-zero",
+      "sublabel": "prints oci delete commands",
+      "pos": [
+        340,
+        544
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "tag": "watchdog stays armed"
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Runner",
+      "wraps": [
+        "preflight",
+        "steps",
+        "teardown",
+        "confirm",
+        "done"
+      ],
+      "pad": 40
+    },
+    {
+      "kind": "region",
+      "label": "Watchdog, own session",
+      "wraps": [
+        "arm",
+        "takeover"
+      ],
+      "pad": 40
+    }
+  ],
+  "connections": [
+    {
+      "id": "preflight-arm",
+      "from": "preflight",
+      "to": "arm",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "arm-steps",
+      "from": "arm",
+      "to": "steps",
+      "fromSide": "bottom",
+      "toSide": "right"
+    },
+    {
+      "id": "steps-teardown",
+      "from": "steps",
+      "to": "teardown",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "teardown-confirm",
+      "from": "teardown",
+      "to": "confirm",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "confirm-done",
+      "from": "confirm",
+      "to": "done",
+      "label": "yes",
+      "labelDy": 52,
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "arm-takeover",
+      "from": "arm",
+      "to": "takeover",
+      "label": "takes over",
+      "labelDy": 120,
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "takeover-confirm",
+      "from": "takeover",
+      "to": "confirm",
+      "fromSide": "left",
+      "toSide": "right"
+    },
+    {
+      "id": "confirm-manual",
+      "from": "confirm",
+      "to": "manual",
+      "label": "no",
+      "variant": "security",
+      "fromSide": "right",
+      "toSide": "top"
+    }
+  ]
+}
