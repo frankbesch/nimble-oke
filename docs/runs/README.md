@@ -3,8 +3,9 @@
 Each Markdown file here is the receipt of one run of `scripts/run_measured.sh`
 against a real OCI account. A receipt records the date, region, shape, image,
 Kubernetes version, time per phase, OCI work-request times, benchmark
-numbers, an itemised cost estimate with its rate basis, and the teardown
-result.
+numbers, an itemised cost with its rate basis, and the teardown result. The
+cost is an estimate until OCI posts the usage; both receipts below now carry
+posted cost.
 
 A receipt holds no OCIDs, no IP addresses, and no key. The runner writes its
 raw output, including `receipt.md`, `summary.json`, and step logs, to the

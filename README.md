@@ -39,11 +39,13 @@ One run of each mode on 2026-10-01, `us-phoenix-1`, one `VM.GPU.A10.1`.
 | Scale-down: zero replicas to no GPU node | not applicable | 312 s |
 | Benchmark, 5 non-streamed requests | 5 of 5; p50 3.85 s; 27.6 tokens/s | 5 of 5; p50 3.96 s; 27.3 tokens/s |
 | Teardown | clean, third attempt, 30 min 55 s | clean, first attempt, 6 min 54 s |
-| GPU node present | 17 min 44 s | 10 min 07 s |
-| Cost estimate at list price | about $0.73 | about $0.44 |
+| GPU node pool or node present | 17 min 44 s | 10 min 07 s |
+| GPU metered by OCI | 15 min 39 s | 13 min 52 s |
+| Posted OCI cost | $0.63 | $0.53 |
 | Receipt | [run 1](docs/runs/2026-10-01-run-1-fixed.md) | [run 2](docs/runs/2026-10-01-run-2-autoscale.md) |
 
-Costs are estimates at Oracle list prices, not a bill. Five requests on one
+Costs are posted usage from OCI Cost Analysis, read on 2026-10-02, not an
+invoice. Each receipt shows the lines. Five requests on one
 stream is a smoke test, not a performance result. Run 1's slow teardown was
 the default node drain; the kit now skips it, and run 2 shows the effect.
 

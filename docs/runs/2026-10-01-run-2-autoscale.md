@@ -41,7 +41,8 @@ Runner exit code: 0. Receipt line: `autoscale result: 0→1→0 PASS`.
 | NIM pod Pending to NIM pod Ready | 643 s |
 | Scale-down: replicas 0 to no GPU node | 312 s |
 | Autoscaler timers | scale-down-unneeded 3 m, scale-down-delay-after-add 3 m |
-| GPU node present | 607 s, about 10.1 minutes |
+| GPU node present in the cluster | 607 s, about 10.1 minutes |
+| GPU metered by OCI | 832 s, about 13.9 minutes |
 
 Evidence from the cluster's events:
 
@@ -107,21 +108,31 @@ smoke test, not a performance result.
 
 ## Cost
 
-No bill is available yet. These are estimates at Oracle list prices read on
-2026-10-01, from the runner's receipt.
+Posted cost: **$0.53**. Source: OCI Cost Analysis, hourly by SKU, read on
+2026-10-02. It is metered usage at list rates, not an invoice.
 
-| Line | Window | Rate | Estimate |
+| Line | Metered quantity | Rate | Posted cost |
 |---|---|---|---|
-| GPU node | 607 s, while the node existed | $2.00 per hour | $0.34 |
-| System node pool | 2,128 s, provision start to verified teardown | $0.074 per hour | $0.04 |
-| Enhanced cluster | 2,128 s | $0.10 per hour | $0.06 |
-| **Total** | | | **about $0.44** |
+| GPU, A10 | 0.2311 GPU-hours, 13 min 52 s | $2.00 per GPU-hour | $0.4622 |
+| System node, `VM.Standard.E4.Flex` | 0.6808 OCPU-hours and 5.45 GB-hours | $0.025 per OCPU-hour, $0.0015 per GB-hour | $0.0252 |
+| Enhanced cluster | 0.3817 cluster-hours, 22 min 54 s | $0.10 per hour | $0.0382 |
+| Block volume, storage and performance | boot volumes and the model cache | as metered | $0.0091 |
+| **Total** | | | **$0.5346** |
 
-Not included: block storage for the GPU node's boot volume and the 100 Gi
-model cache. This kit does not verify that rate.
+The lines are the 20:00 UTC hour of the account's usage. This run was the
+only activity in that hour, so the split by run is an inference from time,
+not a tag.
 
-Run 1 held a GPU node for about 18 minutes and cost about $0.73 by the same
-method. Here the GPU billed for about 10 minutes.
+Before the usage posted, this receipt estimated $0.44. The estimate was low by
+$0.09, and the GPU line is the reason. The estimate counted the 607 s the GPU
+node was present in the cluster. OCI metered the instance for 13 min 52 s.
+An instance bills from launch to termination, and that is longer than the
+time its node is registered.
+
+[Run 1](2026-10-01-run-1-fixed.md) posted $0.63, with the GPU metered for
+15 min 39 s. Autoscaling saved about 2 minutes of GPU time in this run. The
+saving grows with idle time: a fixed pool bills the GPU while it waits, and
+this pool does not.
 
 ## Before this run
 
@@ -143,5 +154,5 @@ Three things failed on the way, none of them billable:
 - The add-on's default 10-minute timers.
 - Scale-down with other workloads on the GPU node.
 - Performance under load or with streaming.
-- The actual bill.
+- An invoice. The cost above is posted usage, not a billing document.
 - Regions other than Phoenix.
