@@ -1,32 +1,31 @@
-<svg viewBox="0 0 640 488" xmlns="http://www.w3.org/2000/svg" role="img" font-family='ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, monospace'>
+<svg viewBox="0 0 360 501" xmlns="http://www.w3.org/2000/svg" role="img" font-family='ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, monospace'>
 <title>GPU node autoscaling, 0 to 1 to 0</title>
 <desc>The GPU node pool starts at 0 nodes. The NIM pod goes Pending and asks for one GPU. The GPU node is Ready 385 s later. NIM serves 5 of 5 requests, then replicas are set to 0. The pool is back at 0 nodes 312 s after that.</desc>
-<rect width="640" height="488" rx="6" fill="#0E1C2B"/>
-<text x="28" y="42" font-size="17" fill="#E8E2D6" font-weight="600">GPU node autoscaling, 0 to 1 to 0</text>
-<line x1="28" y1="58" x2="612" y2="58" stroke="#2D4152"/>
-<rect x="28" y="84" width="330" height="50" rx="4" fill="#1F3142" stroke="#6DA361"/>
-<text x="44" y="105" font-size="13" fill="#E8E2D6" font-weight="600">Pool at 0 nodes</text>
-<text x="44" y="123" font-size="11.5" fill="#A8A296">cluster up, no GPU</text>
-<path d="M193 138 V152 m-5 -6 l5 6 l5 -6" fill="none" stroke="#A8A296" stroke-width="1.5"/>
-<rect x="28" y="156" width="330" height="50" rx="4" fill="#1F3142" stroke="#2D4152"/>
-<text x="44" y="177" font-size="13" fill="#E8E2D6" font-weight="600">NIM pod Pending</text>
-<text x="44" y="195" font-size="11.5" fill="#A8A296">asks for one GPU</text>
-<path d="M193 210 V224 m-5 -6 l5 6 l5 -6" fill="none" stroke="#A8A296" stroke-width="1.5"/>
-<rect x="28" y="228" width="330" height="50" rx="4" fill="#1F3142" stroke="#2D4152"/>
-<text x="44" y="249" font-size="13" fill="#E8E2D6" font-weight="600">GPU node Ready</text>
-<text x="44" y="267" font-size="11.5" fill="#A8A296">autoscaler added it</text>
-<path d="M193 282 V296 m-5 -6 l5 6 l5 -6" fill="none" stroke="#A8A296" stroke-width="1.5"/>
-<rect x="28" y="300" width="330" height="50" rx="4" fill="#1F3142" stroke="#2D4152"/>
-<text x="44" y="321" font-size="13" fill="#E8E2D6" font-weight="600">NIM serving</text>
-<text x="44" y="339" font-size="11.5" fill="#A8A296">5 of 5, then replicas 0</text>
-<path d="M193 354 V368 m-5 -6 l5 6 l5 -6" fill="none" stroke="#A8A296" stroke-width="1.5"/>
-<rect x="28" y="372" width="330" height="50" rx="4" fill="#1F3142" stroke="#6DA361"/>
-<text x="44" y="393" font-size="13" fill="#E8E2D6" font-weight="600">Pool back at 0</text>
-<text x="44" y="411" font-size="11.5" fill="#A8A296">autoscaler removed it</text>
-<path d="M370 181 H384 V253 H370" fill="none" stroke="#6DA361" stroke-width="2"/>
-<text x="396" y="222" font-size="13" fill="#E8E2D6" font-weight="600">scale-up: 385 s</text>
-<path d="M370 325 H384 V397 H370" fill="none" stroke="#17A1C8" stroke-width="2"/>
-<text x="396" y="366" font-size="13" fill="#E8E2D6" font-weight="600">scale-down: 312 s</text>
-<text x="28" y="452" font-size="11.5" fill="#A8A296">Run 2, 2026-10-01, one VM.GPU.A10.1. Measured once. Scale-down ran with the</text>
-<text x="28" y="470" font-size="11.5" fill="#A8A296">autoscaler timers set to 3 minutes.</text>
+<rect width="360" height="501" rx="6" fill="#0E1C2B"/>
+<text x="16" y="30" font-size="15" fill="#E8E2D6" font-weight="600">GPU node autoscaling, 0 to 1 to 0</text>
+<line x1="16" y1="42" x2="344" y2="42" stroke="#2D4152"/>
+<rect x="16" y="54" width="328" height="46" rx="4" fill="#1F3142" stroke="#6DA361"/>
+<text x="30" y="73" font-size="13" fill="#E8E2D6" font-weight="600">Pool at 0 nodes</text>
+<text x="30" y="91" font-size="12" fill="#A8A296">cluster up, no GPU</text>
+<path d="M40 104 L40 132" fill="none" stroke="#A8A296" stroke-width="1.5"/><polygon points="35,124 45,124 40,132" fill="#A8A296"/>
+<rect x="16" y="136" width="328" height="46" rx="4" fill="#1F3142" stroke="#2D4152"/>
+<text x="30" y="155" font-size="13" fill="#E8E2D6" font-weight="600">NIM pod Pending</text>
+<text x="30" y="173" font-size="12" fill="#A8A296">asks for one GPU</text>
+<path d="M40 186 L40 214" fill="none" stroke="#6DA361" stroke-width="2"/><polygon points="35,206 45,206 40,214" fill="#6DA361"/>
+<text x="58" y="205" font-size="13" fill="#E8E2D6" font-weight="600">scale-up: 385 s</text>
+<rect x="16" y="218" width="328" height="46" rx="4" fill="#1F3142" stroke="#2D4152"/>
+<text x="30" y="237" font-size="13" fill="#E8E2D6" font-weight="600">GPU node Ready</text>
+<text x="30" y="255" font-size="12" fill="#A8A296">autoscaler added it</text>
+<path d="M40 268 L40 296" fill="none" stroke="#A8A296" stroke-width="1.5"/><polygon points="35,288 45,288 40,296" fill="#A8A296"/>
+<rect x="16" y="300" width="328" height="46" rx="4" fill="#1F3142" stroke="#2D4152"/>
+<text x="30" y="319" font-size="13" fill="#E8E2D6" font-weight="600">NIM serving</text>
+<text x="30" y="337" font-size="12" fill="#A8A296">5 of 5, then replicas 0</text>
+<path d="M40 350 L40 378" fill="none" stroke="#17A1C8" stroke-width="2"/><polygon points="35,370 45,370 40,378" fill="#17A1C8"/>
+<text x="58" y="369" font-size="13" fill="#E8E2D6" font-weight="600">scale-down: 312 s</text>
+<rect x="16" y="382" width="328" height="46" rx="4" fill="#1F3142" stroke="#6DA361"/>
+<text x="30" y="401" font-size="13" fill="#E8E2D6" font-weight="600">Pool back at 0</text>
+<text x="30" y="419" font-size="12" fill="#A8A296">autoscaler removed it</text>
+<text x="16" y="450" font-size="12" fill="#A8A296">Run 2, 2026-10-01, one VM.GPU.A10.1. Measured</text>
+<text x="16" y="467" font-size="12" fill="#A8A296">once. Scale-down ran with the autoscaler</text>
+<text x="16" y="484" font-size="12" fill="#A8A296">timers set to 3 minutes.</text>
 </svg>

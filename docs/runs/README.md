@@ -18,7 +18,7 @@ directory you name. Those directories stay out of git.
 
 ## Every attempt, including the failures
 
-<picture><source media="(prefers-color-scheme: dark)" srcset="../diagrams/attempts-dark.svg"/><img src="../diagrams/attempts-light.svg" alt="Chart: every start, with pass or fail, duration, and cost."/></picture>
+<picture><source media="(prefers-color-scheme: dark)" srcset="../diagrams/attempts-dark.svg"/><img width="420" src="../diagrams/attempts-light.svg" alt="Chart: every start, with pass or fail, duration, and cost."/></picture>
 
 <details><summary>Text version of this diagram</summary>
 
