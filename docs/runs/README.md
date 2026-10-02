@@ -18,6 +18,14 @@ directory you name. Those directories stay out of git.
 
 ## Every attempt, including the failures
 
+<picture><source media="(prefers-color-scheme: dark)" srcset="../diagrams/attempts-dark.svg"/><img src="../diagrams/attempts-light.svg" alt="Chart: every start, with pass or fail, duration, and cost."/></picture>
+
+<details><summary>Text version of this diagram</summary>
+
+Six starts on 2026-10-01. 18:46 fixed pool failed at node pool create, $0.0017. 19:00 fixed pool passed, $0.63. About 20:00 IAM apply failed with 403. About 20:05 IAM check gave a false fail. 20:07 autoscale failed in preflight. 20:12 autoscale passed, $0.53.
+
+</details>
+
 Six starts on 2026-10-01 produced the two receipts above. Times are UTC, from
 each run's phase log. Posted cost is from OCI Cost Analysis, read on
 2026-10-02. The day's posted total is $1.17.

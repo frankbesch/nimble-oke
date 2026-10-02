@@ -54,6 +54,14 @@ each one with its cause and fix.
 
 ## What it deploys
 
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/deploys-dark.svg"/><img src="docs/diagrams/deploys-light.svg" alt="Architecture: a client calls the NIM pod inside the OKE cluster; the pod pulls its image from NGC, stores model files on a block volume, and runs on one GPU node that the Cluster Autoscaler adds and removes."/></picture>
+
+<details><summary>Text version of this diagram</summary>
+
+A client (curl or an OpenAI SDK) calls the NIM pod over the OpenAI-compatible API on port 8000. The NIM pod runs `llama3-8b-instruct` 1.0.3. It pulls its image from the NGC registry and keeps model files on a 100 Gi block volume. It is scheduled on one GPU node, `VM.GPU.A10.1`. With `--autoscale`, the Cluster Autoscaler on the E4.Flex system node adds and removes that node. The pod, volume, GPU node, and autoscaler sit inside the OKE enhanced cluster, Kubernetes v1.34.1.
+
+</details>
+
 | Component | Value |
 |-----------|-------|
 | Cluster | OKE enhanced cluster, Kubernetes v1.34.1 |
@@ -74,6 +82,14 @@ Two limits you should know before you rely on this stack:
   configuration, which NVIDIA describes as not guaranteed.
 
 ## Cost
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/cost-dark.svg"/><img src="docs/diagrams/cost-light.svg" alt="Chart: posted cloud cost split by billing line."/></picture>
+
+<details><summary>Text version of this diagram</summary>
+
+Run 1 posted $0.63: GPU $0.5217, enhanced cluster $0.0716, system node $0.0255, block volume $0.0109. Run 2 posted $0.53: GPU $0.4622, enhanced cluster $0.0382, system node $0.0252, block volume $0.0091.
+
+</details>
 
 Rates are Oracle list prices, read from Oracle's price list on 2026-10-01.
 
@@ -160,6 +176,14 @@ scripts/run_measured.sh --preflight-only /tmp/preflight
 
 ### GPU node autoscaling, 0 to 1 to 0
 
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/autoscale-dark.svg"/><img src="docs/diagrams/autoscale-light.svg" alt="Chart: the GPU node pool goes from 0 nodes to 1 and back to 0, with the measured scale-up and scale-down times."/></picture>
+
+<details><summary>Text version of this diagram</summary>
+
+The GPU node pool starts at 0 nodes. The NIM pod goes Pending and asks for one GPU. The GPU node is Ready 385 s later. NIM serves 5 of 5 requests, then replicas are set to 0. The pool is back at 0 nodes 312 s after that.
+
+</details>
+
 `--autoscale` creates the GPU node pool with no nodes and installs Oracle's
 Cluster Autoscaler add-on on the system node. The pending NIM pod triggers
 one GPU node. After the benchmark, the runner scales NIM to zero replicas and
@@ -190,6 +214,14 @@ nodes. [Run 2](docs/runs/2026-10-01-run-2-autoscale.md) shows that it does,
 with add-on 1.34.3.
 
 ### How the runner ends
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/runner-ends-dark.svg"/><img src="docs/diagrams/runner-ends-light.svg" alt="Workflow: preflight, arm the watchdog, run the steps, tear down, then exit 0 when the deletes are confirmed; otherwise exit non-zero with the watchdog still armed."/></picture>
+
+<details><summary>Text version of this diagram</summary>
+
+Preflight checks that the step timeouts fit the watchdog limit. The watchdog is armed in its own session before anything billable exists. The steps run, each with a hard timeout. Teardown runs from a trap on every exit and is retried until the deletes are confirmed; the runner then exits 0 with the cluster deleted. If the runner dies or the time limit passes, the watchdog runs teardown. If teardown cannot be confirmed, the runner exits non-zero, prints the `oci` delete commands, and leaves the watchdog armed.
+
+</details>
 
 The runner is built to end with the cluster deleted:
 
@@ -264,6 +296,14 @@ runs in each repository's `docs/runs/` show which rows are proven against the
 real API.
 
 ### Measured side by side
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/measured-dark.svg"/><img src="docs/diagrams/measured-light.svg" alt="Chart: four measures side by side for nimble-oke on OKE and nim-gke on GKE."/></picture>
+
+<details><summary>Text version of this diagram</summary>
+
+Scale-up 385 s on OKE and 77 s on GKE. Scale-down 312 s on OKE with timers set to 3 minutes and 752 s on GKE with the default delay. Script start to NIM Ready with autoscale 23 min 04 s on OKE and 16 min 07 s on GKE. Posted list cost for every start $1.17 on OKE and $1.19 on GKE.
+
+</details>
 
 The two kits were measured on different hardware, so this table is a record
 of what each run did. It is not a benchmark of the two platforms.
