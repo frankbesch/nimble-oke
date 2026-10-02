@@ -1,5 +1,7 @@
 # Nimble OKE Technical Analysis
 
+> **Archived.** A planning or analysis note from October 2025. It is not a measurement. For current status and measured results, see the [README](../../../README.md).
+
 **Purpose:** Technical review of dry-run and simulation systems, performance validation against resource constraints, and region alignment.
 
 ## Region Configuration Review

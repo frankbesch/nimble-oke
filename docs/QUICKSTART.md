@@ -2,7 +2,7 @@
 
 > **📖 Reading time:** 2 minutes
 
-Deploy NVIDIA NIM on OKE with runbook automation. Deployment time is not measured yet; see [docs/runs/](docs/runs/).
+Deploy NVIDIA NIM on OKE with the Makefile. Measured: provision took 15 min 53 s and deploy took 6 min 56 s in [run 1](runs/2026-10-01-run-1-fixed.md). This page assumes a cluster exists; `make provision CONFIRM_COST=yes` creates one, and the [README](../README.md#quick-start) has the full path.
 
 ## System Requirements
 
@@ -16,7 +16,7 @@ Deploy NVIDIA NIM on OKE with runbook automation. Deployment time is not measure
 | **Disk Space** | 100GB | For model cache + containers |
 | **NGC API Key** | Required | [Generate here](https://ngc.nvidia.com/setup/api-key) |
 
-**Cost:** $2.00/hr GPU + $0.10/hr enhanced cluster = $2.10/hr, plus load balancer and block storage, not verified here.
+**Cost:** $2.00/hr GPU + $0.10/hr enhanced cluster + $0.074/hr system node = $2.17/hr at list price. Block storage posted at about $0.01 per run.
 
 ## Prerequisites
 
@@ -35,11 +35,11 @@ make prereqs
 ## Deploy NIM
 
 ```bash
-# Set your NGC API key
-export NGC_API_KEY=nvapi-your-key-here
+# Read the NGC API key from a file only you can read (mode 600)
+export NGC_API_KEY="$(cat ~/.ngc-key)"
 
 # Deploy
-make install
+make install CONFIRM_COST=yes
 ```
 
 **Executes:**
@@ -118,7 +118,7 @@ make all  # discover → install → verify
 | `CONFIRM_COST` | Bypass cost guard | `yes` |
 | `KEEP_CACHE` | Preserve PVCs during cleanup | `yes` |
 
-**📖 Complete reference:** [README.md - Environment Variables](README.md#makefile-targets)
+**📖 Complete reference:** [README.md - Environment Variables](../README.md#makefile-targets)
 
 ## Troubleshooting
 
@@ -126,12 +126,12 @@ make all  # discover → install → verify
 `CONFIRM_COST=yes make install` - Bypass cost guard  
 `export NGC_API_KEY=nvapi-xxx` - Set NGC credentials
 
-**📚 Full guide:** [docs/RUNBOOK.md - Phase 6: Troubleshoot](docs/RUNBOOK.md#phase-6-troubleshoot)
+**📚 Full guide:** [docs/RUNBOOK.md - Phase 6: Troubleshoot](RUNBOOK.md#phase-6-troubleshoot)
 
 ## Next Steps
 
-- **Full documentation:** [docs/RUNBOOK.md](docs/RUNBOOK.md)
-- **API examples:** [docs/api-examples.md](docs/api-examples.md)
-- **Prerequisites guide:** [docs/setup-prerequisites.md](docs/setup-prerequisites.md)
+- **Full documentation:** [docs/RUNBOOK.md](RUNBOOK.md)
+- **API examples:** [docs/api-examples.md](api-examples.md)
+- **Prerequisites guide:** [docs/setup-prerequisites.md](setup-prerequisites.md)
 
-**📖 All Makefile targets:** [README.md - Makefile Targets](README.md#makefile-targets)
+**📖 All Makefile targets:** [README.md - Makefile Targets](../README.md#makefile-targets)

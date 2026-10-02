@@ -1,5 +1,7 @@
 # Nimble OKE - Complete Artifact Inventory
 
+> **Archived.** A planning or analysis note from October 2025. It is not a measurement. For current status and measured results, see the [README](../../../README.md).
+
 > **📖 Reading time:** 5 minutes  
 > **📦 Technical inventory** - File structure and feature coverage
 

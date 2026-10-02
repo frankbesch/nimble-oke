@@ -1,5 +1,7 @@
 # Oracle Blog vs Nimble OKE: Architectural Comparison
 
+> **Archived.** A planning or analysis note from October 2025. It is not a measurement. For current status and measured results, see the [README](../../../README.md).
+
 > **Reading time:** 11 minutes  
 > **Technical deep-dive** - Architecture, storage, and recommendations
 

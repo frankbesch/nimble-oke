@@ -1,5 +1,7 @@
 # Project Summary - Nimble OKE
 
+> **Archived.** A planning or analysis note from October 2025. It is not a measurement. For current status and measured results, see the [README](../../../README.md).
+
 > **📖 Reading time:** 6 minutes
 
 **Status:** First Version - Under Active Development (v0.1.0-20251013-dev)  
@@ -160,7 +162,7 @@ Each figure is hours × $2.10/hr, plus load balancer and block storage:
 
 **VM.GPU.A10.1 shape (default):** 1× A10 GPU (24 GB), 15 OCPU, 240 GB RAM, $2.00/hr. NVIDIA's support matrix does not list OCI's A10 for this model; it runs under NVIDIA's generic "sufficient memory" configuration (FP16), which is not guaranteed.
 
-**📖 Full requirements:** [docs/setup-prerequisites.md](docs/setup-prerequisites.md)
+**📖 Full requirements:** [docs/setup-prerequisites.md](../../setup-prerequisites.md)
 
 ## Key Features
 
@@ -173,7 +175,7 @@ Each figure is hours × $2.10/hr, plus load balancer and block storage:
 | **Structured Logging** | [NIM-OKE][LEVEL] format | Parseable output |
 | **Comprehensive Diagnostics** | make troubleshoot | Systematic resolution |
 
-**📚 Complete details:** [README.md - Platform Features](README.md#what-it-deploys)
+**📚 Complete details:** [README.md - Platform Features](../../../README.md#what-it-deploys)
 
 ## Comparison to Original
 

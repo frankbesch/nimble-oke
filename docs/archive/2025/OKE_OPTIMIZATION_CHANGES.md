@@ -1,5 +1,7 @@
 # OKE Optimization Changes - Critical Fixes Applied
 
+> **Archived.** A planning or analysis note from October 2025. It is not a measurement. For current status and measured results, see the [README](../../../README.md).
+
 *Historical working note from October 2025; figures corrected 2026-10-01. See README for current status.*
 
 > **Correction (2026-10-01):** This note named a 4-GPU A10 VM shape. Oracle has no such shape. The 4×A10 shape is BM.GPU.A10.4 (bare metal, 64 OCPU, 1024 GB). The conclusion that VM.GPU.A10.1 cannot run NIM on OKE is not supported by any receipt and is withdrawn. The repo default is VM.GPU.A10.1 with 1 GPU per pod.

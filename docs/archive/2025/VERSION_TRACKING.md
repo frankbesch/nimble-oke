@@ -1,5 +1,7 @@
 # Version Tracking - Nimble OKE
 
+> **Archived.** A planning or analysis note from October 2025. It is not a measurement. For current status and measured results, see the [README](../../../README.md).
+
 ## Current Version: v0.1.0-20251013-dev
 
 **Status:** First version under active development  

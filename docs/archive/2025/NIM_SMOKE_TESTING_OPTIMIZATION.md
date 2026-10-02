@@ -1,12 +1,14 @@
 # NIM Smoke Testing Optimization Guide
 
+> **Archived.** A planning or analysis note from October 2025. It is not a measurement. For current status and measured results, see the [README](../../../README.md).
+
 **Purpose:** Advanced dry-run and simulation testing for rapid, cost-efficient NIM validation on OCI OKE.
 
 ## Overview
 
 Nimble OKE's enhanced testing framework addresses the most common challenges in NIM deployment:
 
-All times, percentages, and savings in this guide are an estimate (static assumption, not measured). No measured run is committed yet; receipts will live in [docs/runs/](runs/).
+All times, percentages, and savings in this guide are an estimate (static assumption, not measured). Measured receipts are in [docs/runs/](../../runs/).
 
 - **48-minute baseline** → **12-minute optimized** deployment
 - **$10.50 baseline cost** (5 h × $2.10, plus load balancer and block storage) → lower per-iteration cost with caching

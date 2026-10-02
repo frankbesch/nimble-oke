@@ -1,5 +1,7 @@
 # Oracle Blog Comparison - Improvements Implemented
 
+> **Archived.** A planning or analysis note from October 2025. It is not a measurement. For current status and measured results, see the [README](../../../README.md).
+
 > **Reading time:** 7 minutes  
 > **Implementation log** - Phase 1 corrections completed
 

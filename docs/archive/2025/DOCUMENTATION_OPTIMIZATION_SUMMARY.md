@@ -1,5 +1,7 @@
 # Documentation Optimization Summary
 
+> **Archived.** A planning or analysis note from October 2025. It is not a measurement. For current status and measured results, see the [README](../../../README.md).
+
 *Historical working note from October 2025; figures corrected 2026-10-01. See README for current status.*
 
 > **📖 Reading time:** 3 minutes  
@@ -107,8 +109,8 @@
 ```
 
 **Examples:**
-- `**📖 Complete setup guide:** [docs/setup-prerequisites.md](docs/setup-prerequisites.md)`
-- `**📚 Complete operational guide:** [docs/RUNBOOK.md](docs/RUNBOOK.md)`
+- `**📖 Complete setup guide:** [docs/setup-prerequisites.md](../../setup-prerequisites.md)`
+- `**📚 Complete operational guide:** [docs/RUNBOOK.md](../../RUNBOOK.md)`
 - `**📊 Detailed cost breakdown:** [PROJECT_SUMMARY.md - Cost Analysis](PROJECT_SUMMARY.md#cost-analysis)`
 
 **Benefits:**

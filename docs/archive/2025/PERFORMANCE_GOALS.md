@@ -1,8 +1,10 @@
 # Nimble OKE Performance Goals Framework
 
+> **Archived.** A planning or analysis note from October 2025. It is not a measurement. For current status and measured results, see the [README](../../../README.md).
+
 **Purpose:** Performance targets for NIM smoke testing across different optimization levels and scenarios.
 
-Every time and cost tier below is a target or an estimate (static assumption, not measured). No measured run is committed yet; receipts will live in [docs/runs/](runs/).
+Every time and cost tier below is a target or an estimate (static assumption, not measured). Measured receipts are in [docs/runs/](../../runs/).
 
 ## Overview
 

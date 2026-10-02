@@ -1,5 +1,7 @@
 # System Requirements - NVIDIA NIM on OCI OKE
 
+> **Archived.** A planning or analysis note from October 2025. It is not a measurement. For current status and measured results, see the [README](../../../README.md).
+
 **Version:** v0.1.0-20251013-dev  
 **Last Updated:** October 13, 2025  
 **Pricing Source:** Oracle price list API, parts B95909 (A10 GPU) and B96545 (OKE enhanced cluster), checked 2026-10-01
@@ -321,5 +323,5 @@ Oracle Cloud Infrastructure offers multiple deployment models as referenced in t
 
 **Nimble OKE Strategy:** We use Oracle-managed OKE services combined with customer-managed VM.GPU.A10.1 instances for optimal balance of simplicity and control.
 
-**Next Steps:** See [Setup Prerequisites](docs/setup-prerequisites.md) for detailed deployment instructions.
+**Next Steps:** See [Setup Prerequisites](../../setup-prerequisites.md) for detailed deployment instructions.
 

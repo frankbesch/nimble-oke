@@ -263,6 +263,43 @@ add-on, custom cloud-init, and GPU workloads, read on 2026-10-01. The measured
 runs in each repository's `docs/runs/` show which rows are proven against the
 real API.
 
+### Measured side by side
+
+The two kits were measured on different hardware, so this table is a record
+of what each run did. It is not a benchmark of the two platforms.
+
+| Measure | nimble-oke: OKE, one A10 | nim-gke: GKE, one L4 |
+|---------|--------------------------|----------------------|
+| Measured runs | 2, on 2026-10-01 | 3, on 2026-09-27 and 2026-09-28 |
+| Script start to NIM Ready, fixed pool | 22 min 52 s | 20 min 19 s; 18 min 53 s |
+| Script start to NIM Ready, autoscale | 23 min 04 s | 16 min 07 s |
+| Scale-up: pod Pending to GPU node Ready | 385 s | 77 s |
+| Scale-down: zero replicas to no GPU node | 312 s, with the timers set to 3 minutes | 752 s, with GKE's default delay |
+| Teardown | 6 min 54 s after the drain fix; 30 min 55 s before it | 5 min 51 s to 6 min 39 s |
+| GPU time metered, fixed pool | 15 min 39 s | about 18 min per run |
+| GPU time metered, autoscale | 13 min 52 s | about 24 min |
+| Posted list cost, fixed pool | $0.63 | about $0.70 for the day's two runs |
+| Posted list cost, autoscale | $0.53 | about $0.50 for the day, with one failed start |
+| Posted list cost, every start | $1.17 | $1.19, of which $0.95 was charged after credits |
+| GPU list rate | $2.00 per hour | about $0.56 per hour; $0.71 with its host VM |
+| Output throughput, one stream | 27.6 tokens/s | 15.9 tokens/s |
+
+How to read it:
+
+- The scale-down times are not like for like. The OKE run shortened the
+  autoscaler timers from 10 minutes to 3. The GKE run used the default.
+- The benchmarks differ. The OKE runs sent 5 requests with 128 maximum
+  tokens. The GKE runs sent 20 with 256. The images differ too: 1.0.3 on
+  OKE, 1.0.0 on GKE.
+- OCI reports cost by the hour, so each OKE run has its own posted cost.
+  Google's report splits by day, so the GKE figures are per day.
+- Each figure is one run, or two for the GKE fixed pool. None shows
+  repeatability.
+
+Sources: [nimble-oke receipts](https://github.com/frankbesch/nimble-oke/tree/main/docs/runs)
+and [nim-gke receipts](https://github.com/frankbesch/nim-gke/tree/main/docs/runs).
+The same table appears in both repositories.
+
 ## Repository layout
 
 ```
@@ -271,13 +308,15 @@ scripts/            Provision, deploy, verify, cleanup, teardown, IAM setup, and
 scripts/_lib.sh     Logging, cost guards, rate table, confirmed-delete helpers
 helm/               Chart for the NIM deployment
 tests/              Stubbed tests for the runner, autoscaling, and the provision and teardown scripts
-docs/               Runbook, prerequisites, API examples, and historical working notes
-docs/runs/          Receipts from measured runs
+docs/               Quick start, runbook, prerequisites, and API examples
+docs/runs/          Receipts from measured runs, the attempt log, and posted cost
+docs/archive/2025/  Working notes from October 2025; not measurements
 ```
 
-Several documents at the repository root and in `docs/` are working notes
-from October 2025. The session summaries and reports carry a note saying so.
-Their figures were corrected in October 2026.
+The working notes from October 2025 are in
+[docs/archive/2025/](docs/archive/2025/README.md). Each carries a note saying
+it is not a measurement. Their prices and shapes were corrected in October
+2026.
 
 ## Makefile targets
 
@@ -325,7 +364,7 @@ Their figures were corrected in October 2026.
 - [Oracle OKE documentation](https://docs.oracle.com/en-us/iaas/Content/ContEng/home.htm)
 - [OCI compute shapes](https://docs.oracle.com/en-us/iaas/Content/Compute/References/computeshapes.htm)
 - [Oracle Cloud price list](https://www.oracle.com/cloud/price-list/)
-- [Runbook](docs/RUNBOOK.md)
+- [Quick start](docs/QUICKSTART.md), [runbook](docs/RUNBOOK.md), and [API examples](docs/api-examples.md)
 
 ## License
 

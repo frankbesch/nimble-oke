@@ -1,5 +1,7 @@
 # Session Tracking Guide - Nimble OKE
 
+> **Archived.** A planning or analysis note from October 2025. It is not a measurement. For current status and measured results, see the [README](../../../README.md).
+
 Comprehensive workflow optimization through duration, cost, and obstacle tracking.
 
 ## Overview

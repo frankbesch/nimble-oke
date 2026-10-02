@@ -1,5 +1,7 @@
 # Security Configuration Optimization for NIM Deployment
 
+> **Archived.** A planning or analysis note from October 2025. It is not a measurement. For current status and measured results, see the [README](../../../README.md).
+
 *Historical working note from October 2025; figures corrected 2026-10-01. See README for current status.*
 
 > **Current state (2026-10-01):** the chart applies no pod hardening. `podSecurityContext` is empty, so the container runs as the image's default user with no fsGroup and no seccomp profile. The container context sets only `readOnlyRootFilesystem: false`. Privilege escalation is allowed and no capabilities are dropped. Hardening is untested with NIM.

@@ -1,5 +1,7 @@
 # Nimble OKE - Platform Engineering Verification Report
 
+> **Archived.** A planning or analysis note from October 2025. It is not a measurement. For current status and measured results, see the [README](../../../README.md).
+
 *Historical working note from October 2025; figures corrected 2026-10-01. See README for current status.*
 
 **Status:** Smoke-Test Ready
