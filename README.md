@@ -48,6 +48,9 @@ Costs are posted usage from OCI Cost Analysis, read on 2026-10-02, not an
 invoice. Each receipt shows the lines. Five requests on one
 stream is a smoke test, not a performance result. Run 1's slow teardown was
 the default node drain; the kit now skips it, and run 2 shows the effect.
+Four other starts failed that day, for $0.0017 in total. The
+[attempt log](docs/runs/README.md#every-attempt-including-the-failures) lists
+each one with its cause and fix.
 
 ## What it deploys
 
