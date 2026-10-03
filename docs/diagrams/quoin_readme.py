@@ -269,6 +269,39 @@ def measured(m, c, spread=0.0, h=0):
     return svg(max(y, h), m["title"], m["desc"], b + lines, c)
 
 
+def panels(d, c, spread=0.0, h=0):
+    """Small multiples on one shared scale: one panel per item, one bar per row,
+    so every bar compares with every other (the ggplot2 trial, 2026-10-02).
+    d: title, sub, panels [(label, colour, [(row, value, shown), ...])], notes,
+    desc. colour is a series index or a token name. A panel with one unnamed row
+    puts its value on the label line. spread opens the gap between panels."""
+    top = max(v for _, _, rows in d["panels"] for _, v, _ in rows)
+    b, y = head(d["title"], c)
+    sub, y = para(M, y - 2, d["sub"], 12, c["ink2"], R - M)
+    b += sub
+    y += 8
+    for i, (label, colour, rows) in enumerate(d["panels"]):
+        y += round(40 * spread) if i else 0
+        fill = c["series"][colour] if isinstance(colour, int) else c[colour]
+        b.append(text(M, y, label, 13, c["ink"], weight=600))
+        for name, v, shown in rows:
+            if name:  # a named row gets its own text line
+                y += 20
+                b.append(text(M, y, name, 12, c["ink2"]))
+            b.append(text(R, y, shown, 12, c["ink"], anchor="end"))
+            b.append(rect(M, y + 6, R - M, 12, c["tint"]))
+            b.append(rect(M, y + 6, (R - M) * v / top, 12, fill))
+            y += 18
+        y += 24
+    b.append(f'<line x1="{M}" y1="{y - 16}" x2="{R}" y2="{y - 16}" stroke="{c["rule"]}"/>')
+    y += 4
+    for s in d["notes"]:
+        lines, y = note(y, s, c)
+        b += lines
+        y += 4
+    return svg(max(y, h), d["title"], d["desc"], b, c)
+
+
 def autoscale(a, c, spread=0.0, h=0):
     """The GPU node pool going 0 to 1 to 0, with the two measured spans.
     spread makes the step boxes taller and the arrows between them longer."""

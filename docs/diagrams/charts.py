@@ -10,7 +10,7 @@ quoin_readme.py, a copy kept in step by promptkits/quoin/github/sync.py.
 from pathlib import Path
 
 from quoin_readme import (THEMES, GREEN, BLUE, OCHRE, RED, STEEL, M, R, text, rect, para, note,
-                          head, svg, pair, deploys, runner_ends, measured, autoscale)
+                          head, svg, pair, panels, deploys, runner_ends, measured, autoscale)
 
 HERE = Path(__file__).resolve().parent
 
@@ -83,39 +83,17 @@ AUTOSCALE = dict(
 
 
 def cost(c, spread=0.0, h=0):
-    """Posted OCI cost per run: one column per run, stacked by billing line.
-    spread makes the columns taller."""
-    lines = [("GPU, VM.GPU.A10.1", GREEN), ("Enhanced cluster fee", BLUE),
-             ("System node, E4.Flex", OCHRE), ("Block volume", STEEL)]
-    runs = [("Run 1", "fixed pool", [0.5217, 0.0716, 0.0255, 0.0109], "$0.63"),
-            ("Run 2", "autoscale", [0.4622, 0.0382, 0.0252, 0.0091], "$0.53")]
-    plot = 150 + round(250 * spread)
-    scale = plot / 0.63
-    b, y = head("Posted OCI cost by billing line", c)
-    base = y + 20 + plot
-    for x, (name, mode, vals, total) in zip((M + 34, M + 194), runs):
-        top = float(base)
-        for v, (_, s) in zip(vals, lines):
-            b.append(rect(x, top - v * scale + 1.5, 100, v * scale - 1.5, c["series"][s], rx=1))
-            top -= v * scale
-        b.append(text(x + 50, top - 8, total, 13, c["ink"], anchor="middle", weight=600))
-        b.append(text(x + 50, base + 22, name, 13, c["ink"], anchor="middle"))
-        b.append(text(x + 50, base + 40, mode, 12, c["ink2"], anchor="middle"))
-    b.append(f'<line x1="{M}" y1="{base}" x2="{R}" y2="{base}" stroke="{c["rule"]}"/>')
-    y = base + 74
-    b.append(f'<line x1="{M}" y1="{y - 12}" x2="{R}" y2="{y - 12}" stroke="{c["rule"]}"/>')
-    b.append(text(R - 82, y + 10, "Run 1", 12, c["ink2"], anchor="end"))
-    b.append(text(R, y + 10, "Run 2", 12, c["ink2"], anchor="end"))
-    y += 34
-    for k, (name, s) in enumerate(lines):
-        b.append(rect(M, y - 10, 11, 11, c["series"][s]))
-        b.append(text(M + 18, y, name, 12, c["ink"]))
-        b.append(text(R - 82, y, f"${runs[0][2][k]:.4f}", 12, c["ink"], anchor="end"))
-        b.append(text(R, y, f"${runs[1][2][k]:.4f}", 12, c["ink"], anchor="end"))
-        y += 24
-    foot, y = note(y + 8, "Posted usage from OCI Cost Analysis, read on 2026-10-02. Not an invoice.", c)
-    desc = COST_DESC
-    return svg(max(y, h), "Posted OCI cost by billing line", desc, b + foot, c)
+    """Posted OCI cost, one panel per billing line, both runs on one dollar scale
+    (the ggplot2 trial's layout, Frank 2026-10-02)."""
+    lines = [("GPU, VM.GPU.A10.1", GREEN, 0.5217, 0.4622), ("Enhanced cluster fee", BLUE, 0.0716, 0.0382),
+             ("System node, E4.Flex", OCHRE, 0.0255, 0.0252), ("Block volume", STEEL, 0.0109, 0.0091)]
+    return panels(dict(
+        title="Posted OCI cost by billing line",
+        sub="Run 1, fixed pool: $0.63. Run 2, autoscale: $0.53.",
+        panels=[(name, s, [("Run 1", r1, f"${r1:.4f}"), ("Run 2", r2, f"${r2:.4f}")])
+                for name, s, r1, r2 in lines],
+        notes=["Posted usage from OCI Cost Analysis, read on 2026-10-02. Not an invoice."],
+        desc=COST_DESC), c, spread, h)
 
 
 def attempts(c, spread=0.0, h=0):
