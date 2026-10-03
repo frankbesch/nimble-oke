@@ -1,40 +1,43 @@
-<svg viewBox="0 0 360 354" xmlns="http://www.w3.org/2000/svg" role="img" font-family='ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, monospace'>
+<svg viewBox="0 0 360 550" xmlns="http://www.w3.org/2000/svg" role="img" font-family='ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, monospace'>
 <title>Posted OCI cost by billing line</title>
 <desc>Run 1 posted $0.63: GPU $0.5217, enhanced cluster $0.0716, system node $0.0255, block volume $0.0109. Run 2 posted $0.53: GPU $0.4622, enhanced cluster $0.0382, system node $0.0252, block volume $0.0091.</desc>
-<rect width="360" height="354" rx="6" fill="#0E1C2B"/>
+<rect width="360" height="550" rx="6" fill="#0E1C2B"/>
 <text x="16" y="30" font-size="15" fill="#E8E2D6" font-weight="600">Posted OCI cost by billing line</text>
 <line x1="16" y1="42" x2="344" y2="42" stroke="#2D4152"/>
-<text x="16" y="66" font-size="13" fill="#E8E2D6">Run 1, fixed pool</text>
-<rect x="16.0" y="75" width="220.4" height="22" rx="1" fill="#6DA361"/>
-<rect x="237.9" y="75" width="29.0" height="22" rx="1" fill="#17A1C8"/>
-<rect x="268.4" y="75" width="9.3" height="22" rx="1" fill="#9C7300"/>
-<rect x="279.2" y="75" width="3.1" height="22" rx="1" fill="#559ACA"/>
-<text x="291.872" y="91" font-size="13" fill="#E8E2D6" font-weight="600">$0.63</text>
-<text x="16" y="124" font-size="13" fill="#E8E2D6">Run 2, autoscale</text>
-<rect x="16.0" y="133" width="195.1" height="22" rx="1" fill="#6DA361"/>
-<rect x="212.6" y="133" width="14.8" height="22" rx="1" fill="#17A1C8"/>
-<rect x="228.9" y="133" width="9.2" height="22" rx="1" fill="#9C7300"/>
-<rect x="239.6" y="133" width="2.4" height="22" rx="1" fill="#559ACA"/>
-<text x="251.46" y="149" font-size="13" fill="#E8E2D6" font-weight="600">$0.53</text>
-<line x1="16" y1="170" x2="344" y2="170" stroke="#2D4152"/>
-<text x="262" y="192" font-size="12" fill="#A8A296" text-anchor="end">Run 1</text>
-<text x="344" y="192" font-size="12" fill="#A8A296" text-anchor="end">Run 2</text>
-<rect x="16.0" y="206" width="11.0" height="11" rx="2" fill="#6DA361"/>
-<text x="34" y="216" font-size="12" fill="#E8E2D6">GPU, VM.GPU.A10.1</text>
-<text x="262" y="216" font-size="12" fill="#E8E2D6" text-anchor="end">$0.5217</text>
-<text x="344" y="216" font-size="12" fill="#E8E2D6" text-anchor="end">$0.4622</text>
-<rect x="16.0" y="230" width="11.0" height="11" rx="2" fill="#17A1C8"/>
-<text x="34" y="240" font-size="12" fill="#E8E2D6">Enhanced cluster fee</text>
-<text x="262" y="240" font-size="12" fill="#E8E2D6" text-anchor="end">$0.0716</text>
-<text x="344" y="240" font-size="12" fill="#E8E2D6" text-anchor="end">$0.0382</text>
-<rect x="16.0" y="254" width="11.0" height="11" rx="2" fill="#9C7300"/>
-<text x="34" y="264" font-size="12" fill="#E8E2D6">System node, E4.Flex</text>
-<text x="262" y="264" font-size="12" fill="#E8E2D6" text-anchor="end">$0.0255</text>
-<text x="344" y="264" font-size="12" fill="#E8E2D6" text-anchor="end">$0.0252</text>
-<rect x="16.0" y="278" width="11.0" height="11" rx="2" fill="#559ACA"/>
-<text x="34" y="288" font-size="12" fill="#E8E2D6">Block volume</text>
-<text x="262" y="288" font-size="12" fill="#E8E2D6" text-anchor="end">$0.0109</text>
-<text x="344" y="288" font-size="12" fill="#E8E2D6" text-anchor="end">$0.0091</text>
-<text x="16" y="320" font-size="12" fill="#A8A296">Posted usage from OCI Cost Analysis, read on</text>
-<text x="16" y="337" font-size="12" fill="#A8A296">2026-10-02. Not an invoice.</text>
+<rect x="50.0" y="124.975" width="100.0" height="179.025" rx="1" fill="#6DA361"/>
+<rect x="50.0" y="100.199" width="100.0" height="23.2759" rx="1" fill="#17A1C8"/>
+<rect x="50.0" y="91.3756" width="100.0" height="7.32381" rx="1" fill="#9C7300"/>
+<rect x="50.0" y="87.6038" width="100.0" height="2.27175" rx="1" fill="#559ACA"/>
+<text x="100" y="78.1038" font-size="13" fill="#E8E2D6" text-anchor="middle" font-weight="600">$0.63</text>
+<text x="100" y="326" font-size="13" fill="#E8E2D6" text-anchor="middle">Run 1</text>
+<text x="100" y="344" font-size="12" fill="#A8A296" text-anchor="middle">fixed pool</text>
+<rect x="210.0" y="145.564" width="100.0" height="158.436" rx="1" fill="#6DA361"/>
+<rect x="210.0" y="132.346" width="100.0" height="11.7184" rx="1" fill="#17A1C8"/>
+<rect x="210.0" y="123.626" width="100.0" height="7.22" rx="1" fill="#9C7300"/>
+<rect x="210.0" y="120.477" width="100.0" height="1.64889" rx="1" fill="#559ACA"/>
+<text x="260" y="110.977" font-size="13" fill="#E8E2D6" text-anchor="middle" font-weight="600">$0.53</text>
+<text x="260" y="326" font-size="13" fill="#E8E2D6" text-anchor="middle">Run 2</text>
+<text x="260" y="344" font-size="12" fill="#A8A296" text-anchor="middle">autoscale</text>
+<line x1="16" y1="304" x2="344" y2="304" stroke="#2D4152"/>
+<line x1="16" y1="366" x2="344" y2="366" stroke="#2D4152"/>
+<text x="262" y="388" font-size="12" fill="#A8A296" text-anchor="end">Run 1</text>
+<text x="344" y="388" font-size="12" fill="#A8A296" text-anchor="end">Run 2</text>
+<rect x="16.0" y="402" width="11.0" height="11" rx="2" fill="#6DA361"/>
+<text x="34" y="412" font-size="12" fill="#E8E2D6">GPU, VM.GPU.A10.1</text>
+<text x="262" y="412" font-size="12" fill="#E8E2D6" text-anchor="end">$0.5217</text>
+<text x="344" y="412" font-size="12" fill="#E8E2D6" text-anchor="end">$0.4622</text>
+<rect x="16.0" y="426" width="11.0" height="11" rx="2" fill="#17A1C8"/>
+<text x="34" y="436" font-size="12" fill="#E8E2D6">Enhanced cluster fee</text>
+<text x="262" y="436" font-size="12" fill="#E8E2D6" text-anchor="end">$0.0716</text>
+<text x="344" y="436" font-size="12" fill="#E8E2D6" text-anchor="end">$0.0382</text>
+<rect x="16.0" y="450" width="11.0" height="11" rx="2" fill="#9C7300"/>
+<text x="34" y="460" font-size="12" fill="#E8E2D6">System node, E4.Flex</text>
+<text x="262" y="460" font-size="12" fill="#E8E2D6" text-anchor="end">$0.0255</text>
+<text x="344" y="460" font-size="12" fill="#E8E2D6" text-anchor="end">$0.0252</text>
+<rect x="16.0" y="474" width="11.0" height="11" rx="2" fill="#559ACA"/>
+<text x="34" y="484" font-size="12" fill="#E8E2D6">Block volume</text>
+<text x="262" y="484" font-size="12" fill="#E8E2D6" text-anchor="end">$0.0109</text>
+<text x="344" y="484" font-size="12" fill="#E8E2D6" text-anchor="end">$0.0091</text>
+<text x="16" y="516" font-size="12" fill="#A8A296">Posted usage from OCI Cost Analysis, read on</text>
+<text x="16" y="533" font-size="12" fill="#A8A296">2026-10-02. Not an invoice.</text>
 </svg>

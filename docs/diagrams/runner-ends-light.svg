@@ -1,7 +1,7 @@
-<svg viewBox="0 0 360 694" xmlns="http://www.w3.org/2000/svg" role="img" font-family='ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, monospace'>
+<svg viewBox="0 0 360 696" xmlns="http://www.w3.org/2000/svg" role="img" font-family='ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, monospace'>
 <title>How the runner ends</title>
 <desc>Preflight checks that the step timeouts fit the watchdog limit. The watchdog is armed in its own session before anything billable exists. The steps run, each with a hard timeout. Teardown runs from a trap on every exit and is retried until the deletes are confirmed; the runner then exits 0 with the cluster deleted. If the runner dies or the time limit passes, the watchdog runs teardown. If teardown cannot be confirmed, the runner exits non-zero, prints the oci delete commands, and leaves the watchdog armed.</desc>
-<rect width="360" height="694" rx="6" fill="#FCFBF9"/>
+<rect width="360" height="696" rx="6" fill="#FCFBF9"/>
 <rect x="8" y="12" width="164" height="518" rx="8" fill="none" stroke="#916A0B" stroke-dasharray="7 5"/>
 <rect x="188" y="12" width="164" height="408" rx="8" fill="none" stroke="#916A0B" stroke-dasharray="7 5"/>
 <text x="18" y="31" font-size="12" fill="#916A0B" font-weight="600">Runner</text>

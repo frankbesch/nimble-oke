@@ -1,7 +1,7 @@
-<svg viewBox="0 0 360 548" xmlns="http://www.w3.org/2000/svg" role="img" font-family='ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, monospace'>
+<svg viewBox="0 0 360 550" xmlns="http://www.w3.org/2000/svg" role="img" font-family='ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, monospace'>
 <title>Nimble OKE: what it deploys</title>
 <desc>A client (curl or an OpenAI SDK) calls the NIM pod over the OpenAI-compatible API on port 8000. The NIM pod runs llama3-8b-instruct 1.0.3. It pulls its image from the NGC registry and keeps model files on a 100 Gi block volume. It is scheduled on one GPU node, VM.GPU.A10.1. With --autoscale, the Cluster Autoscaler on the E4.Flex system node adds and removes that node. The pod, volume, GPU node, and autoscaler sit inside the OKE enhanced cluster, Kubernetes v1.34.1.</desc>
-<rect width="360" height="548" rx="6" fill="#FCFBF9"/>
+<rect width="360" height="550" rx="6" fill="#FCFBF9"/>
 <rect x="16" y="16" width="156" height="54" rx="5" fill="#EBE6DD" stroke="#6A625A" stroke-width="1.5"/>
 <text x="94" y="39" font-size="12.5" fill="#2B2926" text-anchor="middle" font-weight="600">Client</text>
 <text x="94" y="57" font-size="12" fill="#6A625A" text-anchor="middle">curl or OpenAI SDK</text>

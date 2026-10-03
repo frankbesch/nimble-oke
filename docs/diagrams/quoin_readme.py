@@ -7,8 +7,12 @@ The canvas is 360 units wide, the width of a phone column, so text keeps
 its size when GitHub fits the image to a phone. The smallest text is 12
 units, 3.3% of the width. For the desktop the README places two pictures
 inline in one paragraph: they sit side by side there and stack on a phone.
-Every figure comes from the caller; this module holds no data.
+The two pictures of a pair share one height (D-262): each chart takes a
+spread (0 to 1) that opens its spacing and a height to pad to, and pair()
+grows the shorter one to its partner. Every figure comes from the caller;
+this module holds no data.
 """
+import re
 import textwrap
 from html import escape
 
@@ -70,6 +74,29 @@ def svg(h, title, desc, body, c):
         f'<rect width="{W}" height="{h:g}" rx="6" fill="{c["paper"]}"/>\n'
         + "\n".join(body) + "\n</svg>\n"
     )
+
+
+def height(s):
+    """Canvas height of an SVG string, from its viewBox."""
+    return float(re.search(r'viewBox="0 0 [\d.]+ ([\d.]+)"', s).group(1))
+
+
+def pair(left, right, c, steps=100):
+    """Two charts at one height, so the pair sits level (D-262).
+    left and right take (c, spread, h) and return SVG text. The shorter one
+    opens its spacing until it reaches its partner; both then pad to the
+    taller height. Returns (left SVG, right SVG)."""
+    fns, sp = (left, right), [0.0, 0.0]
+    hs = [height(left(c)), height(right(c))]
+    if hs[0] != hs[1]:
+        i = 0 if hs[0] < hs[1] else 1
+        for k in range(1, steps + 1):
+            sp[i] = k / steps
+            hs[i] = height(fns[i](c, sp[i]))
+            if hs[i] >= hs[1 - i]:
+                break
+    h = max(hs)
+    return left(c, sp[0], h), right(c, sp[1], h)
 
 
 def arrow(points, colour, c, dashed=False, width=1.5):
@@ -138,8 +165,9 @@ def legend(y, entries, c):
     return b, y + 22 + ((len(entries) + 1) // 2) * 22
 
 
-def deploys(d, c):
-    """What the kit deploys: client and registry outside the cluster, four parts inside."""
+def deploys(d, c, spread=0.0, h=0):
+    """What the kit deploys: client and registry outside the cluster, four parts inside.
+    Fixed layout: spread is accepted for pair() and unused."""
     ink2, bw = c["ink2"], 148
     xl, xr = 24, 188
     b = []
@@ -173,11 +201,12 @@ def deploys(d, c):
         b.append(text(20, y4 + h4 - 4 - (len(lines) - 1 - i) * 17, line, 12, c["series"][OCHRE], weight=600))
     leg, y = legend(y4 + h4 + 42, [("backend", "Backend"), ("database", "Database"),
                                    ("cloud", "Cloud"), ("external", "External")], c)
-    return svg(y, d["title"], d["desc"], b + leg, c)
+    return svg(max(y, h), d["title"], d["desc"], b + leg, c)
 
 
-def runner_ends(n, c):
-    """How the runner ends: the runner's steps on the left, the watchdog on the right."""
+def runner_ends(n, c, spread=0.0, pad=0):
+    """How the runner ends: the runner's steps on the left, the watchdog on the right.
+    Fixed layout: spread is accepted for pair() and unused; pad is the height to pad to."""
     ink2, bw = c["ink2"], 148
     xl, xr = 16, 196
     cl, cr = xl + bw / 2, xr + bw / 2
@@ -216,11 +245,12 @@ def runner_ends(n, c):
     leg, y = legend(y5 + max(h("done"), h("manual")) + 40,
                     [("backend", "Runner step"), ("security", "Check"), ("bus", "Watchdog action"),
                      ("cloud", "Clean exit"), ("external", "Manual follow-up")], c)
-    return svg(y, n["title"], n["desc"], b + leg, c)
+    return svg(max(y, pad), n["title"], n["desc"], b + leg, c)
 
 
-def measured(m, c):
-    """Paired bars, one panel per measure. m: title, names, panels, desc, note."""
+def measured(m, c, spread=0.0, h=0):
+    """Paired bars, one panel per measure. m: title, names, panels, desc, note.
+    spread opens the gap between panels."""
     colours = [c["series"][GREEN], c["series"][BLUE]]
     b, y = head(m["title"], c)
     for label, rows in m["panels"]:
@@ -233,35 +263,38 @@ def measured(m, c):
             b.append(rect(M, y + 11, R - M, 14, c["tint"]))
             b.append(rect(M, y + 11, (R - M) * v / top, 14, colours[j]))
             y += 44
-        y += 10
+        y += 10 + round(40 * spread)
     b.append(f'<line x1="{M}" y1="{y - 12}" x2="{R}" y2="{y - 12}" stroke="{c["rule"]}"/>')
     lines, y = note(y + 10, m["note"], c)
-    return svg(y, m["title"], m["desc"], b + lines, c)
+    return svg(max(y, h), m["title"], m["desc"], b + lines, c)
 
 
-def autoscale(a, c):
-    """The GPU node pool going 0 to 1 to 0, with the two measured spans."""
+def autoscale(a, c, spread=0.0, h=0):
+    """The GPU node pool going 0 to 1 to 0, with the two measured spans.
+    spread makes the step boxes taller and the arrows between them longer."""
     steps = [("Pool at 0 nodes", "cluster up, no GPU"),
              ("NIM pod Pending", "asks for one GPU"),
              ("GPU node Ready", "autoscaler added it"),
              ("NIM serving", a["serving"]),
              ("Pool back at 0", "autoscaler removed it")]
     spans = {1: (a["up"], GREEN), 3: (a["down"], BLUE)}
+    bh, gap = 46 + round(14 * spread), 36 + round(44 * spread)
+    off = (bh - 46) / 2
     b, y = head("GPU node autoscaling, 0 to 1 to 0", c)
     y -= 12
     for i, (label, sub) in enumerate(steps):
         edge = c["series"][GREEN] if i in (0, 4) else c["rule"]
-        b.append(f'<rect x="{M}" y="{y}" width="{R - M}" height="46" rx="4" fill="{c["tint"]}" stroke="{edge}"/>')
-        b.append(text(M + 14, y + 19, label, 13, c["ink"], weight=600))
-        b.append(text(M + 14, y + 37, sub, 12, c["ink2"]))
+        b.append(f'<rect x="{M}" y="{y}" width="{R - M}" height="{bh}" rx="4" fill="{c["tint"]}" stroke="{edge}"/>')
+        b.append(text(M + 14, y + 19 + off, label, 13, c["ink"], weight=600))
+        b.append(text(M + 14, y + 37 + off, sub, 12, c["ink2"]))
         if i < 4:
             label, colour = spans.get(i, ("", None))
             stroke = c["series"][colour] if label else c["ink2"]
-            b.append(arrow([(M + 24, y + 50), (M + 24, y + 78)], stroke, c, width=2 if label else 1.5))
+            b.append(arrow([(M + 24, y + bh + 4), (M + 24, y + bh + gap - 4)], stroke, c, width=2 if label else 1.5))
             if label:
-                b.append(text(M + 42, y + 69, label, 13, c["ink"], weight=600))
-        y += 82
-    lines, y = note(y - 14, a["foot"], c)
-    return svg(y, "GPU node autoscaling, 0 to 1 to 0", a["desc"], b + lines, c)
+                b.append(text(M + 42, y + bh + gap / 2 + 5, label, 13, c["ink"], weight=600))
+            y += bh + gap
+    lines, y = note(y + bh + 22, a["foot"], c)
+    return svg(max(y, h), "GPU node autoscaling, 0 to 1 to 0", a["desc"], b + lines, c)
 
 

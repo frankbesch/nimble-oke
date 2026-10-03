@@ -2,14 +2,15 @@
 """Draw the README diagrams and charts as light and dark SVG.
 
 Usage: python3 docs/diagrams/charts.py
-Writes six charts as <name>-light.svg and <name>-dark.svg. Every figure is copied from the README
+Writes six charts as <name>-light.svg and <name>-dark.svg, in three pairs of
+equal height (PAIRS, D-262). Every figure is copied from the README
 and docs/runs/. Change a figure there first, then here. The drawing code is
 quoin_readme.py, a copy kept in step by promptkits/quoin/github/sync.py.
 """
 from pathlib import Path
 
 from quoin_readme import (THEMES, GREEN, BLUE, OCHRE, RED, STEEL, M, R, text, rect, para, note,
-                          head, svg, deploys, runner_ends, measured, autoscale)
+                          head, svg, pair, deploys, runner_ends, measured, autoscale)
 
 HERE = Path(__file__).resolve().parent
 
@@ -81,22 +82,27 @@ AUTOSCALE = dict(
 )
 
 
-def cost(c):
-    """Posted OCI cost per run, stacked by billing line."""
+def cost(c, spread=0.0, h=0):
+    """Posted OCI cost per run: one column per run, stacked by billing line.
+    spread makes the columns taller."""
     lines = [("GPU, VM.GPU.A10.1", GREEN), ("Enhanced cluster fee", BLUE),
              ("System node, E4.Flex", OCHRE), ("Block volume", STEEL)]
-    runs = [("Run 1, fixed pool", [0.5217, 0.0716, 0.0255, 0.0109], "$0.63"),
-            ("Run 2, autoscale", [0.4622, 0.0382, 0.0252, 0.0091], "$0.53")]
-    scale = 268 / 0.63
+    runs = [("Run 1", "fixed pool", [0.5217, 0.0716, 0.0255, 0.0109], "$0.63"),
+            ("Run 2", "autoscale", [0.4622, 0.0382, 0.0252, 0.0091], "$0.53")]
+    plot = 150 + round(250 * spread)
+    scale = plot / 0.63
     b, y = head("Posted OCI cost by billing line", c)
-    for name, vals, total in runs:
-        b.append(text(M, y, name, 13, c["ink"]))
-        x = float(M)
+    base = y + 20 + plot
+    for x, (name, mode, vals, total) in zip((M + 34, M + 194), runs):
+        top = float(base)
         for v, (_, s) in zip(vals, lines):
-            b.append(rect(x, y + 9, v * scale - 1.5, 22, c["series"][s], rx=1))
-            x += v * scale
-        b.append(text(x + 8, y + 25, total, 13, c["ink"], weight=600))
-        y += 58
+            b.append(rect(x, top - v * scale + 1.5, 100, v * scale - 1.5, c["series"][s], rx=1))
+            top -= v * scale
+        b.append(text(x + 50, top - 8, total, 13, c["ink"], anchor="middle", weight=600))
+        b.append(text(x + 50, base + 22, name, 13, c["ink"], anchor="middle"))
+        b.append(text(x + 50, base + 40, mode, 12, c["ink2"], anchor="middle"))
+    b.append(f'<line x1="{M}" y1="{base}" x2="{R}" y2="{base}" stroke="{c["rule"]}"/>')
+    y = base + 74
     b.append(f'<line x1="{M}" y1="{y - 12}" x2="{R}" y2="{y - 12}" stroke="{c["rule"]}"/>')
     b.append(text(R - 82, y + 10, "Run 1", 12, c["ink2"], anchor="end"))
     b.append(text(R, y + 10, "Run 2", 12, c["ink2"], anchor="end"))
@@ -104,16 +110,17 @@ def cost(c):
     for k, (name, s) in enumerate(lines):
         b.append(rect(M, y - 10, 11, 11, c["series"][s]))
         b.append(text(M + 18, y, name, 12, c["ink"]))
-        b.append(text(R - 82, y, f"${runs[0][1][k]:.4f}", 12, c["ink"], anchor="end"))
-        b.append(text(R, y, f"${runs[1][1][k]:.4f}", 12, c["ink"], anchor="end"))
+        b.append(text(R - 82, y, f"${runs[0][2][k]:.4f}", 12, c["ink"], anchor="end"))
+        b.append(text(R, y, f"${runs[1][2][k]:.4f}", 12, c["ink"], anchor="end"))
         y += 24
     foot, y = note(y + 8, "Posted usage from OCI Cost Analysis, read on 2026-10-02. Not an invoice.", c)
     desc = COST_DESC
-    return svg(y, "Posted OCI cost by billing line", desc, b + foot, c)
+    return svg(max(y, h), "Posted OCI cost by billing line", desc, b + foot, c)
 
 
-def attempts(c):
-    """Six starts on 2026-10-01, each bar placed on a UTC time axis."""
+def attempts(c, spread=0.0, h=0):
+    """Six starts on 2026-10-01, each bar placed on a UTC time axis.
+    spread opens the gap between rows."""
     t0, t1 = 18 * 60 + 40, 20 * 60 + 50  # 18:40 to 20:50 UTC, in minutes
 
     def px(minute):
@@ -143,24 +150,28 @@ def attempts(c):
         x = px(start)
         b.append(rect(x, y + 9, max(px(start + dur) - x, 5), 14, colour))
         b.append(text(M, y + 41, shown, 12, c["ink"]))
-        y += 66
+        y += 66 + round(20 * spread)
     foot, y = note(y + 6, "Each bar sits on one time axis, 18:40 to 20:50 UTC. Attempts 3 and 4 have no "
                    "phase log; their times come from the fix commits. The day's posted total is $1.17.", c)
     desc = ("Six starts on 2026-10-01. 18:46 fixed pool failed at node pool create, $0.0017. "
             "19:00 fixed pool passed, $0.63. About 20:00 IAM apply failed with 403. About 20:05 IAM "
             "check gave a false fail. 20:07 autoscale failed in preflight. 20:12 autoscale passed, $0.53.")
-    return svg(y, "Every attempt on 2026-10-01", desc, b + foot, c)
+    return svg(max(y, h), "Every attempt on 2026-10-01", desc, b + foot, c)
+
+
+# The README shows these as pairs, one per line, at one height (D-262).
+PAIRS = [("measured", lambda c, s=0.0, h=0: measured(MEASURED, c, s, h), "attempts", attempts),
+         ("deploys", lambda c, s=0.0, h=0: deploys(DEPLOYS, c, s, h), "cost", cost),
+         ("autoscale", lambda c, s=0.0, h=0: autoscale(AUTOSCALE, c, s, h),
+          "runner-ends", lambda c, s=0.0, h=0: runner_ends(RUNNER, c, s, h))]
 
 
 def main():
-    singles = {"deploys": lambda c: deploys(DEPLOYS, c), "runner-ends": lambda c: runner_ends(RUNNER, c),
-               "measured": lambda c: measured(MEASURED, c), "cost": cost, "attempts": attempts,
-               "autoscale": lambda c: autoscale(AUTOSCALE, c)}
     for theme, c in THEMES.items():
-        out = {name: fn(c) for name, fn in singles.items()}
-        for name, s in out.items():
-            (HERE / f"{name}-{theme}.svg").write_text(s)
-    print("built", ", ".join(singles))
+        for ln, lf, rn, rf in PAIRS:
+            for name, s in zip((ln, rn), pair(lf, rf, c)):
+                (HERE / f"{name}-{theme}.svg").write_text(s)
+    print("built", ", ".join(f"{ln} | {rn}" for ln, _, rn, _ in PAIRS))
 
 
 if __name__ == "__main__":

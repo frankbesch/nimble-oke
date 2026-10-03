@@ -29,13 +29,13 @@ as estimates. Only a file in `docs/runs/` is a measurement.
 
 One run of each mode on 2026-10-01, `us-phoenix-1`, one `VM.GPU.A10.1`.
 
-<picture><source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/measured-dark.svg"/><img width="400" align="top" src="docs/diagrams/measured-light.svg" alt="Chart: four measures side by side for nimble-oke on OKE and nim-gke on GKE."/></picture> <picture><source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/cost-dark.svg"/><img width="400" align="top" src="docs/diagrams/cost-light.svg" alt="Chart: posted cloud cost split by billing line."/></picture>
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/measured-dark.svg"/><img width="400" align="top" src="docs/diagrams/measured-light.svg" alt="Chart: four measures side by side for nimble-oke on OKE and nim-gke on GKE."/></picture> <picture><source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/attempts-dark.svg"/><img width="400" align="top" src="docs/diagrams/attempts-light.svg" alt="Chart: every start, with pass or fail, duration, and cost."/></picture>
 
 <details><summary>Text version of the charts</summary>
 
 Scale-up 385 s on OKE and 77 s on GKE. Scale-down 312 s on OKE with timers set to 3 minutes and 752 s on GKE with the default delay. Script start to NIM Ready with autoscale 23 min 04 s on OKE and 16 min 07 s on GKE. Posted list cost for every start $1.17 on OKE and $1.19 on GKE.
 
-Run 1 posted $0.63: GPU $0.5217, enhanced cluster $0.0716, system node $0.0255, block volume $0.0109. Run 2 posted $0.53: GPU $0.4622, enhanced cluster $0.0382, system node $0.0252, block volume $0.0091.
+Six starts on 2026-10-01. 18:46 fixed pool failed at node pool create, $0.0017. 19:00 fixed pool passed, $0.63. About 20:00 IAM apply failed with 403. About 20:05 IAM check gave a false fail. 20:07 autoscale failed in preflight. 20:12 autoscale passed, $0.53.
 
 </details>
 
@@ -51,11 +51,13 @@ and shapes in the [reference](docs/reference.md).
 
 ## What it deploys
 
-<picture><source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/deploys-dark.svg"/><img width="400" align="top" src="docs/diagrams/deploys-light.svg" alt="Architecture: a client calls the NIM pod inside the OKE cluster; the pod pulls its image from NGC, stores model files on a block volume, and runs on one GPU node that the Cluster Autoscaler adds and removes."/></picture>
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/deploys-dark.svg"/><img width="400" align="top" src="docs/diagrams/deploys-light.svg" alt="Architecture: a client calls the NIM pod inside the OKE cluster; the pod pulls its image from NGC, stores model files on a block volume, and runs on one GPU node that the Cluster Autoscaler adds and removes."/></picture> <picture><source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/cost-dark.svg"/><img width="400" align="top" src="docs/diagrams/cost-light.svg" alt="Chart: posted cloud cost split by billing line."/></picture>
 
-<details><summary>Text version, components, and two limits</summary>
+<details><summary>Text version of the charts, components, and two limits</summary>
 
 A client (curl or an OpenAI SDK) calls the NIM pod over the OpenAI-compatible API on port 8000. The NIM pod runs `llama3-8b-instruct` 1.0.3. It pulls its image from the NGC registry and keeps model files on a 100 Gi block volume. It is scheduled on one GPU node, `VM.GPU.A10.1`. With `--autoscale`, the Cluster Autoscaler on the E4.Flex system node adds and removes that node. The pod, volume, GPU node, and autoscaler sit inside the OKE enhanced cluster, Kubernetes v1.34.1.
+
+Run 1 posted $0.63: GPU $0.5217, enhanced cluster $0.0716, system node $0.0255, block volume $0.0109. Run 2 posted $0.53: GPU $0.4622, enhanced cluster $0.0382, system node $0.0252, block volume $0.0091.
 
 | Component | Value |
 |-----------|-------|
