@@ -1,7 +1,7 @@
 """Quoin README charts: phone-first SVG primitives for GitHub READMEs.
 
-Source: promptkits/quoin/github/quoin_readme.py. Copies in each repo are
-written by quoin/github/sync.py; edit the source, then run the sync.
+Source: the Quoin design system's README module. Each repo carries a copy
+written by the system's sync script; edit the source, then sync.
 
 The canvas is 360 units wide, the width of a phone column, so text keeps
 its size when GitHub fits the image to a phone. The smallest text is 12
