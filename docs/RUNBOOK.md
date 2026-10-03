@@ -170,7 +170,7 @@ NGC_API_KEY=nvapi-xxx make install
 
 Before deployment, cost guard evaluates:
 
-```bash
+```text
 ENVIRONMENT=dev
 COST_THRESHOLD_USD=5
 Estimated cost: $10.50 for 5 hours
@@ -469,7 +469,7 @@ Running `make cleanup` when already clean:
 
 ```bash
 make cleanup
-# → No errors, just reports "already clean"
+# No errors, just reports "already clean"
 ```
 
 ## Cost Guard Examples
@@ -519,7 +519,7 @@ $ COST_THRESHOLD_USD=20 make install
 ### Deploy Script
 
 First run:
-```bash
+```text
 make install
 → Creates namespace
 → Installs Helm release
@@ -528,7 +528,7 @@ make install
 ```
 
 Second run:
-```bash
+```text
 make install
 → Namespace exists (skipped)
 → Upgrades Helm release
@@ -539,7 +539,7 @@ make install
 ### Cleanup Script
 
 First run:
-```bash
+```text
 make cleanup
 → Uninstalls Helm release
 → Deletes resources
@@ -547,7 +547,7 @@ make cleanup
 ```
 
 Second run:
-```bash
+```text
 make cleanup
 → Helm release not found (no-op)
 → Resources already gone (no-op)
@@ -622,7 +622,7 @@ make install 2>/dev/null                # Suppress logs
    ```
 
 2. **cleanup-nim.sh** calculates session cost:
-   ```bash
+   ```text
    deploy_time=$(cat .nim-deployed-at)
    current_time=$(date +%s)
    elapsed_hours=$(( (current_time - deploy_time) / 3600 ))
@@ -837,7 +837,7 @@ helm upgrade nvidia-nim ./helm -n default -f custom-values.yaml
 
 ## Cost Optimization Strategies
 
-### 1. Time-Boxed Testing
+### Time-Boxed Testing
 
 ```bash
 # Set a timer
@@ -849,7 +849,7 @@ make install
 # Automatic cleanup after 5 hours
 ```
 
-### 2. Model Cache Preservation
+### Model Cache Preservation
 
 ```bash
 # First deployment
@@ -861,7 +861,7 @@ KEEP_CACHE=yes make cleanup
 make install  # Model loads from cache in ~5 minutes
 ```
 
-### 3. Cost Monitoring
+### Cost Monitoring
 
 ```bash
 # Check costs frequently
@@ -871,7 +871,7 @@ make operate  # Shows current hourly rate
 # Governance → Cost Management → Budgets
 ```
 
-### 4. Scheduled Cleanup
+### Scheduled Cleanup
 
 ```bash
 # Add to crontab for automatic cleanup

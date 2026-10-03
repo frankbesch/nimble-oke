@@ -1,6 +1,6 @@
 # GPU node autoscaling and how the runner ends
 
-<picture><source media="(prefers-color-scheme: dark)" srcset="diagrams/autoscale-dark.svg"/><img width="400" align="top" src="diagrams/autoscale-light.svg" alt="Chart: the GPU node pool goes from 0 nodes to 1 and back to 0, with the measured scale-up and scale-down times."/></picture> <picture><source media="(prefers-color-scheme: dark)" srcset="diagrams/runner-ends-dark.svg"/><img width="400" align="top" src="diagrams/runner-ends-light.svg" alt="Workflow: preflight, arm the watchdog, run the steps, tear down, then exit 0 when the deletes are confirmed; otherwise exit non-zero with the watchdog still armed."/></picture>
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="diagrams/autoscale-dark.svg"/><img width="400" align="top" src="diagrams/autoscale-light.svg" alt="Chart: the GPU node pool goes from 0 nodes to 1 and back to 0, with the measured scale-up and scale-down times."/></picture> <picture><source media="(prefers-color-scheme: dark)" srcset="diagrams/runner-ends-dark.svg"/><img width="400" align="top" src="diagrams/runner-ends-light.svg" alt="Workflow: preflight, arm the watchdog, run the steps, tear down, then exit 0 when the deletes are confirmed; otherwise exit non-zero with the watchdog still armed."/></picture></p>
 
 <details><summary>Text version of the diagrams</summary>
 
@@ -19,34 +19,37 @@ The autoscaler needs a dynamic group and a policy in your tenancy. Oracle
 documents the six statements. The setup script prints them, checks for them,
 or creates them after a typed confirmation.
 
-Print the statements:
-
 ```bash
+# Print the six statements.
 scripts/setup-autoscaler-iam.sh --print
-```
 
-Check for them:
-
-```bash
+# Check whether they exist.
 scripts/setup-autoscaler-iam.sh --check
 ```
 
-Create them:
+<!-- separate: --apply writes to your tenancy -->
+If the check reports them missing, create them. The script asks for a typed
+confirmation first.
 
 ```bash
 scripts/setup-autoscaler-iam.sh --apply
 ```
 
+<!-- separate: the free preflight comes before a run that bills -->
 Run the free preflight for the autoscale mode:
 
 ```bash
-scripts/run_measured.sh --autoscale --preflight-only /tmp/preflight
+scripts/run_measured.sh --autoscale \
+  --preflight-only /tmp/preflight
 ```
 
-Start the autoscale run:
+<!-- separate: the run bills -->
+Start the autoscale run, which bills:
 
 ```bash
-scripts/run_measured.sh --autoscale --key-file ~/.ngc-key docs/runs/2026-10-01-autoscale
+scripts/run_measured.sh --autoscale \
+  --key-file ~/.ngc-key \
+  docs/runs/2026-10-01-autoscale
 ```
 
 The receipt records the seconds from pod Pending to GPU node Ready, the

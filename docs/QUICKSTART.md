@@ -118,7 +118,7 @@ make all  # discover → install → verify
 | `CONFIRM_COST` | Bypass cost guard | `yes` |
 | `KEEP_CACHE` | Preserve PVCs during cleanup | `yes` |
 
-**📖 Complete reference:** [README.md - Environment Variables](../README.md#makefile-targets)
+**Complete reference:** [Makefile targets](reference.md#makefile-targets)
 
 ## Troubleshooting
 
@@ -134,4 +134,4 @@ make all  # discover → install → verify
 - **API examples:** [docs/api-examples.md](api-examples.md)
 - **Prerequisites guide:** [docs/setup-prerequisites.md](setup-prerequisites.md)
 
-**📖 All Makefile targets:** [README.md - Makefile Targets](../README.md#makefile-targets)
+**All Makefile targets:** [reference](reference.md#makefile-targets)

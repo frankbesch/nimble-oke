@@ -1,3 +1,5 @@
+> Archived 2025 page, kept for history and not maintained. Current docs: [docs/](../../).
+
 # Archive: October 2025 working notes
 
 These files are planning and analysis notes from the first build in October

@@ -11,15 +11,110 @@ The two pictures of a pair share one height (D-262): each chart takes a
 spread (0 to 1) that opens its spacing and a height to pad to, and pair()
 grows the shorter one to its partner. Every figure comes from the caller;
 this module holds no data.
+
+Type (D-273): labels and figures are IBM Plex Mono, titles and notes IBM Plex
+Sans. svg() embeds a woff2 subset of each face and weight the chart uses, so
+GitHub shows the same type on every device; text is wrapped on real glyph
+widths. Without fontTools or the font files it falls back to system fonts,
+and check-readme reports the missing embed. Text wears ink or ink2 only;
+colour goes on marks, outlines, and swatches (Quoin spec, chart rules).
 """
+import base64
+import glob
+import io
+import os
 import re
+import sys
 import textwrap
-from html import escape
+from html import escape, unescape
 
 W = 360
 M, R = 16, 344  # left and right text margins
-CH = 0.6        # width of one monospace character, as a share of the font size
+CH = 0.6        # width of one monospace character, as a share of the font size (Plex Mono: 600/1000)
 MONO = 'ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, monospace'
+SANS = '-apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif'
+FACES = {"mono": "QuoinMono", "sans": "QuoinSans"}
+FONT_FILES = {("mono", 400): "IBMPlexMono-Regular.otf", ("mono", 600): "IBMPlexMono-SemiBold.otf",
+              ("sans", 400): "IBMPlexSans-Regular.otf", ("sans", 600): "IBMPlexSans-SemiBold.otf"}
+FONT_DIRS = [os.environ.get("QUOIN_FONTS", ""), os.path.expanduser("~/Library/Fonts"), "/Library/Fonts"]
+
+
+def _fonttools():
+    """fontTools, or None. Homebrew installs it beside its own python."""
+    try:
+        import fontTools  # noqa: F401
+    except ImportError:
+        for p in glob.glob("/opt/homebrew/opt/fonttools/libexec/lib/python*/site-packages"):
+            sys.path.append(p)
+        try:
+            import fontTools  # noqa: F401
+        except ImportError:
+            return None
+    import logging
+    from fontTools import subset, ttLib
+    logging.getLogger("fontTools.subset").setLevel(logging.ERROR)  # "meta NOT subset" is expected
+    return subset, ttLib
+
+
+_FONTS = {}
+
+
+def _font(family, weight):
+    """(path, TTFont) for a face, cached; None when fontTools or the file is missing."""
+    key = (family, 600 if weight and int(weight) >= 600 else 400)
+    if key not in _FONTS:
+        ft, found = _fonttools(), None
+        if ft:
+            for d in FONT_DIRS:
+                p = os.path.join(d, FONT_FILES[key]) if d else ""
+                if p and os.path.exists(p):
+                    found = (p, ft[1].TTFont(p))
+                    break
+        _FONTS[key] = found
+    return _FONTS[key]
+
+
+def measure(s, size, family="mono", weight=None):
+    """Width of a string in canvas units."""
+    f = _font(family, weight)
+    if family == "mono" or not f:
+        return len(s) * size * (CH if family == "mono" else 0.56)
+    font = f[1]
+    cmap, hmtx, upm = font.getBestCmap(), font["hmtx"], font["head"].unitsPerEm
+    default = hmtx[".notdef"][0] if ".notdef" in hmtx.metrics else upm // 2
+    return sum(hmtx[cmap[ord(ch)]][0] if ord(ch) in cmap else default for ch in s) * size / upm
+
+
+def embed(body):
+    """<style> with a woff2 subset of each face and weight the text elements use."""
+    ft = _fonttools()
+    if not ft:
+        return ""
+    used = {}
+    for attrs, inner in re.findall(r"<text\b([^>]*)>(.*?)</text>", body, re.S):
+        family = "sans" if FACES["sans"] in attrs else "mono"
+        w = re.search(r'font-weight="(\d+)"', attrs)
+        key = (family, 600 if w and int(w.group(1)) >= 600 else 400)
+        used.setdefault(key, set()).update(unescape(re.sub(r"<[^>]+>", "", inner)))
+    rules = []
+    for (family, weight), chars in sorted(used.items()):
+        f = _font(family, weight)
+        if not f:
+            return ""
+        opts = ft[0].Options()
+        opts.flavor, opts.hinting, opts.layout_features = "woff2", False, ["kern"]
+        opts.name_IDs, opts.notdef_outline = [1, 2], True
+        font = ft[1].TTFont(f[0], recalcTimestamp=False)  # same bytes on every rebuild
+        sub = ft[0].Subsetter(opts)
+        sub.populate(text="".join(sorted(chars)))
+        sub.subset(font)
+        buf = io.BytesIO()
+        font.flavor = "woff2"
+        font.save(buf)
+        data = base64.b64encode(buf.getvalue()).decode()
+        rules.append(f'@font-face{{font-family:"{FACES[family]}";font-weight:{weight};'
+                     f'src:url(data:font/woff2;base64,{data}) format("woff2")}}')
+    return "<style>" + "".join(rules) + "</style>\n" if rules else ""
 
 # Quoin tokens (chrome) and Quoin chart palette (data marks); quoin/tokens.json.
 THEMES = {
@@ -31,12 +126,15 @@ THEMES = {
 GREEN, BLUE, OCHRE, RED, STEEL = range(5)
 
 
-def text(x, y, s, size, fill, anchor="start", weight=None):
+def text(x, y, s, size, fill, anchor="start", weight=None, family=None):
+    """family None inherits the canvas face (Plex Mono); "sans" sets Plex Sans."""
     extra = ""
     if anchor != "start":
         extra += f' text-anchor="{anchor}"'
     if weight:
         extra += f' font-weight="{weight}"'
+    if family == "sans":
+        extra += f" font-family='\"{FACES['sans']}\", {SANS}'"
     return f'<text x="{x:g}" y="{y:g}" font-size="{size}" fill="{fill}"{extra}>{escape(s)}</text>'
 
 
@@ -44,35 +142,49 @@ def rect(x, y, w, h, fill, rx=2):
     return f'<rect x="{x:.1f}" y="{y:g}" width="{max(w, 0):.1f}" height="{h:g}" rx="{rx}" fill="{fill}"/>'
 
 
-def fit(s, size, width):
+def fit(s, size, width, family="mono", weight=None):
     """Split a string into lines that fit a width at this font size."""
-    return textwrap.wrap(s, max(int(width / (size * CH)), 1), break_on_hyphens=False)
+    if family == "mono":
+        return textwrap.wrap(s, max(int(width / (size * CH)), 1), break_on_hyphens=False)
+    lines, line = [], ""
+    for word in s.split():
+        trial = f"{line} {word}" if line else word
+        if line and measure(trial, size, family, weight) > width:
+            lines.append(line)
+            line = word
+        else:
+            line = trial
+    return lines + [line] if line else lines
 
 
-def para(x, y, s, size, fill, width, weight=None):
+def para(x, y, s, size, fill, width, weight=None, family="mono"):
     """Wrapped text from baseline y. Returns (elements, next baseline)."""
-    lines = fit(s, size, width)
+    lines = fit(s, size, width, family, weight)
     lead = size + 5
-    return [text(x, y + i * lead, line, size, fill, weight=weight) for i, line in enumerate(lines)], y + len(lines) * lead
+    fam = family if family != "mono" else None
+    return ([text(x, y + i * lead, line, size, fill, weight=weight, family=fam) for i, line in enumerate(lines)],
+            y + len(lines) * lead)
 
 
 def note(y, s, c):
-    return para(M, y, s, 12, c["ink2"], R - M)
+    return para(M, y, s, 12, c["ink2"], R - M, family="sans")
 
 
 def head(title, c):
     """Chart title and rule. Returns (elements, next baseline)."""
-    b, y = para(M, 30, title, 15, c["ink"], R - M, weight=600)
+    b, y = para(M, 30, title, 15, c["ink"], R - M, weight=600, family="sans")
     b.append(f'<line x1="{M}" y1="{y - 8}" x2="{R}" y2="{y - 8}" stroke="{c["rule"]}"/>')
     return b, y + 16
 
 
 def svg(h, title, desc, body, c):
+    inner = "\n".join(body)
     return (
         f'<svg viewBox="0 0 {W} {h:g}" xmlns="http://www.w3.org/2000/svg" role="img" '
-        f'font-family=\'{MONO}\'>\n<title>{escape(title)}</title>\n<desc>{escape(desc)}</desc>\n'
-        f'<rect width="{W}" height="{h:g}" rx="6" fill="{c["paper"]}"/>\n'
-        + "\n".join(body) + "\n</svg>\n"
+        f'font-family=\'"{FACES["mono"]}", {MONO}\'>\n<title>{escape(title)}</title>\n<desc>{escape(desc)}</desc>\n'
+        + embed(inner)
+        + f'<rect width="{W}" height="{h:g}" rx="6" fill="{c["paper"]}"/>\n'
+        + inner + "\n</svg>\n"
     )
 
 
@@ -115,10 +227,11 @@ def arrow(points, colour, c, dashed=False, width=1.5):
 
 
 def tag(x, y, s, fill, c, anchor="middle"):
-    """A label on a paper patch, so it stays readable over a line."""
+    """A label on a paper patch, so it stays readable over a line. The text is
+    ink2 (D-273); fill is the line's colour and stays on the line."""
     w = len(s) * 12 * CH + 10
     x0 = x - w / 2 if anchor == "middle" else x - 4
-    return rect(x0, y - 13, w, 18, c["paper"], rx=3) + text(x, y, s, 12, fill, anchor=anchor)
+    return rect(x0, y - 13, w, 18, c["paper"], rx=3) + text(x, y, s, 12, c["ink2"], anchor=anchor)
 
 
 def kind(c):
@@ -138,7 +251,8 @@ def box_h(sub, extra, w):
 
 
 def box(x, y, w, h, label, sub, extra, k, c):
-    """A labelled box: name, description lines, and an optional coloured line."""
+    """A labelled box: name, description lines, and an optional third line in ink.
+    The kind's colour is the outline (D-273: text wears ink or ink2)."""
     col = kind(c)[k]
     a, e = box_lines(sub, extra, w)
     b = [f'<rect x="{x}" y="{y:g}" width="{w}" height="{h:g}" rx="5" fill="{c["tint"]}" stroke="{col}" stroke-width="1.5"/>',
@@ -146,7 +260,7 @@ def box(x, y, w, h, label, sub, extra, k, c):
     for i, line in enumerate(a):
         b.append(text(x + w / 2, y + 41 + i * 16, line, 12, c["ink2"], anchor="middle"))
     for i, line in enumerate(e):
-        b.append(text(x + w / 2, y + 41 + (len(a) + i) * 16, line, 12, col, anchor="middle"))
+        b.append(text(x + w / 2, y + 41 + (len(a) + i) * 16, line, 12, c["ink"], anchor="middle"))
     return b
 
 
@@ -198,7 +312,7 @@ def deploys(d, c, spread=0.0, h=0):
     b += box(xr, y4, bw, h4, *d["autoscaler"], None, "cloud", c)
     lines = fit(d["cluster"], 12, 156)
     for i, line in enumerate(lines):
-        b.append(text(20, y4 + h4 - 4 - (len(lines) - 1 - i) * 17, line, 12, c["series"][OCHRE], weight=600))
+        b.append(text(20, y4 + h4 - 4 - (len(lines) - 1 - i) * 17, line, 12, c["ink"], weight=600))
     leg, y = legend(y4 + h4 + 42, [("backend", "Backend"), ("database", "Database"),
                                    ("cloud", "Cloud"), ("external", "External")], c)
     return svg(max(y, h), d["title"], d["desc"], b + leg, c)
@@ -224,8 +338,8 @@ def runner_ends(n, c, spread=0.0, pad=0):
     y5 = y4 + r4 + 56
     b = [region(8, top, 164, y5 + h("done") + 12 - top, c),
          region(188, top, 164, y4 + r4 + 12 - top, c),
-         text(18, top + 19, n["lanes"][0], 12, c["series"][OCHRE], weight=600),
-         text(194, top + 19, n["lanes"][1], 12, c["series"][OCHRE], weight=600)]
+         text(18, top + 19, n["lanes"][0], 12, c["ink"], weight=600),
+         text(194, top + 19, n["lanes"][1], 12, c["ink"], weight=600)]
     b.append(arrow([(xl + bw, y1 + 27), (xr, y1 + 27)], ink2, c))
     b.append(arrow([(cr - 34, y1 + h("arm")), (cr - 34, y1 + r1 + 17), (cl, y1 + r1 + 17), (cl, y2)], ink2, c))
     b.append(arrow([(cl, y2 + h("steps")), (cl, y3)], ink2, c))
@@ -318,7 +432,7 @@ def autoscale(a, c, spread=0.0, h=0):
     b, y = head("GPU node autoscaling, 0 to 1 to 0", c)
     y -= 12
     for i, (label, sub) in enumerate(steps):
-        edge = c["series"][GREEN] if i in (0, 4) else c["rule"]
+        edge = c["series"][GREEN] if i in (0, 4) else c["ink2"]
         b.append(f'<rect x="{M}" y="{y}" width="{R - M}" height="{bh}" rx="4" fill="{c["tint"]}" stroke="{edge}"/>')
         b.append(text(M + 14, y + 19 + off, label, 13, c["ink"], weight=600))
         b.append(text(M + 14, y + 37 + off, sub, 12, c["ink2"]))

@@ -29,7 +29,7 @@ as estimates. Only a file in `docs/runs/` is a measurement.
 
 One run of each mode on 2026-10-01, `us-phoenix-1`, one `VM.GPU.A10.1`.
 
-<picture><source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/measured-dark.svg"/><img width="400" align="top" src="docs/diagrams/measured-light.svg" alt="Chart: four measures side by side for nimble-oke on OKE and nim-gke on GKE."/></picture> <picture><source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/attempts-dark.svg"/><img width="400" align="top" src="docs/diagrams/attempts-light.svg" alt="Chart: every start, with pass or fail, duration, and cost."/></picture>
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/measured-dark.svg"/><img width="400" align="top" src="docs/diagrams/measured-light.svg" alt="Chart: four measures side by side for nimble-oke on OKE and nim-gke on GKE."/></picture> <picture><source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/attempts-dark.svg"/><img width="400" align="top" src="docs/diagrams/attempts-light.svg" alt="Chart: every start, with pass or fail, duration, and cost."/></picture></p>
 
 <details><summary>Text version of the charts</summary>
 
@@ -51,7 +51,7 @@ and shapes in the [reference](docs/reference.md).
 
 ## What it deploys
 
-<picture><source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/deploys-dark.svg"/><img width="400" align="top" src="docs/diagrams/deploys-light.svg" alt="Architecture: a client calls the NIM pod inside the OKE cluster; the pod pulls its image from NGC, stores model files on a block volume, and runs on one GPU node that the Cluster Autoscaler adds and removes."/></picture> <picture><source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/cost-dark.svg"/><img width="400" align="top" src="docs/diagrams/cost-light.svg" alt="Chart: posted cloud cost split by billing line."/></picture>
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/deploys-dark.svg"/><img width="400" align="top" src="docs/diagrams/deploys-light.svg" alt="Architecture: a client calls the NIM pod inside the OKE cluster; the pod pulls its image from NGC, stores model files on a block volume, and runs on one GPU node that the Cluster Autoscaler adds and removes."/></picture> <picture><source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/cost-dark.svg"/><img width="400" align="top" src="docs/diagrams/cost-light.svg" alt="Chart: posted cloud cost split by billing line."/></picture></p>
 
 <details><summary>Text version of the charts, components, and two limits</summary>
 
@@ -141,7 +141,7 @@ written to disk. The chart has no default key and refuses to render without one.
 preflight, provision, deploy, wait for ready, benchmark, teardown, and a
 check that nothing is left.
 
-<picture><source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/autoscale-dark.svg"/><img width="400" align="top" src="docs/diagrams/autoscale-light.svg" alt="Chart: the GPU node pool goes from 0 nodes to 1 and back to 0, with the measured scale-up and scale-down times."/></picture> <picture><source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/runner-ends-dark.svg"/><img width="400" align="top" src="docs/diagrams/runner-ends-light.svg" alt="Workflow: how the runner ends, with the cluster deleted or the watchdog still armed."/></picture>
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/autoscale-dark.svg"/><img width="400" align="top" src="docs/diagrams/autoscale-light.svg" alt="Chart: the GPU node pool goes from 0 nodes to 1 and back to 0, with the measured scale-up and scale-down times."/></picture> <picture><source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/runner-ends-dark.svg"/><img width="400" align="top" src="docs/diagrams/runner-ends-light.svg" alt="Workflow: how the runner ends, with the cluster deleted or the watchdog still armed."/></picture></p>
 
 <details><summary>Text version of the charts</summary>
 
@@ -151,7 +151,8 @@ Preflight checks that the step timeouts fit the watchdog limit. The watchdog is 
 
 </details>
 
-Fixed pool, with `OCI_COMPARTMENT_ID` exported as in the quick start:
+Pick one run; each bills once. Fixed pool, with `OCI_COMPARTMENT_ID`
+exported as in the quick start:
 
 ```bash
 scripts/run_measured.sh \
@@ -159,7 +160,8 @@ scripts/run_measured.sh \
   docs/runs/2026-10-01-fixed
 ```
 
-Autoscale, after the one-time IAM setup in
+<!-- separate: a second run bills again -->
+Or autoscale, after the one-time IAM setup in
 [autoscaling and the runner](docs/autoscaling-and-runner.md):
 
 ```bash

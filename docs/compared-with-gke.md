@@ -59,7 +59,7 @@ real API.
 
 ## Measured side by side
 
-<picture><source media="(prefers-color-scheme: dark)" srcset="diagrams/compare-measured-dark.svg"/><img width="400" align="top" src="diagrams/compare-measured-light.svg" alt="Chart: four measures side by side for nimble-oke on OKE and nim-gke on GKE."/></picture> <picture><source media="(prefers-color-scheme: dark)" srcset="diagrams/compare-cost-dark.svg"/><img width="400" align="top" src="diagrams/compare-cost-light.svg" alt="Chart: posted list cost on one dollar scale, OKE against GKE, for the fixed pool, autoscale, and every start."/></picture>
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="diagrams/compare-measured-dark.svg"/><img width="400" align="top" src="diagrams/compare-measured-light.svg" alt="Chart: four measures side by side for nimble-oke on OKE and nim-gke on GKE."/></picture> <picture><source media="(prefers-color-scheme: dark)" srcset="diagrams/compare-cost-dark.svg"/><img width="400" align="top" src="diagrams/compare-cost-light.svg" alt="Chart: posted list cost on one dollar scale, OKE against GKE, for the fixed pool, autoscale, and every start."/></picture></p>
 
 <details><summary>Text version of the diagrams</summary>
 

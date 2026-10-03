@@ -50,7 +50,7 @@ From the two receipts. Costs are posted usage from OCI Cost Analysis, read on 20
 
 ## Every attempt, including the failures
 
-<picture><source media="(prefers-color-scheme: dark)" srcset="../diagrams/runs-attempts-dark.svg"/><img width="400" align="top" src="../diagrams/runs-attempts-light.svg" alt="Chart: every start, with pass or fail, duration, and cost."/></picture> <picture><source media="(prefers-color-scheme: dark)" srcset="../diagrams/runs-cost-dark.svg"/><img width="400" align="top" src="../diagrams/runs-cost-light.svg" alt="Chart: posted cloud cost, one panel per billing line."/></picture>
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="../diagrams/runs-attempts-dark.svg"/><img width="400" align="top" src="../diagrams/runs-attempts-light.svg" alt="Chart: every start, with pass or fail, duration, and cost."/></picture> <picture><source media="(prefers-color-scheme: dark)" srcset="../diagrams/runs-cost-dark.svg"/><img width="400" align="top" src="../diagrams/runs-cost-light.svg" alt="Chart: posted cloud cost, one panel per billing line."/></picture></p>
 
 <details><summary>Text version of the diagrams</summary>
 

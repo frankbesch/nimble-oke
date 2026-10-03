@@ -349,6 +349,7 @@ echo ""
 echo "Prerequisites check complete!"
 ```
 
+<!-- separate: the block above is a file to save, not commands -->
 Run it:
 
 ```bash

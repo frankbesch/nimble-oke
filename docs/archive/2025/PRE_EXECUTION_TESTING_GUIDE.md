@@ -1,3 +1,5 @@
+> Archived 2025 page, kept for history and not maintained. Current docs: [docs/](../../).
+
 # Pre-Execution Testing Guide - Nimble OKE
 
 > **Archived.** A planning or analysis note from October 2025. It is not a measurement. For current status and measured results, see the [README](../../../README.md).
