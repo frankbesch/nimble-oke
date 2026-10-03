@@ -3,7 +3,7 @@
 
 Usage: python3 docs/diagrams/charts.py
 Writes six charts as <name>-light.svg and <name>-dark.svg, in three pairs of
-equal height (PAIRS, D-262). Every figure is copied from the README
+equal height (PAIRS, D-262), plus the docs pages' pairs. Every figure is copied from the README
 and docs/runs/. Change a figure there first, then here. The drawing code is
 quoin_readme.py, a copy kept in step by promptkits/quoin/github/sync.py.
 """
@@ -137,11 +137,33 @@ def attempts(c, spread=0.0, h=0):
     return svg(max(y, h), "Every attempt on 2026-10-01", desc, b + foot, c)
 
 
+COMPARE_COST = dict(  # docs/compared-with page list, "Posted list cost" rows
+    title="Posted list cost, OKE and GKE",
+    sub="OKE, one A10, against GKE, one L4, on one dollar scale. Different hardware and benchmarks.",
+    panels=[
+        ("Fixed pool", [GREEN, BLUE], [("OKE, one A10", 0.63, "$0.63"), ("GKE, one L4", 0.70, "about $0.70")]),
+        ("Autoscale", [GREEN, BLUE], [("OKE, one A10", 0.53, "$0.53"), ("GKE, one L4", 0.50, "about $0.50")]),
+        ("Every start", [GREEN, BLUE], [("OKE, one A10", 1.17, "$1.17"), ("GKE, one L4", 1.19, "$1.19")]),
+    ],
+    notes=["OCI posts cost by the hour, so each OKE figure is one run. Google's report splits by day: "
+           "about $0.70 is the day's two fixed-pool runs, and about $0.50 is the autoscale day with "
+           "one failed start. Of GKE's $1.19, $0.95 was charged after credits."],
+    desc=("Posted list cost on one dollar scale. Fixed pool: $0.63 on OKE; about $0.70 on GKE for the "
+          "day's two runs. Autoscale: $0.53 on OKE; about $0.50 on GKE for the day, with one failed "
+          "start. Every start: $1.17 on OKE; $1.19 on GKE, of which $0.95 was charged after credits."),
+)
+
+
 # The README shows these as pairs, one per line, at one height (D-262).
 PAIRS = [("measured", lambda c, s=0.0, h=0: measured(MEASURED, c, s, h), "attempts", attempts),
          ("deploys", lambda c, s=0.0, h=0: deploys(DEPLOYS, c, s, h), "cost", cost),
          ("autoscale", lambda c, s=0.0, h=0: autoscale(AUTOSCALE, c, s, h),
-          "runner-ends", lambda c, s=0.0, h=0: runner_ends(RUNNER, c, s, h))]
+          "runner-ends", lambda c, s=0.0, h=0: runner_ends(RUNNER, c, s, h)),
+         # Docs pages pair these under their own file names, so each file keeps its
+         # partner's height: compared-with page, then runs page (D-262, FBOS D-267).
+         ("compare-measured", lambda c, s=0.0, h=0: measured(MEASURED, c, s, h),
+          "compare-cost", lambda c, s=0.0, h=0: panels(COMPARE_COST, c, s, h)),
+         ("runs-attempts", attempts, "runs-cost", cost)]
 
 
 def main():

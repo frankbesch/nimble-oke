@@ -50,11 +50,13 @@ From the two receipts. Costs are posted usage from OCI Cost Analysis, read on 20
 
 ## Every attempt, including the failures
 
-<picture><source media="(prefers-color-scheme: dark)" srcset="../diagrams/attempts-dark.svg"/><img width="420" src="../diagrams/attempts-light.svg" alt="Chart: every start, with pass or fail, duration, and cost."/></picture>
+<picture><source media="(prefers-color-scheme: dark)" srcset="../diagrams/runs-attempts-dark.svg"/><img width="400" align="top" src="../diagrams/runs-attempts-light.svg" alt="Chart: every start, with pass or fail, duration, and cost."/></picture> <picture><source media="(prefers-color-scheme: dark)" srcset="../diagrams/runs-cost-dark.svg"/><img width="400" align="top" src="../diagrams/runs-cost-light.svg" alt="Chart: posted cloud cost, one panel per billing line."/></picture>
 
-<details><summary>Text version of this diagram</summary>
+<details><summary>Text version of the diagrams</summary>
 
 Six starts on 2026-10-01. 18:46 fixed pool failed at node pool create, $0.0017. 19:00 fixed pool passed, $0.63. About 20:00 IAM apply failed with 403. About 20:05 IAM check gave a false fail. 20:07 autoscale failed in preflight. 20:12 autoscale passed, $0.53.
+
+Run 1 posted $0.63: GPU $0.5217, enhanced cluster $0.0716, system node $0.0255, block volume $0.0109. Run 2 posted $0.53: GPU $0.4622, enhanced cluster $0.0382, system node $0.0252, block volume $0.0091.
 
 </details>
 

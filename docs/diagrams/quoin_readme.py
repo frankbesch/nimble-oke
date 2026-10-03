@@ -273,8 +273,9 @@ def panels(d, c, spread=0.0, h=0):
     """Small multiples on one shared scale: one panel per item, one bar per row,
     so every bar compares with every other (the ggplot2 trial, 2026-10-02).
     d: title, sub, panels [(label, colour, [(row, value, shown), ...])], notes,
-    desc. colour is a series index or a token name. A panel with one unnamed row
-    puts its value on the label line. spread opens the gap between panels."""
+    desc. colour is a series index or a token name, or a list of them, one per
+    row. A panel with one unnamed row puts its value on the label line. spread
+    opens the gap between panels."""
     top = max(v for _, _, rows in d["panels"] for _, v, _ in rows)
     b, y = head(d["title"], c)
     sub, y = para(M, y - 2, d["sub"], 12, c["ink2"], R - M)
@@ -282,9 +283,10 @@ def panels(d, c, spread=0.0, h=0):
     y += 8
     for i, (label, colour, rows) in enumerate(d["panels"]):
         y += round(40 * spread) if i else 0
-        fill = c["series"][colour] if isinstance(colour, int) else c[colour]
+        fills = colour if isinstance(colour, (list, tuple)) else [colour] * len(rows)
         b.append(text(M, y, label, 13, c["ink"], weight=600))
-        for name, v, shown in rows:
+        for (name, v, shown), k in zip(rows, fills):
+            fill = c["series"][k] if isinstance(k, int) else c[k]
             if name:  # a named row gets its own text line
                 y += 20
                 b.append(text(M, y, name, 12, c["ink2"]))

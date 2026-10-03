@@ -1,0 +1,44 @@
+<svg viewBox="0 0 360 591" xmlns="http://www.w3.org/2000/svg" role="img" font-family='ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, monospace'>
+<title>Posted list cost, OKE and GKE</title>
+<desc>Posted list cost on one dollar scale. Fixed pool: $0.63 on OKE; about $0.70 on GKE for the day&#x27;s two runs. Autoscale: $0.53 on OKE; about $0.50 on GKE for the day, with one failed start. Every start: $1.17 on OKE; $1.19 on GKE, of which $0.95 was charged after credits.</desc>
+<rect width="360" height="591" rx="6" fill="#0E1C2B"/>
+<text x="16" y="30" font-size="15" fill="#E8E2D6" font-weight="600">Posted list cost, OKE and GKE</text>
+<line x1="16" y1="42" x2="344" y2="42" stroke="#2D4152"/>
+<text x="16" y="64" font-size="12" fill="#A8A296">OKE, one A10, against GKE, one L4, on one</text>
+<text x="16" y="81" font-size="12" fill="#A8A296">dollar scale. Different hardware and</text>
+<text x="16" y="98" font-size="12" fill="#A8A296">benchmarks.</text>
+<text x="16" y="123" font-size="13" fill="#E8E2D6" font-weight="600">Fixed pool</text>
+<text x="16" y="143" font-size="12" fill="#A8A296">OKE, one A10</text>
+<text x="344" y="143" font-size="12" fill="#E8E2D6" text-anchor="end">$0.63</text>
+<rect x="16.0" y="149" width="328.0" height="12" rx="2" fill="#1F3142"/>
+<rect x="16.0" y="149" width="173.6" height="12" rx="2" fill="#6DA361"/>
+<text x="16" y="181" font-size="12" fill="#A8A296">GKE, one L4</text>
+<text x="344" y="181" font-size="12" fill="#E8E2D6" text-anchor="end">about $0.70</text>
+<rect x="16.0" y="187" width="328.0" height="12" rx="2" fill="#1F3142"/>
+<rect x="16.0" y="187" width="192.9" height="12" rx="2" fill="#17A1C8"/>
+<text x="16" y="252" font-size="13" fill="#E8E2D6" font-weight="600">Autoscale</text>
+<text x="16" y="272" font-size="12" fill="#A8A296">OKE, one A10</text>
+<text x="344" y="272" font-size="12" fill="#E8E2D6" text-anchor="end">$0.53</text>
+<rect x="16.0" y="278" width="328.0" height="12" rx="2" fill="#1F3142"/>
+<rect x="16.0" y="278" width="146.1" height="12" rx="2" fill="#6DA361"/>
+<text x="16" y="310" font-size="12" fill="#A8A296">GKE, one L4</text>
+<text x="344" y="310" font-size="12" fill="#E8E2D6" text-anchor="end">about $0.50</text>
+<rect x="16.0" y="316" width="328.0" height="12" rx="2" fill="#1F3142"/>
+<rect x="16.0" y="316" width="137.8" height="12" rx="2" fill="#17A1C8"/>
+<text x="16" y="381" font-size="13" fill="#E8E2D6" font-weight="600">Every start</text>
+<text x="16" y="401" font-size="12" fill="#A8A296">OKE, one A10</text>
+<text x="344" y="401" font-size="12" fill="#E8E2D6" text-anchor="end">$1.17</text>
+<rect x="16.0" y="407" width="328.0" height="12" rx="2" fill="#1F3142"/>
+<rect x="16.0" y="407" width="322.5" height="12" rx="2" fill="#6DA361"/>
+<text x="16" y="439" font-size="12" fill="#A8A296">GKE, one L4</text>
+<text x="344" y="439" font-size="12" fill="#E8E2D6" text-anchor="end">$1.19</text>
+<rect x="16.0" y="445" width="328.0" height="12" rx="2" fill="#1F3142"/>
+<rect x="16.0" y="445" width="328.0" height="12" rx="2" fill="#17A1C8"/>
+<line x1="16" y1="465" x2="344" y2="465" stroke="#2D4152"/>
+<text x="16" y="485" font-size="12" fill="#A8A296">OCI posts cost by the hour, so each OKE</text>
+<text x="16" y="502" font-size="12" fill="#A8A296">figure is one run. Google&#x27;s report splits by</text>
+<text x="16" y="519" font-size="12" fill="#A8A296">day: about $0.70 is the day&#x27;s two fixed-pool</text>
+<text x="16" y="536" font-size="12" fill="#A8A296">runs, and about $0.50 is the autoscale day</text>
+<text x="16" y="553" font-size="12" fill="#A8A296">with one failed start. Of GKE&#x27;s $1.19, $0.95</text>
+<text x="16" y="570" font-size="12" fill="#A8A296">was charged after credits.</text>
+</svg>

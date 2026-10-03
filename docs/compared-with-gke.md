@@ -59,11 +59,13 @@ real API.
 
 ## Measured side by side
 
-<picture><source media="(prefers-color-scheme: dark)" srcset="diagrams/measured-dark.svg"/><img width="420" src="diagrams/measured-light.svg" alt="Chart: four measures side by side for nimble-oke on OKE and nim-gke on GKE."/></picture>
+<picture><source media="(prefers-color-scheme: dark)" srcset="diagrams/compare-measured-dark.svg"/><img width="400" align="top" src="diagrams/compare-measured-light.svg" alt="Chart: four measures side by side for nimble-oke on OKE and nim-gke on GKE."/></picture> <picture><source media="(prefers-color-scheme: dark)" srcset="diagrams/compare-cost-dark.svg"/><img width="400" align="top" src="diagrams/compare-cost-light.svg" alt="Chart: posted list cost on one dollar scale, OKE against GKE, for the fixed pool, autoscale, and every start."/></picture>
 
-<details><summary>Text version of this diagram</summary>
+<details><summary>Text version of the diagrams</summary>
 
 Scale-up 385 s on OKE and 77 s on GKE. Scale-down 312 s on OKE with timers set to 3 minutes and 752 s on GKE with the default delay. Script start to NIM Ready with autoscale 23 min 04 s on OKE and 16 min 07 s on GKE. Posted list cost for every start $1.17 on OKE and $1.19 on GKE.
+
+Posted list cost on one dollar scale. Fixed pool: $0.63 on OKE; about $0.70 on GKE for the day's two runs. Autoscale: $0.53 on OKE; about $0.50 on GKE for the day, with one failed start. Every start: $1.17 on OKE; $1.19 on GKE, of which $0.95 was charged after credits.
 
 </details>
 

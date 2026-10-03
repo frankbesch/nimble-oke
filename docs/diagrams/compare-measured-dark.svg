@@ -1,0 +1,47 @@
+<svg viewBox="0 0 360 591" xmlns="http://www.w3.org/2000/svg" role="img" font-family='ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, monospace'>
+<title>Measured side by side</title>
+<desc>Scale-up 385 s on OKE and 77 s on GKE. Scale-down 312 s on OKE with timers set to 3 minutes and 752 s on GKE with the default delay. Script start to NIM Ready with autoscale 23 min 04 s on OKE and 16 min 07 s on GKE. Posted list cost for every start $1.17 on OKE and $1.19 on GKE.</desc>
+<rect width="360" height="591" rx="6" fill="#0E1C2B"/>
+<text x="16" y="30" font-size="15" fill="#E8E2D6" font-weight="600">Measured side by side</text>
+<line x1="16" y1="42" x2="344" y2="42" stroke="#2D4152"/>
+<text x="16" y="66" font-size="13" fill="#E8E2D6" font-weight="600">Scale-up: pod Pending to GPU node Ready</text>
+<text x="16" y="88" font-size="12" fill="#A8A296">OKE, one A10</text>
+<text x="344" y="88" font-size="12" fill="#E8E2D6" text-anchor="end">385 s</text>
+<rect x="16.0" y="95" width="328.0" height="14" rx="2" fill="#1F3142"/>
+<rect x="16.0" y="95" width="328.0" height="14" rx="2" fill="#6DA361"/>
+<text x="16" y="132" font-size="12" fill="#A8A296">GKE, one L4</text>
+<text x="344" y="132" font-size="12" fill="#E8E2D6" text-anchor="end">77 s</text>
+<rect x="16.0" y="139" width="328.0" height="14" rx="2" fill="#1F3142"/>
+<rect x="16.0" y="139" width="65.6" height="14" rx="2" fill="#17A1C8"/>
+<text x="16" y="182" font-size="13" fill="#E8E2D6" font-weight="600">Scale-down: zero replicas to no GPU node</text>
+<text x="16" y="204" font-size="12" fill="#A8A296">OKE, one A10</text>
+<text x="344" y="204" font-size="12" fill="#E8E2D6" text-anchor="end">312 s, timers set to 3 min</text>
+<rect x="16.0" y="211" width="328.0" height="14" rx="2" fill="#1F3142"/>
+<rect x="16.0" y="211" width="136.1" height="14" rx="2" fill="#6DA361"/>
+<text x="16" y="248" font-size="12" fill="#A8A296">GKE, one L4</text>
+<text x="344" y="248" font-size="12" fill="#E8E2D6" text-anchor="end">752 s, default delay</text>
+<rect x="16.0" y="255" width="328.0" height="14" rx="2" fill="#1F3142"/>
+<rect x="16.0" y="255" width="328.0" height="14" rx="2" fill="#17A1C8"/>
+<text x="16" y="298" font-size="13" fill="#E8E2D6" font-weight="600">Script start to NIM Ready, autoscale</text>
+<text x="16" y="320" font-size="12" fill="#A8A296">OKE, one A10</text>
+<text x="344" y="320" font-size="12" fill="#E8E2D6" text-anchor="end">23 min 04 s</text>
+<rect x="16.0" y="327" width="328.0" height="14" rx="2" fill="#1F3142"/>
+<rect x="16.0" y="327" width="328.0" height="14" rx="2" fill="#6DA361"/>
+<text x="16" y="364" font-size="12" fill="#A8A296">GKE, one L4</text>
+<text x="344" y="364" font-size="12" fill="#E8E2D6" text-anchor="end">16 min 07 s</text>
+<rect x="16.0" y="371" width="328.0" height="14" rx="2" fill="#1F3142"/>
+<rect x="16.0" y="371" width="229.2" height="14" rx="2" fill="#17A1C8"/>
+<text x="16" y="414" font-size="13" fill="#E8E2D6" font-weight="600">Posted list cost, every start</text>
+<text x="16" y="436" font-size="12" fill="#A8A296">OKE, one A10</text>
+<text x="344" y="436" font-size="12" fill="#E8E2D6" text-anchor="end">$1.17</text>
+<rect x="16.0" y="443" width="328.0" height="14" rx="2" fill="#1F3142"/>
+<rect x="16.0" y="443" width="322.5" height="14" rx="2" fill="#6DA361"/>
+<text x="16" y="480" font-size="12" fill="#A8A296">GKE, one L4</text>
+<text x="344" y="480" font-size="12" fill="#E8E2D6" text-anchor="end">$1.19</text>
+<rect x="16.0" y="487" width="328.0" height="14" rx="2" fill="#1F3142"/>
+<rect x="16.0" y="487" width="328.0" height="14" rx="2" fill="#17A1C8"/>
+<line x1="16" y1="518" x2="344" y2="518" stroke="#2D4152"/>
+<text x="16" y="540" font-size="12" fill="#A8A296">One run each, on different hardware. This is</text>
+<text x="16" y="557" font-size="12" fill="#A8A296">a record of each run, not a benchmark of the</text>
+<text x="16" y="574" font-size="12" fill="#A8A296">two platforms.</text>
+</svg>

@@ -1,0 +1,48 @@
+<svg viewBox="0 0 360 560" xmlns="http://www.w3.org/2000/svg" role="img" font-family='ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, monospace'>
+<title>Posted OCI cost by billing line</title>
+<desc>Run 1 posted $0.63: GPU $0.5217, enhanced cluster $0.0716, system node $0.0255, block volume $0.0109. Run 2 posted $0.53: GPU $0.4622, enhanced cluster $0.0382, system node $0.0252, block volume $0.0091.</desc>
+<rect width="360" height="560" rx="6" fill="#FCFBF9"/>
+<text x="16" y="30" font-size="15" fill="#2B2926" font-weight="600">Posted OCI cost by billing line</text>
+<line x1="16" y1="42" x2="344" y2="42" stroke="#D2CCC3"/>
+<text x="16" y="64" font-size="12" fill="#6A625A">Run 1, fixed pool: $0.63. Run 2, autoscale:</text>
+<text x="16" y="81" font-size="12" fill="#6A625A">$0.53.</text>
+<text x="16" y="106" font-size="13" fill="#2B2926" font-weight="600">GPU, VM.GPU.A10.1</text>
+<text x="16" y="126" font-size="12" fill="#6A625A">Run 1</text>
+<text x="344" y="126" font-size="12" fill="#2B2926" text-anchor="end">$0.5217</text>
+<rect x="16.0" y="132" width="328.0" height="12" rx="2" fill="#EBE6DD"/>
+<rect x="16.0" y="132" width="328.0" height="12" rx="2" fill="#33703F"/>
+<text x="16" y="164" font-size="12" fill="#6A625A">Run 2</text>
+<text x="344" y="164" font-size="12" fill="#2B2926" text-anchor="end">$0.4622</text>
+<rect x="16.0" y="170" width="328.0" height="12" rx="2" fill="#EBE6DD"/>
+<rect x="16.0" y="170" width="290.6" height="12" rx="2" fill="#33703F"/>
+<text x="16" y="210" font-size="13" fill="#2B2926" font-weight="600">Enhanced cluster fee</text>
+<text x="16" y="230" font-size="12" fill="#6A625A">Run 1</text>
+<text x="344" y="230" font-size="12" fill="#2B2926" text-anchor="end">$0.0716</text>
+<rect x="16.0" y="236" width="328.0" height="12" rx="2" fill="#EBE6DD"/>
+<rect x="16.0" y="236" width="45.0" height="12" rx="2" fill="#0084A9"/>
+<text x="16" y="268" font-size="12" fill="#6A625A">Run 2</text>
+<text x="344" y="268" font-size="12" fill="#2B2926" text-anchor="end">$0.0382</text>
+<rect x="16.0" y="274" width="328.0" height="12" rx="2" fill="#EBE6DD"/>
+<rect x="16.0" y="274" width="24.0" height="12" rx="2" fill="#0084A9"/>
+<text x="16" y="314" font-size="13" fill="#2B2926" font-weight="600">System node, E4.Flex</text>
+<text x="16" y="334" font-size="12" fill="#6A625A">Run 1</text>
+<text x="344" y="334" font-size="12" fill="#2B2926" text-anchor="end">$0.0255</text>
+<rect x="16.0" y="340" width="328.0" height="12" rx="2" fill="#EBE6DD"/>
+<rect x="16.0" y="340" width="16.0" height="12" rx="2" fill="#916A0B"/>
+<text x="16" y="372" font-size="12" fill="#6A625A">Run 2</text>
+<text x="344" y="372" font-size="12" fill="#2B2926" text-anchor="end">$0.0252</text>
+<rect x="16.0" y="378" width="328.0" height="12" rx="2" fill="#EBE6DD"/>
+<rect x="16.0" y="378" width="15.8" height="12" rx="2" fill="#916A0B"/>
+<text x="16" y="418" font-size="13" fill="#2B2926" font-weight="600">Block volume</text>
+<text x="16" y="438" font-size="12" fill="#6A625A">Run 1</text>
+<text x="344" y="438" font-size="12" fill="#2B2926" text-anchor="end">$0.0109</text>
+<rect x="16.0" y="444" width="328.0" height="12" rx="2" fill="#EBE6DD"/>
+<rect x="16.0" y="444" width="6.9" height="12" rx="2" fill="#23749E"/>
+<text x="16" y="476" font-size="12" fill="#6A625A">Run 2</text>
+<text x="344" y="476" font-size="12" fill="#2B2926" text-anchor="end">$0.0091</text>
+<rect x="16.0" y="482" width="328.0" height="12" rx="2" fill="#EBE6DD"/>
+<rect x="16.0" y="482" width="5.7" height="12" rx="2" fill="#23749E"/>
+<line x1="16" y1="502" x2="344" y2="502" stroke="#D2CCC3"/>
+<text x="16" y="522" font-size="12" fill="#6A625A">Posted usage from OCI Cost Analysis, read on</text>
+<text x="16" y="539" font-size="12" fill="#6A625A">2026-10-02. Not an invoice.</text>
+</svg>
