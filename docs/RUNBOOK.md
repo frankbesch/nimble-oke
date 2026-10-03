@@ -52,7 +52,7 @@ make discover
 
 ### Expected Output
 
-```
+```text
 [NIM-OKE][INFO] Discovering OKE cluster state...
 
 === Cluster Information ===
@@ -120,7 +120,7 @@ make prereqs
 
 ### Expected Output
 
-```
+```text
 [NIM-OKE][INFO] Checking prerequisites...
 
 === Required Tools ===
@@ -219,7 +219,7 @@ cleanup_on_failure() {
 
 ### Expected Output
 
-```
+```text
 [NIM-OKE][INFO] Starting NIM deployment...
 [NIM-OKE][INFO] Running prerequisites check...
 [NIM-OKE][SUCCESS] All critical prerequisites met
@@ -271,7 +271,7 @@ make verify
 
 ### Expected Output
 
-```
+```text
 [NIM-OKE][INFO] Verifying NIM deployment...
 
 === Deployment Verification ===
@@ -303,7 +303,7 @@ Next steps:
 
 If critical checks fail:
 
-```
+```text
 [NIM-OKE][ERROR] Verification failed (2 critical checks failed)
 
 [NIM-OKE][INFO] Troubleshoot with: make troubleshoot
@@ -382,25 +382,25 @@ make troubleshoot
 ### Common Issues Detected
 
 **No GPU nodes:**
-```
+```text
 [NIM-OKE][ERROR] No GPU nodes found in cluster
 [NIM-OKE][INFO] Check node labels: kubectl get nodes --show-labels
 ```
 
 **Device plugin not installed:**
-```
+```text
 [NIM-OKE][ERROR] NVIDIA device plugin not installed
 [NIM-OKE][INFO] Install: kubectl apply -f https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.14.0/nvidia-device-plugin.yml
 ```
 
 **Image pull errors:**
-```
+```text
 [NIM-OKE][ERROR] Pod nvidia-nim-xxx has image pull issues
 [NIM-OKE][INFO] Check NGC credentials:
 ```
 
 **LoadBalancer pending:**
-```
+```text
 [NIM-OKE][WARN] LoadBalancer IP not assigned yet
 [NIM-OKE][INFO] Check LoadBalancer events:
 ```
@@ -453,7 +453,7 @@ make teardown
 
 After cleanup:
 
-```
+```text
 [NIM-OKE][INFO] Verifying cleanup...
 [NIM-OKE][SUCCESS] Cleanup complete - no NIM resources remain
 
@@ -594,7 +594,7 @@ Resources cleaned automatically, no manual intervention needed.
 
 ### Example Log Flow
 
-```
+```text
 [NIM-OKE][INFO] Starting NIM deployment...
 [NIM-OKE][INFO] Running prerequisites check...
 [NIM-OKE][SUCCESS] All critical prerequisites met
@@ -645,57 +645,30 @@ make discover # Shows projected costs
 
 ### Issue: Deployment Fails
 
-```
-make install fails
-    │
-    ├─→ Prerequisites fail?
-    │   └─→ make prereqs (fix missing tools/config)
-    │
-    ├─→ Cost guard blocks?
-    │   └─→ CONFIRM_COST=yes make install
-    │
-    ├─→ Helm fails?
-    │   └─→ make troubleshoot (check chart syntax)
-    │
-    └─→ Pods not ready?
-        └─→ make troubleshoot (check GPU, image pull, resources)
-```
+When `make install` fails:
+
+- **Prerequisites fail?** `make prereqs` (fix missing tools/config).
+- **Cost guard blocks?** `CONFIRM_COST=yes make install`.
+- **Helm fails?** `make troubleshoot` (check chart syntax).
+- **Pods not ready?** `make troubleshoot` (check GPU, image pull, resources).
 
 ### Issue: Verification Fails
 
-```
-make verify fails
-    │
-    ├─→ Pods not running?
-    │   └─→ make logs (check for errors)
-    │
-    ├─→ GPU not allocated?
-    │   └─→ make troubleshoot (check GPU nodes and device plugin)
-    │
-    ├─→ Service no external IP?
-    │   └─→ Wait 5 minutes (LoadBalancer provisioning)
-    │
-    └─→ API not healthy?
-        └─→ Check logs (model may still be loading)
-```
+When `make verify` fails:
+
+- **Pods not running?** `make logs` (check for errors).
+- **GPU not allocated?** `make troubleshoot` (check GPU nodes and device plugin).
+- **Service no external IP?** Wait 5 minutes (LoadBalancer provisioning).
+- **API not healthy?** Check logs (model may still be loading).
 
 ### Issue: Inference Slow/Fails
 
-```
-API slow or failing
-    │
-    ├─→ Model still loading?
-    │   └─→ make logs (check for "model loaded")
-    │
-    ├─→ Out of memory?
-    │   └─→ kubectl top pods (check resource usage)
-    │
-    ├─→ GPU not utilized?
-    │   └─→ kubectl exec nvidia-smi (verify GPU is active)
-    │
-    └─→ Network issues?
-        └─→ make troubleshoot (check service and endpoints)
-```
+When the API is slow or failing:
+
+- **Model still loading?** `make logs` (check for "model loaded").
+- **Out of memory?** `kubectl top pods` (check resource usage).
+- **GPU not utilized?** `kubectl exec` into the pod and run `nvidia-smi` (verify the GPU is active).
+- **Network issues?** `make troubleshoot` (check service and endpoints).
 
 ## Complete Workflow Example
 
@@ -880,32 +853,77 @@ make operate  # Shows current hourly rate
 
 ## Reference: Makefile Targets
 
-| Target | Description | Prerequisites |
-|--------|-------------|---------------|
-| `help` | Show all targets | None |
-| `discover` | Discover cluster state | kubectl configured |
-| `prereqs` | Validate prerequisites | Tools installed |
-| `install` | Deploy NIM | prereqs pass |
-| `verify` | Verify deployment | install complete |
-| `operate` | Show operations | deployment exists |
-| `troubleshoot` | Run diagnostics | kubectl configured |
-| `cleanup` | Remove NIM | None (idempotent) |
-| `all` | Complete workflow | prereqs pass |
-| `status` | Quick status | kubectl configured |
-| `logs` | View logs | deployment exists |
-| `validate` | prereqs + verify | Both must pass |
+Listed by target:
+
+- **`help`**
+  - Description: Show all targets
+  - Prerequisites: None
+- **`discover`**
+  - Description: Discover cluster state
+  - Prerequisites: kubectl configured
+- **`prereqs`**
+  - Description: Validate prerequisites
+  - Prerequisites: Tools installed
+- **`install`**
+  - Description: Deploy NIM
+  - Prerequisites: prereqs pass
+- **`verify`**
+  - Description: Verify deployment
+  - Prerequisites: install complete
+- **`operate`**
+  - Description: Show operations
+  - Prerequisites: deployment exists
+- **`troubleshoot`**
+  - Description: Run diagnostics
+  - Prerequisites: kubectl configured
+- **`cleanup`**
+  - Description: Remove NIM
+  - Prerequisites: None (idempotent)
+- **`all`**
+  - Description: Complete workflow
+  - Prerequisites: prereqs pass
+- **`status`**
+  - Description: Quick status
+  - Prerequisites: kubectl configured
+- **`logs`**
+  - Description: View logs
+  - Prerequisites: deployment exists
+- **`validate`**
+  - Description: prereqs + verify
+  - Prerequisites: Both must pass
 
 ## Reference: Environment Variables
 
-| Variable | Values | Default | Purpose |
-|----------|--------|---------|---------|
-| `NGC_API_KEY` | nvapi-... | (required) | NVIDIA NGC credentials |
-| `OCI_COMPARTMENT_ID` | ocid1... | (required) | OCI compartment |
-| `ENVIRONMENT` | dev, production | dev | Triggers cost guards |
-| `CONFIRM_COST` | yes, no | no | Bypass cost guard |
-| `COST_THRESHOLD_USD` | number | 5 | Cost guard threshold |
-| `KEEP_CACHE` | yes, no | no | Preserve PVCs in cleanup |
-| `FORCE` | yes, no | no | Skip confirmations |
+Listed by variable:
+
+- **`NGC_API_KEY`**
+  - Values: nvapi-...
+  - Default: (required)
+  - Purpose: NVIDIA NGC credentials
+- **`OCI_COMPARTMENT_ID`**
+  - Values: ocid1...
+  - Default: (required)
+  - Purpose: OCI compartment
+- **`ENVIRONMENT`**
+  - Values: dev, production
+  - Default: dev
+  - Purpose: Triggers cost guards
+- **`CONFIRM_COST`**
+  - Values: yes, no
+  - Default: no
+  - Purpose: Bypass cost guard
+- **`COST_THRESHOLD_USD`**
+  - Values: number
+  - Default: 5
+  - Purpose: Cost guard threshold
+- **`KEEP_CACHE`**
+  - Values: yes, no
+  - Default: no
+  - Purpose: Preserve PVCs in cleanup
+- **`FORCE`**
+  - Values: yes, no
+  - Default: no
+  - Purpose: Skip confirmations
 
 ## Best Practices
 
@@ -940,16 +958,32 @@ make operate  # Shows current hourly rate
 
 ## Troubleshooting Reference
 
-| Symptom | Likely Cause | Solution |
-|---------|--------------|----------|
-| Cost guard blocks | Cost > $5 or prod env | `CONFIRM_COST=yes make install` |
-| No GPU nodes | Cluster not provisioned | Provision OKE with GPU nodes first |
-| ImagePullBackOff | Invalid NGC key | Check NGC_API_KEY is correct |
-| Pods pending | Insufficient GPU | Check node capacity with `make discover` |
-| Model loading slow | Normal behavior | Wait 30-45 min for 15GB download |
-| LoadBalancer pending | OCI provisioning | Wait 2-5 minutes |
-| API 503 errors | Model not ready | Check logs for "model loaded" |
-| Out of memory | Insufficient resources | Increase node size or reduce limits |
+Listed by symptom:
+
+- **Cost guard blocks**
+  - Likely Cause: Cost > $5 or prod env
+  - Solution: `CONFIRM_COST=yes make install`
+- **No GPU nodes**
+  - Likely Cause: Cluster not provisioned
+  - Solution: Provision OKE with GPU nodes first
+- **ImagePullBackOff**
+  - Likely Cause: Invalid NGC key
+  - Solution: Check NGC_API_KEY is correct
+- **Pods pending**
+  - Likely Cause: Insufficient GPU
+  - Solution: Check node capacity with `make discover`
+- **Model loading slow**
+  - Likely Cause: Normal behavior
+  - Solution: Wait 30-45 min for 15GB download
+- **LoadBalancer pending**
+  - Likely Cause: OCI provisioning
+  - Solution: Wait 2-5 minutes
+- **API 503 errors**
+  - Likely Cause: Model not ready
+  - Solution: Check logs for "model loaded"
+- **Out of memory**
+  - Likely Cause: Insufficient resources
+  - Solution: Increase node size or reduce limits
 
 ## Getting Help
 

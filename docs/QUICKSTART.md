@@ -8,13 +8,23 @@ Deploy NVIDIA NIM on OKE with the Makefile. Measured: provision took 15 min 53 s
 
 ### Minimum Requirements
 
-| Component | Specification | Notes |
-|-----------|---------------|-------|
-| **OCI Account** | Paid account | Free tier not supported |
-| **GPU Quota** | VM.GPU.A10.1 (1× A10 24 GB) | Default limit is 0; request a `gpu-a10-count` increase in the OCI Console |
-| **Node Memory** | 240 GB | VM.GPU.A10.1: 15 OCPU, 240 GB RAM |
-| **Disk Space** | 100GB | For model cache + containers |
-| **NGC API Key** | Required | [Generate here](https://ngc.nvidia.com/setup/api-key) |
+Listed by component:
+
+- **OCI Account**
+  - Specification: Paid account
+  - Notes: Free tier not supported
+- **GPU Quota**
+  - Specification: VM.GPU.A10.1 (1× A10 24 GB)
+  - Notes: Default limit is 0; request a `gpu-a10-count` increase in the OCI Console
+- **Node Memory**
+  - Specification: 240 GB
+  - Notes: VM.GPU.A10.1: 15 OCPU, 240 GB RAM
+- **Disk Space**
+  - Specification: 100GB
+  - Notes: For model cache + containers
+- **NGC API Key**
+  - Specification: Required
+  - Notes: [Generate here](https://ngc.nvidia.com/setup/api-key)
 
 **Cost:** $2.00/hr GPU + $0.10/hr enhanced cluster + $0.074/hr system node = $2.17/hr at list price. Block storage posted at about $0.01 per run.
 
@@ -111,12 +121,20 @@ make all  # discover → install → verify
 
 ## Environment Variables
 
-| Variable | Purpose | Example |
-|----------|---------|---------|
-| `NGC_API_KEY` | NVIDIA NGC API key (required) | `nvapi-...` |
-| `OCI_COMPARTMENT_ID` | OCI compartment (required) | `ocid1...` |
-| `CONFIRM_COST` | Bypass cost guard | `yes` |
-| `KEEP_CACHE` | Preserve PVCs during cleanup | `yes` |
+Listed by variable:
+
+- **`NGC_API_KEY`**
+  - Purpose: NVIDIA NGC API key (required)
+  - Example: `nvapi-...`
+- **`OCI_COMPARTMENT_ID`**
+  - Purpose: OCI compartment (required)
+  - Example: `ocid1...`
+- **`CONFIRM_COST`**
+  - Purpose: Bypass cost guard
+  - Example: `yes`
+- **`KEEP_CACHE`**
+  - Purpose: Preserve PVCs during cleanup
+  - Example: `yes`
 
 **Complete reference:** [Makefile targets](reference.md#makefile-targets)
 

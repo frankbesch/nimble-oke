@@ -447,3 +447,25 @@ def autoscale(a, c, spread=0.0, h=0):
     return svg(max(y, h), "GPU node autoscaling, 0 to 1 to 0", a["desc"], b + lines, c)
 
 
+
+
+def steps(d, c, spread=0.0, h=0):
+    """A vertical chain of boxes joined by arrows: a request path, a pipeline.
+    d: title, steps [(label, sub, extra or None, kind)], note, desc; kind is a
+    box kind ("backend", "database", ...). spread opens the gaps between boxes."""
+    g = round(32 * spread)
+    b, y = head(d["title"], c)
+    y -= 10
+    for i, (label, sub, extra, k) in enumerate(d["steps"]):
+        bh = box_h(sub, extra, R - M)
+        b += box(M, y, R - M, bh, label, sub, extra, k, c)
+        y += bh
+        if i < len(d["steps"]) - 1:
+            b.append(arrow([((M + R) / 2, y + 2), ((M + R) / 2, y + 20 + g)], c["ink2"], c))
+            y += 24 + g
+    if d.get("note"):
+        lines, y = note(y + 26, d["note"], c)
+        b += lines
+    else:
+        y += 16
+    return svg(max(y, h), d["title"], d["desc"], b, c)

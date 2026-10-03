@@ -48,19 +48,41 @@ it is not a measurement. Their prices and shapes were corrected in October
 
 ## Makefile targets
 
-| Target | Purpose | Cost guard |
-|--------|---------|------------|
-| `make provision` | Create the cluster and GPU node pool | Yes |
-| `make prereqs` | Check the cluster, the GPU, and registry access | No |
-| `make install` | Deploy NIM with Helm | Yes |
-| `make verify` | Check health and send one inference request | No |
-| `make status` / `make logs` | Show pod state and recent logs | No |
-| `make troubleshoot` | Run diagnostics | No |
-| `make cleanup` | Remove the NIM release; the cluster keeps billing | No |
-| `make teardown` | Delete the node pool and cluster | Typed confirmation |
-| `make lint` | Shellcheck and Helm lint | No |
-| `make test` | Run the stubbed tests | No |
-| `make help` | List every target | No |
+Listed by target:
+
+- **`make provision`**
+  - Purpose: Create the cluster and GPU node pool
+  - Cost guard: Yes
+- **`make prereqs`**
+  - Purpose: Check the cluster, the GPU, and registry access
+  - Cost guard: No
+- **`make install`**
+  - Purpose: Deploy NIM with Helm
+  - Cost guard: Yes
+- **`make verify`**
+  - Purpose: Check health and send one inference request
+  - Cost guard: No
+- **`make status` / `make logs`**
+  - Purpose: Show pod state and recent logs
+  - Cost guard: No
+- **`make troubleshoot`**
+  - Purpose: Run diagnostics
+  - Cost guard: No
+- **`make cleanup`**
+  - Purpose: Remove the NIM release; the cluster keeps billing
+  - Cost guard: No
+- **`make teardown`**
+  - Purpose: Delete the node pool and cluster
+  - Cost guard: Typed confirmation
+- **`make lint`**
+  - Purpose: Shellcheck and Helm lint
+  - Cost guard: No
+- **`make test`**
+  - Purpose: Run the stubbed tests
+  - Cost guard: No
+- **`make help`**
+  - Purpose: List every target
+  - Cost guard: No
 
 - `OCI_COMPARTMENT_ID` (required): Compartment that owns every resource
 - `NGC_API_KEY` (required): NGC key, passed to Helm at install

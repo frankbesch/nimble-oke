@@ -385,7 +385,7 @@ curl -X POST $NIM_ENDPOINT/v1/chat/completions \
 ```
 
 Response (streaming):
-```
+```text
 data: {"id":"chatcmpl-xxx","choices":[{"delta":{"role":"assistant"},"index":0}]}
 
 data: {"id":"chatcmpl-xxx","choices":[{"delta":{"content":"Once"},"index":0}]}
@@ -727,22 +727,51 @@ kubectl logs -l app.kubernetes.io/name=nvidia-nim | grep -i "ready\|loading\|err
 
 ## Quick Reference
 
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/v1/health/ready` | GET | Readiness check |
-| `/v1/health/live` | GET | Liveness check |
-| `/v1/models` | GET | List available models |
-| `/v1/chat/completions` | POST | Chat completion |
+Listed by endpoint:
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `model` | string | required | Model ID |
-| `messages` | array | required | Conversation history |
-| `temperature` | float | 0.7 | Randomness (0-2) |
-| `max_tokens` | int | - | Max tokens to generate |
-| `top_p` | float | 1.0 | Nucleus sampling |
-| `stream` | boolean | false | Enable streaming |
-| `stop` | string/array | null | Stop sequences |
+- **`/v1/health/ready`**
+  - Method: GET
+  - Purpose: Readiness check
+- **`/v1/health/live`**
+  - Method: GET
+  - Purpose: Liveness check
+- **`/v1/models`**
+  - Method: GET
+  - Purpose: List available models
+- **`/v1/chat/completions`**
+  - Method: POST
+  - Purpose: Chat completion
+
+Listed by parameter:
+
+- **`model`**
+  - Type: string
+  - Default: required
+  - Description: Model ID
+- **`messages`**
+  - Type: array
+  - Default: required
+  - Description: Conversation history
+- **`temperature`**
+  - Type: float
+  - Default: 0.7
+  - Description: Randomness (0-2)
+- **`max_tokens`**
+  - Type: int
+  - Default: -
+  - Description: Max tokens to generate
+- **`top_p`**
+  - Type: float
+  - Default: 1.0
+  - Description: Nucleus sampling
+- **`stream`**
+  - Type: boolean
+  - Default: false
+  - Description: Enable streaming
+- **`stop`**
+  - Type: string/array
+  - Default: null
+  - Description: Stop sequences
 
 ---
 

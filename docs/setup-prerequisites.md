@@ -9,48 +9,93 @@ This guide covers all prerequisites needed before deploying NVIDIA NIM on Oracle
 
 ### NVIDIA NIM Requirements (Official)
 
-| Component | Minimum | Recommended | Notes |
-|-----------|---------|-------------|-------|
-| **GPU** | NVIDIA A10 (24GB VRAM) | A100 (40GB/80GB) | Ampere architecture or later |
-| **GPU Memory** | 24GB VRAM | 40GB+ VRAM | For Llama 3 8B model |
-| **System Memory** | 40GB RAM | 90GB+ RAM | From NVIDIA's Cosmos NIM page; not verified for Llama 3 8B |
-| **Disk Space** | 100GB | 200GB+ | Model cache + container images |
-| **CPU Architecture** | x86_64 | x86_64 | ARM not supported |
-| **GPU Driver** | NVIDIA 535+ | Latest | Auto-provisioned by OKE |
-| **Container Toolkit** | 1.16.2+ | Latest | Auto-provisioned by OKE |
+Listed by component:
+
+- **GPU**
+  - Minimum: NVIDIA A10 (24GB VRAM)
+  - Recommended: A100 (40GB/80GB)
+  - Notes: Ampere architecture or later
+- **GPU Memory**
+  - Minimum: 24GB VRAM
+  - Recommended: 40GB+ VRAM
+  - Notes: For Llama 3 8B model
+- **System Memory**
+  - Minimum: 40GB RAM
+  - Recommended: 90GB+ RAM
+  - Notes: From NVIDIA's Cosmos NIM page; not verified for Llama 3 8B
+- **Disk Space**
+  - Minimum: 100GB
+  - Recommended: 200GB+
+  - Notes: Model cache + container images
+- **CPU Architecture**
+  - Minimum: x86_64
+  - Recommended: x86_64
+  - Notes: ARM not supported
+- **GPU Driver**
+  - Minimum: NVIDIA 535+
+  - Recommended: Latest
+  - Notes: Auto-provisioned by OKE
+- **Container Toolkit**
+  - Minimum: 1.16.2+
+  - Recommended: Latest
+  - Notes: Auto-provisioned by OKE
 
 ### OCI VM.GPU.A10.1 Shape
 
 The recommended OCI shape for this deployment:
 
-| Resource | Specification | Compliance |
-|----------|---------------|------------|
-| **GPU** | 1× NVIDIA A10 (24GB VRAM) | Fits Llama 3 8B in FP16; NVIDIA lists A10G, not A10, so this is the generic configuration (not guaranteed) |
-| **vCPUs** | 15 OCPUs | ✅ Exceeds requirements |
-| **Memory** | 240GB RAM | 15 OCPU, Intel Xeon Platinum 8358 |
-| **Network** | 24.6 Gbps | ✅ Fast model downloads |
-| **Storage** | 100GB+ block volumes | ✅ Configurable |
-| **Cost** | $2.00/hour GPU + $0.10/hour enhanced cluster | Plus load balancer and block storage, not verified here |
+Listed by resource:
+
+- **GPU**
+  - Specification: 1× NVIDIA A10 (24GB VRAM)
+  - Compliance: Fits Llama 3 8B in FP16; NVIDIA lists A10G, not A10, so this is the generic configuration (not guaranteed)
+- **vCPUs**
+  - Specification: 15 OCPUs
+  - Compliance: ✅ Exceeds requirements
+- **Memory**
+  - Specification: 240GB RAM
+  - Compliance: 15 OCPU, Intel Xeon Platinum 8358
+- **Network**
+  - Specification: 24.6 Gbps
+  - Compliance: ✅ Fast model downloads
+- **Storage**
+  - Specification: 100GB+ block volumes
+  - Compliance: ✅ Configurable
+- **Cost**
+  - Specification: $2.00/hour GPU + $0.10/hour enhanced cluster
+  - Compliance: Plus load balancer and block storage, not verified here
 
 **✅ The VM.GPU.A10.1 shape exceeds all NVIDIA NIM requirements.**
 
 ### Local Workstation Requirements
 
-| Component | Minimum | Notes |
-|-----------|---------|-------|
-| **RAM** | 8GB | For OCI CLI, kubectl, local tools |
-| **Disk Space** | 10GB free | For container images, temp files |
-| **OS** | macOS/Linux | Windows WSL2 may work (untested) |
-| **Network** | Stable internet | For OCI API, model downloads |
+Listed by component:
+
+- **RAM**
+  - Minimum: 8GB
+  - Notes: For OCI CLI, kubectl, local tools
+- **Disk Space**
+  - Minimum: 10GB free
+  - Notes: For container images, temp files
+- **OS**
+  - Minimum: macOS/Linux
+  - Notes: Windows WSL2 may work (untested)
+- **Network**
+  - Minimum: Stable internet
+  - Notes: For OCI API, model downloads
 
 ## 1. Oracle Cloud Infrastructure (OCI) Account
 
 ### OCI Account Setup
 
-| Step | Action | Details |
-|------|--------|---------|
-| **1. Create Account** | Visit: https://www.oracle.com/cloud/free/<br/>Sign up (free tier available)<br/>Complete verification process | Note **Tenancy OCID** and **Home Region** |
-| **2. Request GPU Quota** | Navigate to: **Governance → Limits, Quotas and Usage**<br/>Select home region → Filter "GPU"<br/>Find: **VM.Standard.GPU.A10.1 count**<br/>Click **Request Service Limit Increase**<br/>Request at least **1 GPU** | **Processing time:** 24-48 hours |
+Listed by step:
+
+- **1. Create Account**
+  - Action: Visit: https://www.oracle.com/cloud/free/<br/>Sign up (free tier available)<br/>Complete verification process
+  - Details: Note **Tenancy OCID** and **Home Region**
+- **2. Request GPU Quota**
+  - Action: Navigate to: **Governance → Limits, Quotas and Usage**<br/>Select home region → Filter "GPU"<br/>Find: **VM.Standard.GPU.A10.1 count**<br/>Click **Request Service Limit Increase**<br/>Request at least **1 GPU**
+  - Details: **Processing time:** 24-48 hours
 
 ### Get Compartment ID
 

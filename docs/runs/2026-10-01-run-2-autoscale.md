@@ -46,7 +46,7 @@ Runner exit code: 0. Receipt line: `autoscale result: 0→1→0 PASS`.
 
 Evidence from the cluster's events:
 
-```
+```text
 Normal  TriggeredScaleUp  pod/nvidia-nim-…  pod triggered scale-up: [{<GPU node pool> 0->1 (max: 1)}]
 Normal  ScaleDown         node/<GPU node>   marked the node as toBeDeleted/unschedulable
 Normal  ScaleDownEmpty    configmap/cluster-autoscaler-status  Scale-down: empty node <GPU node> removed
@@ -82,11 +82,20 @@ Runner phases, in seconds:
 
 Teardown work requests (UTC):
 
-| Operation | Accepted | Finished | Duration |
-|---|---|---|---|
-| GPU node pool delete (0 nodes) | 20:41:18 | 20:41:41 | 23 s |
-| System node pool delete | 20:41:52 | 20:42:57 | 1 min 05 s |
-| Cluster delete | 20:43:26 | 20:47:49 | 4 min 23 s |
+Listed by operation:
+
+- **GPU node pool delete (0 nodes)**
+  - Accepted: 20:41:18
+  - Finished: 20:41:41
+  - Duration: 23 s
+- **System node pool delete**
+  - Accepted: 20:41:52
+  - Finished: 20:42:57
+  - Duration: 1 min 05 s
+- **Cluster delete**
+  - Accepted: 20:43:26
+  - Finished: 20:47:49
+  - Duration: 4 min 23 s
 
 The system node pool delete took 65 s here against 21 minutes in run 1. The
 difference is the zero eviction grace period the kit now passes at teardown.
@@ -111,13 +120,26 @@ smoke test, not a performance result.
 Posted cost: **$0.53**. Source: OCI Cost Analysis, hourly by SKU, read on
 2026-10-02. It is metered usage at list rates, not an invoice.
 
-| Line | Metered quantity | Rate | Posted cost |
-|---|---|---|---|
-| GPU, A10 | 0.2311 GPU-hours, 13 min 52 s | $2.00 per GPU-hour | $0.4622 |
-| System node, `VM.Standard.E4.Flex` | 0.6808 OCPU-hours and 5.45 GB-hours | $0.025 per OCPU-hour, $0.0015 per GB-hour | $0.0252 |
-| Enhanced cluster | 0.3817 cluster-hours, 22 min 54 s | $0.10 per hour | $0.0382 |
-| Block volume, storage and performance | boot volumes and the model cache | as metered | $0.0091 |
-| **Total** | | | **$0.5346** |
+Listed by line:
+
+- **GPU, A10**
+  - Metered quantity: 0.2311 GPU-hours, 13 min 52 s
+  - Rate: $2.00 per GPU-hour
+  - Posted cost: $0.4622
+- **System node, `VM.Standard.E4.Flex`**
+  - Metered quantity: 0.6808 OCPU-hours and 5.45 GB-hours
+  - Rate: $0.025 per OCPU-hour, $0.0015 per GB-hour
+  - Posted cost: $0.0252
+- **Enhanced cluster**
+  - Metered quantity: 0.3817 cluster-hours, 22 min 54 s
+  - Rate: $0.10 per hour
+  - Posted cost: $0.0382
+- **Block volume, storage and performance**
+  - Metered quantity: boot volumes and the model cache
+  - Rate: as metered
+  - Posted cost: $0.0091
+- **Total**
+  - Posted cost: **$0.5346**
 
 The lines are the 20:00 UTC hour of the account's usage. This run was the
 only activity in that hour, so the split by run is an inference from time,
