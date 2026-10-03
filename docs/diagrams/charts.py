@@ -10,7 +10,7 @@ quoin_readme.py, a copy kept in step by promptkits/quoin/github/sync.py.
 from pathlib import Path
 
 from quoin_readme import (THEMES, GREEN, BLUE, OCHRE, RED, STEEL, M, R, text, rect, para, note,
-                          head, svg, pair, panels, deploys, runner_ends, measured, autoscale)
+                          head, svg, pair, panels, deploys, runner_ends, measured, autoscale, steps)
 
 HERE = Path(__file__).resolve().parent
 
@@ -154,6 +154,50 @@ COMPARE_COST = dict(  # docs/compared-with page list, "Posted list cost" rows
 )
 
 
+# docs/architecture.md: the request path beside the port forward tunnel. Every name is
+# from helm/values.yaml, docs/api-examples.md, the README, or the run 2 receipt.
+ARCH_REQUEST = dict(
+    title="Request path",
+    steps=[("Client request", "curl or an OpenAI SDK", None, "external"),
+           ("Port forward", "localhost:8000", None, "external"),
+           ("ClusterIP Service", "nvidia-nim, port 8000", None, "bus"),
+           ("Deployment pod", "one replica, Recreate strategy", None, "backend"),
+           ("NIM container", "nvcr.io/nim/meta/", "llama3-8b-instruct:1.0.3", "backend"),
+           ("NVIDIA A10 GPU", "24 GB, on VM.GPU.A10.1", None, "cloud")],
+    note=("Port forward is the development path; the Service is ClusterIP, so no load balancer is "
+          "created. NIM loads the model from a 100 Gi block volume (oci-bv), not on the request path."),
+    desc=("A client request (curl or an OpenAI SDK) goes to the port forward on localhost:8000, then the "
+          "ClusterIP Service nvidia-nim on port 8000, the Deployment's one pod (Recreate strategy), and the "
+          "NIM container nvcr.io/nim/meta/llama3-8b-instruct:1.0.3, which runs the model on one NVIDIA "
+          "A10 with 24 GB on VM.GPU.A10.1. The Service is ClusterIP, so no load balancer is created. NIM "
+          "loads the model from a 100 Gi block volume (storage class oci-bv), not on the request path."),
+)
+ARCH_NETWORK = dict(
+    title="Port forward tunnel",
+    steps=[("Your machine", "localhost:8000", None, "external"),
+           ("kubectl port-forward", "svc/nvidia-nim 8000:8000", None, "external"),
+           ("Kubernetes API server", "OKE control plane;", "authenticates the tunnel", "bus"),
+           ("GPU node", "VM.GPU.A10.1, one A10,", "pool size 0 to 1", "cloud"),
+           ("NIM pod", "port 8000", None, "backend")],
+    note=("The system node, one VM.Standard.E4.Flex with 2 OCPU and 16 GB, runs cluster DNS and the "
+          "autoscaler; the tunnel does not pass through it."),
+    desc=("The port forward tunnels localhost:8000 on your machine through kubectl port-forward "
+          "svc/nvidia-nim 8000:8000 and the Kubernetes API server on the OKE control plane, which "
+          "authenticates the tunnel, to the GPU node (VM.GPU.A10.1, one A10, pool size 0 to 1) and port "
+          "8000 on the NIM pod. The system node, one VM.Standard.E4.Flex with 2 OCPU and 16 GB, runs "
+          "cluster DNS and the autoscaler."),
+)
+ARCH_SOURCES = {  # file: phrases the two diagrams rest on
+    "helm/values.yaml": ["type: ClusterIP", "port: 8000", "type: Recreate", "replicaCount: 1",
+                         "repository: nim/meta/llama3-8b-instruct", 'tag: "1.0.3"', 'storageClass: "oci-bv"',
+                         "size: 100Gi"],
+    "docs/api-examples.md": ["kubectl port-forward svc/nvidia-nim 8000:8000", "http://localhost:8000"],
+    "README.md": ["`VM.GPU.A10.1` by default: one NVIDIA A10 (24 GB)", "One `VM.Standard.E4.Flex` node, 2 OCPU and 16 GB",
+                  "It runs cluster DNS and the autoscaler"],
+    "docs/reference.md": ["The chart's Service is ClusterIP, so", "no load balancer is created"],
+}
+
+
 # The README shows these as pairs, one per line, at one height (D-262).
 PAIRS = [("measured", lambda c, s=0.0, h=0: measured(MEASURED, c, s, h), "attempts", attempts),
          ("deploys", lambda c, s=0.0, h=0: deploys(DEPLOYS, c, s, h), "cost", cost),
@@ -163,10 +207,17 @@ PAIRS = [("measured", lambda c, s=0.0, h=0: measured(MEASURED, c, s, h), "attemp
          # partner's height: compared-with page, then runs page (D-262, FBOS D-267).
          ("compare-measured", lambda c, s=0.0, h=0: measured(MEASURED, c, s, h),
           "compare-cost", lambda c, s=0.0, h=0: panels(COMPARE_COST, c, s, h)),
-         ("runs-attempts", attempts, "runs-cost", cost)]
+         ("runs-attempts", attempts, "runs-cost", cost),
+         ("architecture-request", lambda c, s=0.0, h=0: steps(ARCH_REQUEST, c, s, h),
+          "architecture-network", lambda c, s=0.0, h=0: steps(ARCH_NETWORK, c, s, h))]
 
 
 def main():
+    root = HERE.parent.parent
+    for f, phrases in ARCH_SOURCES.items():
+        body = " ".join((root / f).read_text().split())
+        missing = [x for x in phrases if " ".join(x.split()) not in body]
+        assert not missing, f"{f} no longer says: {missing}"
     for theme, c in THEMES.items():
         for ln, lf, rn, rf in PAIRS:
             for name, s in zip((ln, rn), pair(lf, rf, c)):

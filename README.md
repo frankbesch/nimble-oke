@@ -192,6 +192,7 @@ the IAM setup: [docs/autoscaling-and-runner.md](docs/autoscaling-and-runner.md).
 
 - [OKE compared with GKE](docs/compared-with-gke.md), with the measured runs side by side.
 - [What changed in October 2026](docs/review-2026-10.md): the review's defects and fixes.
+- [Architecture](docs/architecture.md): the request path and the port forward tunnel, drawn.
 - [Reference](docs/reference.md): repository layout, Makefile targets, variables, references.
 - [Quick start](docs/QUICKSTART.md), [runbook](docs/RUNBOOK.md), [API examples](docs/api-examples.md), [prerequisites](docs/setup-prerequisites.md).
 - [Receipts and every attempt](docs/runs/README.md).
