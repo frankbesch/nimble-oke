@@ -89,62 +89,48 @@ Two limits you should know before you rely on this stack:
 
 Details: [docs/setup-prerequisites.md](docs/setup-prerequisites.md).
 
+Keep the NGC key in a file that only you can read, and export it from there.
+Typing the key on a command line puts it in shell history. Steps 2 to 6 bill;
+step 7 stops the bill.
+
 ```bash
+# Set your compartment and region.
 export OCI_COMPARTMENT_ID=\
 ocid1.compartment.oc1..your-compartment
 export OCI_REGION=us-phoenix-1
-```
 
-Keep the NGC key in a file that only you can read, and export it from there.
-Typing the key on a command line puts it in shell history.
-
-```bash
+# Export the NGC key from its file.
 chmod 600 ~/.ngc-key
 export NGC_API_KEY="$(cat ~/.ngc-key)"
+
+# 1. Check access, quota, and config.
+#    Bills: no.
+scripts/run_measured.sh \
+  --preflight-only /tmp/preflight
+
+# 2. Create cluster and GPU node pool.
+#    Bills: yes, from here.
+make provision CONFIRM_COST=yes
+
+# 3. Check cluster, GPU, and registry.
+#    Bills: yes.
+make prereqs
+
+# 4. Deploy NIM. Bills: yes.
+make install CONFIRM_COST=yes
+
+# 5. Check health, send one request.
+#    Bills: yes.
+make verify
+
+# 6. Remove NIM, keep the cluster.
+#    Bills: yes.
+make cleanup
+
+# 7. Delete the node pool and cluster.
+#    Bills: stops here.
+make teardown
 ```
-
-1. Check access, quota, and configuration. Bills: No.
-
-   ```bash
-   scripts/run_measured.sh \
-     --preflight-only /tmp/preflight
-   ```
-
-2. Create the cluster and GPU node pool. Bills: Yes, from here.
-
-   ```bash
-   make provision CONFIRM_COST=yes
-   ```
-
-3. Check the cluster, the GPU, and registry access. Bills: Yes.
-
-   ```bash
-   make prereqs
-   ```
-
-4. Deploy NIM. Bills: Yes.
-
-   ```bash
-   make install CONFIRM_COST=yes
-   ```
-
-5. Check health and send one inference request. Bills: Yes.
-
-   ```bash
-   make verify
-   ```
-
-6. Remove NIM, keep the cluster. Bills: Yes.
-
-   ```bash
-   make cleanup
-   ```
-
-7. Delete the node pool and cluster. Bills: Stops here.
-
-   ```bash
-   make teardown
-   ```
 
 The NGC key is passed to Helm on standard input at install time. It is not
 written to disk. The chart has no default key and refuses to render without one.
