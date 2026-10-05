@@ -15,7 +15,7 @@ Both modes have been measured end to end, once each. See the
 
 ## Status
 
-- **First deployment:** October 2025, on a cluster built with the Console's Quick Create plus `oci` CLI steps for what the Console could not do. NIM served inference. No run receipt was kept.
+- **First deployment:** October 2025, on a cluster built with the Console's Quick Create plus `oci` CLI steps for what the Console could not do. NIM served inference. No run receipt was kept; OCI's usage report for the month, build time included, shows $59.26 used and $0 overage. [October 2025 usage](docs/runs/2025-10-usage-report.md).
 - **Measured run, fixed GPU pool:** 2026-10-01: PASS. Provision in 15 min 53 s, deploy in 6 min 56 s, 5 of 5 benchmark requests, teardown confirmed clean. [Receipt](docs/runs/2026-10-01-run-1-fixed.md). It is the first proof of the scripted provisioning path.
 - **Measured run, autoscaling 0 to 1 to 0:** 2026-10-01: PASS, once, on one A10. Pod Pending to GPU node Ready in 385 s; zero replicas to no GPU node in 312 s; teardown clean on the first attempt. [Receipt](docs/runs/2026-10-01-run-2-autoscale.md).
 - **Review pass:** October 2026. Teardown, provisioning, and secret handling were reworked. See [What changed in October 2026](docs/review-2026-10.md).

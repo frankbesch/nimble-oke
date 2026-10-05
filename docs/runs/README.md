@@ -1,6 +1,6 @@
 # Measured runs
 
-Each Markdown file here is the receipt of one run of `scripts/run_measured.sh`
+Each `*-run-*.md` file here is the receipt of one run of `scripts/run_measured.sh`
 against a real OCI account. A receipt records the date, region, shape, image,
 Kubernetes version, time per phase, OCI work-request times, benchmark
 numbers, an itemised cost with its rate basis, and the teardown result. The
@@ -13,6 +13,10 @@ directory you name. Those directories stay out of git.
 
 - [2026-10-01, run 1](2026-10-01-run-1-fixed.md): Fixed, one `VM.GPU.A10.1`. PASS: NIM served 5 of 5 requests; teardown clean
 - [2026-10-01, run 2](2026-10-01-run-2-autoscale.md): Autoscale, GPU pool 0 to 1 to 0. PASS: scale-up 385 s, scale-down 312 s; teardown clean on the first attempt
+
+Before the runner existed, the first deployment in October 2025 kept no
+receipt. Its month of OCI usage, build time included, is recorded in
+[October 2025 usage](2025-10-usage-report.md): $59.26 used, $0 overage.
 
 ## Run summaries
 
