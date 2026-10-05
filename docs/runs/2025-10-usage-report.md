@@ -17,14 +17,34 @@ subscription ID are left out.
 
 | Measure | Value |
 |---|---|
-| Amount used, October 2025 | $59.26 |
-| US West (Phoenix) | $39.46 |
-| US Midwest (Chicago) | $19.79 |
+| October 2025, runs and build time | $59.26 |
+| Phoenix, with the A10 GPU | $39.46 |
+| Chicago, no GPU | $19.79 |
 | Overage | $0 on every line |
+
+Chicago was the account's home region and the kit's default until
+2025-10-12, when the default moved to Phoenix (`d11004f`). Chicago has no
+GPU line; every GPU-hour is in Phoenix, where NIM served inference.
 
 Overage $0 most likely means the usage was drawn from account credits rather
 than billed. The report does not say so directly; the invoice for the month
 would.
+
+## Cost per run
+
+No record counts the runs in October 2025, so the cost per run is the
+month's total divided by the number of runs. The A10 GPU is 64% of it.
+
+| Runs | Cost per run | GPU-hours per run |
+|---|---|---|
+| 1 | $59.26 | 18.95 |
+| 2 | $29.63 | 9.48 |
+| 3 | $19.75 | 6.32 |
+| 4 | $14.81 | 4.74 |
+
+Each figure includes build time. For comparison, the two scripted runs on
+2026-10-01 posted $0.63 and $0.53, with the GPU metered for about 15 minutes
+each and teardown confirmed clean: see the [measured runs](README.md).
 
 ## Phoenix
 
@@ -51,14 +71,10 @@ to $0. Object storage also shows a $0 line for November 2025.
 
 ## What the report cannot say
 
-- Which run each hour belongs to, or how much was build time against
-  serving time. The GPU line is in Phoenix only, so the deployment that
-  served inference ran there; Chicago has no GPU line.
+- How many runs there were, or how much of each was build time against
+  serving time.
 - Why the hours differ. The A10 GPU ran 18.95 hours against 11.20 hours of
   Phoenix cluster fee, and the Chicago load balancer ran 67.56 hours against
   45.54 hours of cluster fee. A resource left running after its cluster, or
   time on a basic cluster, which has no hourly fee, would each explain it.
   No record shows which.
-
-For comparison, the two measured runs on 2026-10-01 posted $0.63 and $0.53,
-with teardown confirmed clean: see the [measured runs](README.md).

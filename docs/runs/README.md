@@ -16,7 +16,8 @@ directory you name. Those directories stay out of git.
 
 Before the runner existed, the first deployment in October 2025 kept no
 receipt. Its month of OCI usage, build time included, is recorded in
-[October 2025 usage](2025-10-usage-report.md): $59.26 used, $0 overage.
+[October 2025 usage](2025-10-usage-report.md): $59.26 for the runs, build
+time included, with cost per run by run count; $0 overage.
 
 ## Run summaries
 
