@@ -128,3 +128,61 @@ Sources: [nimble-oke receipts](https://github.com/frankbesch/nimble-oke/tree/mai
 and [nim-gke receipts](https://github.com/frankbesch/nim-gke/tree/main/docs/runs).
 The same list appears
 in both repositories.
+
+## GPU list price and age
+
+The two kits ran on GPUs built two years apart. This list puts the launch
+prices in September 2026 dollars, so they can be read side by side.
+
+NVIDIA's L4 launch release states no price, and no NVIDIA price was found
+for the A10. Each hardware price below is a third-party estimate or a
+retail listing, not verified against NVIDIA. The inflation step uses the US
+consumer price index (CPI-U, all items, not seasonally adjusted): 336.940 in
+September 2026.
+
+- **Announced**
+  - A10, used on OKE: 2021-04-12, at GTC 2021
+  - L4, used on GKE: 2023-03-21, at GTC 2023
+- **Age on 2026-10-21**
+  - A10, used on OKE: 5 years 6 months
+  - L4, used on GKE: 3 years 7 months
+- **Launch price, estimated**
+  - A10, used on OKE: about $2,800, a launch-time market estimate
+  - L4, used on GKE: about $7,000, from OEM server-option list prices ($7,049 Lenovo, $6,788 Cisco)
+- **Inflation factor to September 2026**
+  - A10, used on OKE: 1.2617, from 267.054 in April 2021
+  - L4, used on GKE: 1.1163, from 301.836 in March 2023
+- **Launch price in September 2026 dollars**
+  - A10, used on OKE: about $3,530
+  - L4, used on GKE: about $7,810
+- **New bare card, US retail, 2026**
+  - A10, used on OKE: $3,399 (Thinkmate, undated)
+  - L4, used on GKE: $3,000 to $3,995 (Central Computer; IT Creations, 2026-09-03)
+- **Cloud host in these runs**
+  - A10, used on OKE: `VM.GPU.A10.1`, 15 OCPUs, 240 GB, $2.00 per hour. The posted cost shows no separate CPU or memory line for it.
+  - L4, used on GKE: `g2-standard-4`, 4 vCPUs, 16 GB, about $0.71 per hour with the GPU
+
+How to read it:
+
+- The two launch prices are not like for like. The A10 figure is a market
+  estimate. The L4 figure is an OEM option list price, which runs above a
+  bare card.
+- The like-for-like figure is today's retail price. A new bare card of either
+  model sells for about $3,000 to $4,000. The older A10 has not become
+  cheaper.
+- The cloud rates are current list prices, so they need no inflation step.
+  They price different VM sizes, so they do not compare the GPUs alone.
+
+Sources, read on 2026-10-21: BLS CPI releases for
+[April 2021](https://www.bls.gov/news.release/archives/cpi_05122021.htm),
+[March 2023](https://www.bls.gov/news.release/archives/cpi_04122023.htm),
+and [September 2026](https://www.bls.gov/news.release/archives/cpi_10142026.htm);
+NVIDIA's [L4 launch release](https://investor.nvidia.com/news/press-release-details/2023/NVIDIA-Launches-Inference-Platforms-for-Large-Language-Models-and-Generative-AI-Workloads/default.aspx);
+ServeTheHome's [A10 launch report](https://www.servethehome.com/?p=52276);
+GPUPoet's estimates for the [A10](https://gpupoet.com/gpu/learn/card/nvidia-a10)
+and the [L4](https://gpupoet.com/gpu/learn/card/nvidia-l4); retail listings at
+[Thinkmate](https://thinkmate.com/product/nvidia/900-2g133-0020-000),
+[Central Computer](https://www.centralcomputer.com/nvidia-900-2g193-0000-000-tesla-l4-24gb-graphics-card-75w.html),
+and [IT Creations](https://www.itcreations.com/product/159920). Cloud rates
+come from each kit's run receipts. The same list appears in both
+repositories.
