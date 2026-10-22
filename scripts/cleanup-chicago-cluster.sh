@@ -172,7 +172,7 @@ main() {
     
     if [[ -z "${OCI_COMPARTMENT_ID:-}" ]]; then
         log_error "OCI_COMPARTMENT_ID not set"
-        log_info "Run: source setup-env.sh"
+        log_info "Run: source scripts/setup-env.sh"
         exit 1
     fi
     
@@ -206,7 +206,7 @@ main() {
     echo "     export OCI_REGION=us-phoenix-1"
     echo ""
     echo "  2. Or reload environment:"
-    echo "     source setup-env.sh"
+    echo "     source scripts/setup-env.sh"
     echo ""
     echo "  3. Verify setup:"
     echo "     make validate"

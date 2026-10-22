@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Nimble OKE Environment Setup
-# Run: source setup-env.sh
+# Run: source scripts/setup-env.sh
 
 echo "==============================================================="
 echo "NIMBLE OKE - ENVIRONMENT SETUP"
