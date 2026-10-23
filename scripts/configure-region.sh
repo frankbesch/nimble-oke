@@ -107,8 +107,8 @@ set_region() {
     fi
     
     # Save to setup-env.sh for persistence
-    if [[ -f "${SCRIPT_DIR}/../setup-env.sh" ]]; then
-        sed -i.bak "s/export OCI_REGION=.*/export OCI_REGION=\"$region\"/" "${SCRIPT_DIR}/../setup-env.sh"
+    if [[ -f "${SCRIPT_DIR}/setup-env.sh" ]]; then
+        sed -i.bak "s/export OCI_REGION=.*/export OCI_REGION=\"$region\"/" "${SCRIPT_DIR}/setup-env.sh"
         log_info "Region saved to setup-env.sh for persistence"
     fi
     

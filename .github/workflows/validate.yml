@@ -21,13 +21,13 @@ jobs:
 
       - name: Syntax check
         run: |
-          for f in scripts/*.sh tests/*.sh setup-env.sh fix-oci-auth.sh; do
+          for f in scripts/*.sh tests/*.sh; do
             bash -n "$f"
           done
 
       - name: Lint scripts
         run: |
-          shellcheck -x -S warning scripts/*.sh setup-env.sh fix-oci-auth.sh
+          shellcheck -x -S warning scripts/*.sh
           shellcheck -x -S warning tests/*.sh
 
       - name: Run tests (stubs only, no cloud calls)
