@@ -177,6 +177,34 @@ The runner ends with the cluster deleted, or exits non-zero with the
 watchdog still armed; the receipt records every phase. Details, scope, and
 the IAM setup: [docs/autoscaling-and-runner.md](docs/autoscaling-and-runner.md).
 
+## What it adds to NVIDIA's NIM samples
+
+NVIDIA's public NIM samples for GKE and OKE
+([nim-deploy](https://github.com/NVIDIA/nim-deploy),
+[nvidia-gcp-samples](https://github.com/NVIDIA/nvidia-gcp-samples),
+[nvidia-oci-samples](https://github.com/NVIDIA/nvidia-oci-samples), read
+2026-10-27) give a walkthrough, Terraform for GKE, and the `nim-llm` Helm
+chart. These kits add the run around them. (OKE) marks an item only
+nimble-oke has; the same list appears in both repositories.
+
+- One command runs the whole loop: provision, deploy, benchmark, teardown, verify clean.
+- A watchdog in its own session tears everything down if the run hangs, dies, or loses its terminal.
+- Every phase has a timeout, and the watchdog has a hard deadline.
+- In autoscale mode the GPU pool scales 0→1→0, so the GPU bills only while a pod needs it.
+- Read-only preflight before any spend: key, auth, image tag, chart, GPU quota, no same-name cluster.
+- The GPU node count is capped at one by default.
+- Teardown confirms each delete, checks that nothing is left, and never reports clean when unsure.
+- Scripted, re-run-safe provisioning: each create checks first and skips what exists (OKE).
+- A cost guard stops a run estimated over $5 unless it is confirmed (OKE).
+- The NGC key never appears on a command line; the watchdog and benchmark never see it.
+- Logs redact the key, and receipts strip resource IDs and IP addresses (OKE).
+- Autoscaler IAM is scoped to one compartment, and IAM writes go to the home region (OKE).
+- Each measured run has a receipt: phase times, benchmark, and cost checked against the cloud bill.
+- Stub-based shell tests cover signals, watchdog takeover, a closed terminal, and a failed teardown.
+- CI scans every push for key-shaped strings.
+
+NVIDIA's OCI repository also has a vLLM sample with a preflight and a clean-teardown check; it does not serve NIM.
+
 ## Known gaps
 
 - Two measured runs are committed, one per mode. One run of each does not show repeatability.
