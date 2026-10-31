@@ -211,7 +211,7 @@ NVIDIA's OCI repository also has a vLLM sample with a preflight and a clean-tear
 ## Known gaps
 
 - Two measured runs are committed, one per mode. One run of each does not show repeatability.
-- The Kubernetes API endpoint is public. Provisioning requires an explicit `API_ALLOWED_CIDR` (your public IPv4 /32 or trusted network); missing, invalid, or /0 input is rejected before cloud calls.
+- The Kubernetes API endpoint is public. Provisioning requires an explicit `API_ALLOWED_CIDR` (your public IPv4 /32 or trusted network); missing, invalid, /0, or wider-than-/16 input is rejected before cloud calls.
 - The node image OCID is pinned to Phoenix. Other regions need a different image.
 - The pod runs as uid 1000 with no further hardening. The chart says so.
 - The NVIDIA device plugin is pinned at v0.14.0 and has not been re-tested against newer releases.

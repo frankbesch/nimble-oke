@@ -2,7 +2,7 @@
 
 > **📖 Reading time:** 2 minutes
 
-Deploy NVIDIA NIM on OKE with the Makefile. Measured: provision took 15 min 53 s and deploy took 6 min 56 s in [run 1](runs/2026-10-01-run-1-fixed.md). This page assumes a cluster exists; `make provision CONFIRM_COST=yes` creates one after you export `API_ALLOWED_CIDR` as your public IPv4 /32 or a trusted IPv4 network (no /0), and the [README](../README.md#quick-start) has the full path.
+Deploy NVIDIA NIM on OKE with the Makefile. Measured: provision took 15 min 53 s and deploy took 6 min 56 s in [run 1](runs/2026-10-01-run-1-fixed.md). This page assumes a cluster exists; `make provision CONFIRM_COST=yes` creates one after you export `API_ALLOWED_CIDR` as your public IPv4 /32 or a trusted IPv4 network of /16 or narrower, and the [README](../README.md#quick-start) has the full path.
 
 ## System Requirements
 
