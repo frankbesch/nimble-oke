@@ -43,7 +43,7 @@ run() {
     env -i PATH="$STUBS:/usr/bin:/bin:/usr/sbin:/sbin" HOME="$CASE/home" TMPDIR="$CASE/tmp" \
         KUBECONFIG="$KCFG" SIM_STATE="$CASE/state" SIM_LOG="$CASE/argv.log" \
         OCI_COMPARTMENT_ID=ocid1.compartment.oc1..sim OCI_TENANCY_ID=ocid1.tenancy.oc1..sim \
-        CONFIRM_COST=yes FORCE=yes \
+        CONFIRM_COST=yes FORCE=yes API_ALLOWED_CIDR=203.0.113.10/32 \
         NODE_READY_TIMEOUT=5 GPU_ALLOCATABLE_TIMEOUT=3 ADDON_TIMEOUT=5 POLL_INTERVAL=1 \
         "$@" "$BASH_BIN" "$CASE/scripts/$script" > "$CASE/$out" 2>&1
     RC=$?
@@ -79,6 +79,14 @@ lt() { [[ -n "$1" && -n "$2" && "$1" -lt "$2" ]]; }
 has_key() { grep -q "^$1=." "$INFO"; }
 show_tail() { echo "  --- last lines of $1:"; tail -15 "$CASE/$1" | sed 's/^/      /'; }
 
+echo "== API CIDR fails closed before any cloud call"
+for cidr in "" "0.0.0.0/0" "203.0.113.10/0" "256.1.2.3/32" "203.0.113.10/33" "203.0.113.10" "01.2.3.4/32" "::/0"; do
+    new_case cidr-invalid
+    provision prov.out "API_ALLOWED_CIDR=$cidr"
+    check "reject invalid or unrestricted CIDR '$cidr'" test "$RC" -ne 0
+    check "no cloud calls for rejected CIDR" test ! -s "$CASE/argv.log"
+done
+
 echo "== L1 provision success (bash $BASH_VERSION)"
 new_case l1
 provision prov.out
@@ -97,7 +105,7 @@ check "API subnet attached to API security list" \
 check "worker subnet attached to worker security list" \
     grep -q 'oci network subnet create .*nimble-oke-subnet-workers .*--security-list-ids \["ocid1.securitylist.oc1.phx.workers"\]' "$CASE/argv.log"
 check "API list: worker->API 12250 rule" grep -q '"source":"10.0.1.0/24".*"min":12250' "$CASE/state/sl.api"
-check "API list: external 6443 from API_ALLOWED_CIDR default" grep -q '"source":"0.0.0.0/0","sourceType":"CIDR_BLOCK","protocol":"6"' "$CASE/state/sl.api"
+check "API list: external 6443 from explicit API_ALLOWED_CIDR" grep -q '"source":"203.0.113.10/32","sourceType":"CIDR_BLOCK","protocol":"6"' "$CASE/state/sl.api"
 check "worker list: node-to-node all protocols" grep -q '"source":"10.0.1.0/24","sourceType":"CIDR_BLOCK","protocol":"all"' "$CASE/state/sl.workers"
 check "worker list: control plane TCP" grep -q '"source":"10.0.0.0/28","sourceType":"CIDR_BLOCK","protocol":"6"' "$CASE/state/sl.workers"
 check "no SSH 22 rule in either list" bash -c '! grep -q "\"min\":22[,}]" "$1"/sl.api "$1"/sl.workers' _ "$CASE/state"

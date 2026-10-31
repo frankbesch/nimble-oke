@@ -19,9 +19,9 @@ readonly WORKER_SUBNET_CIDR="10.0.1.0/24"
 readonly API_SECLIST_NAME="nimble-oke-seclist-api"
 readonly WORKER_SECLIST_NAME="nimble-oke-seclist-workers"
 # Source CIDR allowed to reach the Kubernetes API (6443) from outside the VCN.
-# 0.0.0.0/0 is a short-lived smoke-test default only; set your own IP/32 for
-# anything that stays up longer than a test run.
-readonly API_ALLOWED_CIDR="${API_ALLOWED_CIDR:-0.0.0.0/0}"
+# Required: the operator's public IPv4 /32 or a trusted network CIDR.
+# Never infer an address or silently expose the API to the entire internet.
+readonly API_ALLOWED_CIDR="${API_ALLOWED_CIDR:-}"
 # Label set on the GPU node pool (--initial-node-labels); the node waits below
 # select GPU nodes by it. The Helm chart no longer requires it (it schedules
 # on the nvidia.com/gpu resource request).
@@ -656,7 +656,25 @@ cleanup_on_failure() {
     exit "$rc"
 }
 
+# Validate before authentication, discovery, or any cloud mutation.
+validate_api_allowed_cidr() {
+    local octet prefix
+    [[ "$API_ALLOWED_CIDR" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}/([0-9]|[12][0-9]|3[0-2])$ ]] ||
+        die "Set API_ALLOWED_CIDR to your public IPv4 /32 or a trusted IPv4 network CIDR"
+    prefix="${API_ALLOWED_CIDR##*/}"
+    [[ "$prefix" != 0 ]] || die "API_ALLOWED_CIDR must not allow the entire internet (/0)"
+    local address="${API_ALLOWED_CIDR%/*}"
+    local -a octets
+    IFS=. read -r -a octets <<< "$address"
+    for octet in "${octets[@]}"; do
+        [[ "$octet" == 0 || "$octet" != 0* ]] || die "API_ALLOWED_CIDR must not contain leading-zero octets"
+        (( 10#$octet <= 255 )) || die "API_ALLOWED_CIDR contains an invalid IPv4 octet"
+    done
+}
+
 main() {
+    validate_api_allowed_cidr
+
     log_info "Provisioning OKE cluster with GPU nodes..."
 
     check_oci_credentials || die "OCI credentials not configured"

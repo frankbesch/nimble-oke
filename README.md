@@ -98,6 +98,9 @@ step 7 stops the bill.
 export OCI_COMPARTMENT_ID=\
 ocid1.compartment.oc1..your-compartment
 export OCI_REGION=us-phoenix-1
+# Your public IPv4 as /32; never /0.
+export API_ALLOWED_CIDR=\
+YOUR_PUBLIC_IPV4/32
 
 # Export the NGC key from its file.
 chmod 600 ~/.ngc-key
@@ -208,7 +211,7 @@ NVIDIA's OCI repository also has a vLLM sample with a preflight and a clean-tear
 ## Known gaps
 
 - Two measured runs are committed, one per mode. One run of each does not show repeatability.
-- The Kubernetes API endpoint is public and open on 6443 by default. Set `API_ALLOWED_CIDR` to narrow it.
+- The Kubernetes API endpoint is public. Provisioning requires an explicit `API_ALLOWED_CIDR` (your public IPv4 /32 or trusted network); missing, invalid, or /0 input is rejected before cloud calls.
 - The node image OCID is pinned to Phoenix. Other regions need a different image.
 - The pod runs as uid 1000 with no further hardening. The chart says so.
 - The NVIDIA device plugin is pinned at v0.14.0 and has not been re-tested against newer releases.
