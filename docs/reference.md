@@ -87,7 +87,7 @@ Listed by target:
 - `OCI_COMPARTMENT_ID` (required): Compartment that owns every resource
 - `NGC_API_KEY` (required): NGC key, passed to Helm at install
 - `OCI_REGION` (default `us-phoenix-1`): Region for every `oci` call. The pinned node image is Phoenix-only.
-- `API_ALLOWED_CIDR` (default `0.0.0.0/0`): Source range allowed to reach the Kubernetes API on 6443
+- `API_ALLOWED_CIDR` (required; no default): Your public IPv4 /32 or trusted IPv4 network allowed to reach the Kubernetes API on 6443. Provisioning rejects missing/invalid CIDRs and /0 before any cloud call.
 - `OKE_GPU_SHAPE` (default `VM.GPU.A10.1`): GPU node shape
 - `AUTOSCALE` (default `0`): Set `1` for `make provision` to create the GPU pool at zero nodes with the autoscaler
 - `CONFIRM_COST` (default `no`): Set `yes` to pass the cost guard. Otherwise a billable step exits.
