@@ -80,7 +80,7 @@ has_key() { grep -q "^$1=." "$INFO"; }
 show_tail() { echo "  --- last lines of $1:"; tail -15 "$CASE/$1" | sed 's/^/      /'; }
 
 echo "== API CIDR fails closed before any cloud call"
-for cidr in "" "0.0.0.0/0" "203.0.113.10/0" "256.1.2.3/32" "203.0.113.10/33" "203.0.113.10" "01.2.3.4/32" "::/0"; do
+for cidr in "" "0.0.0.0/0" "203.0.113.10/0" "256.1.2.3/32" "203.0.113.10/33" "203.0.113.10" "01.2.3.4/32" "::/0" "0.0.0.0/1" "10.0.0.0/8" "203.0.0.0/15"; do
     new_case cidr-invalid
     provision prov.out "API_ALLOWED_CIDR=$cidr"
     check "reject invalid or unrestricted CIDR '$cidr'" test "$RC" -ne 0

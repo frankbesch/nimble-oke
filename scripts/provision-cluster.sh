@@ -22,6 +22,8 @@ readonly WORKER_SECLIST_NAME="nimble-oke-seclist-workers"
 # Required: the operator's public IPv4 /32 or a trusted network CIDR.
 # Never infer an address or silently expose the API to the entire internet.
 readonly API_ALLOWED_CIDR="${API_ALLOWED_CIDR:-}"
+# Widest accepted range: /16. A shorter prefix (e.g. /1) is most of the internet.
+readonly API_CIDR_MIN_PREFIX=16
 # Label set on the GPU node pool (--initial-node-labels); the node waits below
 # select GPU nodes by it. The Helm chart no longer requires it (it schedules
 # on the nvidia.com/gpu resource request).
@@ -663,6 +665,8 @@ validate_api_allowed_cidr() {
         die "Set API_ALLOWED_CIDR to your public IPv4 /32 or a trusted IPv4 network CIDR"
     prefix="${API_ALLOWED_CIDR##*/}"
     [[ "$prefix" != 0 ]] || die "API_ALLOWED_CIDR must not allow the entire internet (/0)"
+    (( prefix >= API_CIDR_MIN_PREFIX )) ||
+        die "API_ALLOWED_CIDR /$prefix is too wide; use your public IPv4 /32 or a trusted network of /$API_CIDR_MIN_PREFIX or narrower"
     local address="${API_ALLOWED_CIDR%/*}"
     local -a octets
     IFS=. read -r -a octets <<< "$address"
