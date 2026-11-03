@@ -61,6 +61,15 @@ Oracle's documentation does not state that a node pool can scale up from zero
 nodes. [Run 2](runs/2026-10-01-run-2-autoscale.md) shows that it does,
 with add-on 1.34.3.
 
+## Key sources
+
+`--key-file PATH` and `NGC_API_KEY` feed the default path. `--key-keychain
+SERVICE` (macOS Keychain) selects the keyless path: the runner never reads the
+key, a pre-stage Job fills the model cache, and the server runs without
+`NGC_API_KEY`. The keyless path has offline tests only and is not combined
+with `--autoscale`. [key-path.md](key-path.md) traces both paths and lists the
+live checks it still needs.
+
 ## How the runner ends
 
 The runner is built to end with the cluster deleted:
