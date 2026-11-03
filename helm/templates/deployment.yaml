@@ -55,11 +55,16 @@ spec:
           containerPort: {{ .Values.service.targetPort }}
           protocol: TCP
         env:
+        {{- if not .Values.ngc.keyless }}
         - name: NGC_API_KEY
           valueFrom:
             secretKeyRef:
               name: {{ include "nvidia-nim.ngcApiSecretName" . }}
               key: NGC_API_KEY
+        {{- else if .Values.prestage.profile }}
+        - name: NIM_MODEL_PROFILE
+          value: {{ .Values.prestage.profile | quote }}
+        {{- end }}
         {{- with .Values.env }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

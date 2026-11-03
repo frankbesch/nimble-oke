@@ -38,6 +38,25 @@ unset _nimble_info
 readonly AUTOSCALE_HELM_TIMEOUT=300
 readonly AUTOSCALE_POD_EXIST_TIMEOUT=300
 
+# Keyless mode (KEYLESS=1; docs/key-path.md). The key never reaches Helm:
+#   1. scripts/ngc-secrets.sh creates <fullname>-ngc-registry (image pull) and
+#      <fullname>-ngc-api from the key source (NGC_KEY_KEYCHAIN, NGC_KEY_FILE,
+#      or NGC_API_KEY), piping the key straight into kubectl.
+#   2. helm install with ngc.keyless=true, prestage.enabled=true, replicaCount=0:
+#      the pre-stage Job fills the model-cache PVC (Helm waits for the Job).
+#   3. The API Secret is deleted (on every exit path too).
+#   4. helm upgrade with prestage.enabled=false, replicaCount=1: the server
+#      starts from the filled PVC with no NGC_API_KEY env and no API Secret.
+# Not combined with AUTOSCALE=1 yet (the Job would need its own scale-up).
+KEYLESS_MODE="no"
+[[ "${KEYLESS:-0}" == "1" ]] && KEYLESS_MODE="yes"
+# Helm --wait bound for the pre-stage install (image pull, volume attach,
+# model download). The runner's keyless deploy step cap (3600 s) covers
+# PRESTAGE_TIMEOUT + DEPLOY_TIMEOUT.
+readonly PRESTAGE_TIMEOUT=1500
+readonly NGC_API_SECRET="${RELEASE_NAME}-ngc-api"   # chart fullname == release name here
+KEY_SECRETS_CREATED="no"
+
 # The NGC key never touches disk and never appears in argv: ngc_values_yaml
 # prints it with the printf builtin into a pipe, and helm reads that pipe as
 # a values file (-f -). All non-secret settings come from helm/values.yaml.
@@ -47,6 +66,36 @@ readonly AUTOSCALE_POD_EXIST_TIMEOUT=300
 # never uninstalled. INSTALL_ATTEMPTED gates the failure diagnostics.
 DESTRUCTIVE_CLEANUP_ARMED="no"
 INSTALL_ATTEMPTED="no"
+
+# Keyless values: no key, only switches. $1 = prestage.enabled, $2 = replicaCount.
+keyless_values_yaml() {
+    printf 'ngc:\n  keyless: true\n  apiKey: ""\nprestage:\n  enabled: %s\nreplicaCount: %s\n' "$1" "$2"
+}
+
+ngc_secrets() {
+    "${SCRIPT_DIR}/ngc-secrets.sh" "$@" --release "$RELEASE_NAME" --namespace "$NAMESPACE"
+}
+
+# The API Secret must not outlive this script on any path.
+delete_api_secret() {
+    ngc_secrets delete-api || log_warn "Could not delete Secret ${NGC_API_SECRET}; delete it by hand"
+}
+
+# Live check after the serving install: no API Secret, no NGC_API_KEY env.
+# Reads names only, never Secret data.
+verify_keyless_state() {
+    if kubectl get secret "$NGC_API_SECRET" -n "$NAMESPACE" >/dev/null 2>&1; then
+        die "Keyless check failed: Secret ${NGC_API_SECRET} still exists"
+    fi
+    local names
+    names=$(kubectl get deployment "$RELEASE_NAME" -n "$NAMESPACE" \
+        -o jsonpath='{.spec.template.spec.containers[*].env[*].name}') \
+        || die "Keyless check failed: could not read the Deployment env names"
+    if [[ " ${names} " == *" NGC_API_KEY "* ]]; then
+        die "Keyless check failed: the Deployment still sets NGC_API_KEY"
+    fi
+    log_success "Keyless check: no ${NGC_API_SECRET} Secret; Deployment env has no NGC_API_KEY"
+}
 
 ngc_values_yaml() {
     local k="$NGC_API_KEY"
@@ -81,6 +130,12 @@ capture_failure_diagnostics() {
             | sed -n '/^Name:/p;/^Taints:/,/^Unschedulable:/p;/^Allocatable:/,/^System Info:/p;/^Allocated resources:/,/^Events:/p' \
             || true
     done
+    if [[ "$KEYLESS_MODE" == "yes" ]]; then
+        echo "--- keyless pre-stage Job (describe; logs --tail=200) ---"
+        kubectl describe job "${RELEASE_NAME}-prestage" -n "$NAMESPACE" 2>&1 || true
+        kubectl logs "job/${RELEASE_NAME}-prestage" -n "$NAMESPACE" --tail=200 2>&1 \
+            || echo "(no pre-stage Job logs)"
+    fi
     echo "--- kubectl get pvc ---"
     kubectl get pvc -n "$NAMESPACE" 2>&1 || true
     # Cluster DNS: a Pending CoreDNS (e.g. every node a tainted GPU node)
@@ -96,12 +151,18 @@ cleanup_on_failure() {
     log_warn "Deployment failed, removing the release this run created..."
     cleanup_helm_release "$RELEASE_NAME" "$NAMESPACE" || true
     kubectl delete pvc -l "$NIM_SELECTOR" -n "$NAMESPACE" --wait=false || true
+    if [[ "$KEY_SECRETS_CREATED" == "yes" ]]; then
+        ngc_secrets delete || true
+    fi
 }
 
 on_exit() {
     local rc=$?
     set +e
     trap '' INT TERM
+    if [[ "$KEY_SECRETS_CREATED" == "yes" ]]; then
+        delete_api_secret
+    fi
     if [[ $rc -ne 0 && "$INSTALL_ATTEMPTED" == "yes" ]]; then
         INSTALL_ATTEMPTED="no"
         capture_failure_diagnostics
@@ -145,8 +206,43 @@ deploy_autoscale() {
     log_success "Release created (autoscale); the runner waits for scale-up and readiness"
 }
 
+# Keyless install (KEYLESS=1): pre-stage with the key, then serve without it.
+deploy_keyless() {
+    log_info "Keyless: creating the NGC Secrets outside Helm (value never shown)..."
+    KEY_SECRETS_CREATED="yes"
+    ngc_secrets create
+
+    log_info "Keyless: pre-stage install (Job fills the model cache; replicas 0; waits up to ${PRESTAGE_TIMEOUT}s)..."
+    INSTALL_ATTEMPTED="yes"
+    keyless_values_yaml true 0 | helm upgrade --install "$RELEASE_NAME" "$HELM_CHART_DIR" \
+        -n "$NAMESPACE" \
+        -f "${HELM_CHART_DIR}/values.yaml" \
+        -f - \
+        --wait --wait-for-jobs \
+        --timeout "${PRESTAGE_TIMEOUT}s"
+    log_success "Keyless: pre-stage Job completed"
+
+    delete_api_secret
+    if kubectl get secret "$NGC_API_SECRET" -n "$NAMESPACE" >/dev/null 2>&1; then
+        die "Secret ${NGC_API_SECRET} still exists after delete; refusing to start the server"
+    fi
+    log_success "Keyless: Secret ${NGC_API_SECRET} deleted before the server starts"
+
+    log_info "Keyless: serving install (no NGC_API_KEY; waits up to ${DEPLOY_TIMEOUT}s)..."
+    keyless_values_yaml false 1 | helm upgrade --install "$RELEASE_NAME" "$HELM_CHART_DIR" \
+        -n "$NAMESPACE" \
+        -f "${HELM_CHART_DIR}/values.yaml" \
+        -f - \
+        --wait \
+        --timeout "${DEPLOY_TIMEOUT}s"
+    verify_keyless_state
+}
+
 main() {
     log_info "Starting NIM deployment..."
+    if [[ "$KEYLESS_MODE" == "yes" && "$AUTOSCALE_MODE" == "yes" ]]; then
+        die "KEYLESS=1 with AUTOSCALE=1 is not supported yet"
+    fi
     
     trap on_exit EXIT
     trap 'exit 130' INT
@@ -173,10 +269,15 @@ main() {
     cost_guard "$(format_cost "$estimated_cost")" "NIM deployment"
     
     log_info "Validating NGC credentials..."
-    if [[ -z "${NGC_API_KEY:-}" ]]; then
-        die "NGC_API_KEY not set"
+    if [[ "$KEYLESS_MODE" == "yes" ]]; then
+        # Source present; the key itself is not read here.
+        "${SCRIPT_DIR}/ngc-secrets.sh" check || die "NGC key source not usable"
+    else
+        if [[ -z "${NGC_API_KEY:-}" ]]; then
+            die "NGC_API_KEY not set"
+        fi
+        validate_ngc_api_key "$NGC_API_KEY"
     fi
-    validate_ngc_api_key "$NGC_API_KEY"
     
     # CRITICAL: OCI CLI validation based on 2025-10-19 learnings
     log_info "Validating OCI CLI configuration..."
@@ -234,8 +335,10 @@ main() {
     
     # CRITICAL: Dry run validation to prevent catastrophic failures
     log_info "Validating deployment with dry-run..."
-    # stdout discarded: the rendered Secrets hold the NGC key.
-    if ! ngc_values_yaml | helm upgrade --install "$RELEASE_NAME" "$HELM_CHART_DIR" \
+    # stdout discarded: the rendered Secrets hold the NGC key (default path).
+    local -a dry_values=(ngc_values_yaml)
+    [[ "$KEYLESS_MODE" == "yes" ]] && dry_values=(keyless_values_yaml true 0)
+    if ! "${dry_values[@]}" | helm upgrade --install "$RELEASE_NAME" "$HELM_CHART_DIR" \
         -n "$NAMESPACE" \
         -f "${HELM_CHART_DIR}/values.yaml" \
         -f - \
@@ -254,6 +357,12 @@ main() {
         # New release: on failure from here on, remove what this run created.
         DESTRUCTIVE_CLEANUP_ARMED="yes"
     else
+        # Keyless on an existing release: an upgrade away from a default-path
+        # release would make Helm delete its chart-owned <fullname>-ngc-registry,
+        # which by then is the pull Secret ngc-secrets.sh created.
+        if [[ "$KEYLESS_MODE" == "yes" ]]; then
+            die "KEYLESS=1 needs a fresh release; release $RELEASE_NAME exists (run 'make cleanup' first)"
+        fi
         log_info "Release $RELEASE_NAME already exists; a failure will NOT uninstall it"
     fi
     
@@ -262,14 +371,18 @@ main() {
         return 0
     fi
 
-    log_info "Deploying NIM with Helm (waits up to ${DEPLOY_TIMEOUT}s)..."
-    INSTALL_ATTEMPTED="yes"
-    ngc_values_yaml | helm upgrade --install "$RELEASE_NAME" "$HELM_CHART_DIR" \
-        -n "$NAMESPACE" \
-        -f "${HELM_CHART_DIR}/values.yaml" \
-        -f - \
-        --wait \
-        --timeout "${DEPLOY_TIMEOUT}s"
+    if [[ "$KEYLESS_MODE" == "yes" ]]; then
+        deploy_keyless
+    else
+        log_info "Deploying NIM with Helm (waits up to ${DEPLOY_TIMEOUT}s)..."
+        INSTALL_ATTEMPTED="yes"
+        ngc_values_yaml | helm upgrade --install "$RELEASE_NAME" "$HELM_CHART_DIR" \
+            -n "$NAMESPACE" \
+            -f "${HELM_CHART_DIR}/values.yaml" \
+            -f - \
+            --wait \
+            --timeout "${DEPLOY_TIMEOUT}s"
+    fi
     
     log_info "Waiting for pods to be ready..."
     
