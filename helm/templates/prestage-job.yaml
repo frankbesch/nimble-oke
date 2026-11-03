@@ -62,6 +62,15 @@ spec:
         volumeMounts:
         - name: model-cache
           mountPath: {{ .Values.persistence.mountPath }}
+        {{- if ne (trimSuffix "/" .Values.persistence.mountPath) "/opt/nim/.cache" }}
+        # The same PVC again at NIM's default cache path. NVIDIA's 1.0.x docs
+        # define NIM_CACHE_PATH for the container but never say
+        # download-to-cache reads it, and every example mounts /opt/nim/.cache.
+        # With both mounts the profile lands on the PVC root either way, the
+        # layout the server reads through NIM_CACHE_PATH.
+        - name: model-cache
+          mountPath: /opt/nim/.cache
+        {{- end }}
         {{- if .Values.sharedMemory.enabled }}
         - name: dshm
           mountPath: /dev/shm

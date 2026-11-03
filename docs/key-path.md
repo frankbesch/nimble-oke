@@ -134,7 +134,7 @@ its release notes have a "Release 1.0.3" entry. Pages read on 2026-11-03:
 | The flag is `--profiles` / `-p`; no flag downloads the optimal profile | DOCUMENTED, with a doc inconsistency | U and the `-h` output in G: "--profiles [PROFILES ...], -p [PROFILES ...] ... If none are provided, the optimal profile is downloaded." One example in G uses `--profile`. The chart passes `--profiles` only when `prestage.profile` is set; the default passes no flag |
 | A 1.0.x server on a filled cache, with no `NGC_API_KEY`, serves without contacting NGC | DOCUMENTED (Docker example only) | G: "If NIM detects a previously loaded profile in the cache, it serves that profile from the cache." and "the cache can be transferred to an air-gapped system to run a NIM without any internet connection or with no connection to the NGC registry. Too see this in action, don't provide the NGC_API_KEY". The example `docker run` has no `NGC_API_KEY` |
 | With `NIM_MODEL_PROFILE` unset, the server picks the profile `download-to-cache` chose | DOCUMENTED for the default download | G: "Assuming the command run prior was `download-to-cache`, downloading the optimal profile", followed by a `docker run` with no `NIM_MODEL_PROFILE`. Holds only on the same GPU type; the Job requests the server's GPU |
-| `download-to-cache` writes to `NIM_CACHE_PATH` (`/model-cache` in this chart) | INFERRED, not stated | C: `NIM_CACHE_PATH`, default `/opt/nim/.cache`, "Location (in container) where the container caches model artifacts"; volumes row "/opt/nim/.cache (or NIM_CACHE_PATH if present)". No page says the utility itself reads the variable. Every 1.0.x example mounts the cache at `/opt/nim/.cache` |
+| `download-to-cache` writes to `NIM_CACHE_PATH` (`/model-cache` in this chart) | INFERRED, not stated; no longer load-bearing (dual mount, below) | C: `NIM_CACHE_PATH`, default `/opt/nim/.cache`, "Location (in container) where the container caches model artifacts"; volumes row "/opt/nim/.cache (or NIM_CACHE_PATH if present)". No page says the utility itself reads the variable. Every 1.0.x example mounts the cache at `/opt/nim/.cache` |
 | NIM 2.x: `NGC_API_KEY` is "Only required when downloading production branch (PB) models from ngc:// repositories" | DOCUMENTED (2.1.4) | E, verbatim |
 | Air gap: "you must pre-stage the model using download-to-cache (and optionally create-model-store)"; "do not set NGC_API_KEY or HF_TOKEN" in the air-gapped phase | DOCUMENTED (2.1.4) | A, verbatim |
 
@@ -147,10 +147,14 @@ What the docs do not establish:
 
 - Kubernetes: every 1.0.x example is `docker run`. Nothing covers a Job that
   fills a PVC and a separate pod that serves from it.
-- The `NIM_CACHE_PATH` inference above. If the utility ignores the variable,
-  the Job fills `/opt/nim/.cache` inside its own container, the PVC stays
-  empty, and the keyless server fails to download (no key). Live gate 4
-  catches that; the fix would be to mount the PVC at `/opt/nim/.cache`.
+- Whether the utility reads `NIM_CACHE_PATH` (the inference above). The
+  chart no longer depends on it: the pre-stage Job mounts the cache PVC at
+  both `/model-cache` and `/opt/nim/.cache`, so the profile lands on the PVC
+  root whichever path the utility uses. The server keeps the single
+  `/model-cache` mount and `NIM_CACHE_PATH=/model-cache`. Kubernetes allows
+  one volume at two paths: v1.34.1 `ValidateVolumeMounts` rejects duplicate
+  mount paths, not repeated volume names. A `persistence.mountPath` already
+  equal to `/opt/nim/.cache` renders one mount.
 - Pre-stage time on an A10. Unmeasured.
 
 Not NIM behaviour, also unverified on a live cluster: `kubectl create secret

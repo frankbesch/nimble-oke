@@ -30,7 +30,8 @@
 #      empty Keychain value refused and no Secret left; leak grep
 #   K7 helm template (real helm, if installed): keyless serve renders no
 #      NGC_API_KEY env and no Secret; the fake key never reaches a rendered
-#      manifest; keyless + ngc.apiKey refuses to render
+#      manifest; keyless + ngc.apiKey refuses to render; the pre-stage Job
+#      mounts the cache PVC at the chart path and at /opt/nim/.cache
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -866,8 +867,22 @@ else
   grep -q '^kind: Job' "${K7D}/prestage.yaml" || pass=false
   { grep -q '^  replicas: 0$' "${K7D}/prestage-deploy.yaml" && ! grep -q 'NGC_API_KEY' "${K7D}/prestage-deploy.yaml"; } || pass=false
   { [[ "${rr}" -ne 0 ]] && grep -q 'ngc.keyless=true requires ngc.apiKey to be empty' "${K7D}/refuse.err"; } || pass=false
+  # Pre-stage Job: the cache PVC at the chart path AND at NIM's default path;
+  # the server keeps the single chart path. A mountPath already equal to the
+  # default renders one mount (no duplicate mountPath).
+  keyless_values_yaml true 0 | hrender --show-only templates/prestage-job.yaml > "${K7D}/job.yaml" 2>&1 || true
+  job_mounts="$(grep -A1 -- '- name: model-cache$' "${K7D}/job.yaml" | sed -n 's/^ *mountPath: //p' | tr '\n' ' ')"
+  srv_mounts="$(grep -A1 -- '- name: model-cache$' "${K7D}/serve.yaml" | sed -n 's/^ *mountPath: //p' | tr '\n' ' ')"
+  { printf 'persistence:\n  mountPath: /opt/nim/.cache\n'; keyless_values_yaml true 0; } \
+    | hrender --show-only templates/prestage-job.yaml > "${K7D}/job-default.yaml" 2>&1 || true
+  def_mounts="$(grep -A1 -- '- name: model-cache$' "${K7D}/job-default.yaml" | sed -n 's/^ *mountPath: //p' | tr '\n' ' ')"
+  [[ "${job_mounts}" == "/model-cache /opt/nim/.cache " ]] || pass=false
+  grep -A1 -- '- name: NIM_CACHE_PATH$' "${K7D}/job.yaml" | grep -q 'value: "/model-cache"$' || pass=false
+  [[ "${srv_mounts}" == "/model-cache " ]] || pass=false
+  [[ "${def_mounts}" == "/opt/nim/.cache " ]] || pass=false
   [[ -z "${hits}" && -n "${ctrl}" ]] || pass=false
   report K7 "${pass}" "helm $("${REAL_HELM}" version --short) | serve: NGC_API_KEY lines=$(grep -c 'NGC_API_KEY' "${K7D}/serve.yaml" || true) ngc-api refs=$(grep -c 'ngc-api' "${K7D}/serve.yaml" || true) Secret kinds=$(grep -c '^kind: Secret' "${K7D}/serve.yaml" || true) | prestage: Job=$(grep -c '^kind: Job' "${K7D}/prestage.yaml" || true) Deployment NGC_API_KEY lines=$(grep -c 'NGC_API_KEY' "${K7D}/prestage-deploy.yaml" || true) | keyless+apiKey refused rc=${rr} | files_with_key=[${hits}] | positive control (default path) found key: $([[ -n "${ctrl}" ]] && echo yes || echo no)" "${TMP_DIR}"
+  echo "  cache mounts: job=[${job_mounts% }] server=[${srv_mounts% }] job-with-default-mountPath=[${def_mounts% }]"
   echo "  serve render, kinds: $(grep '^kind:' "${K7D}/serve.yaml" | awk '{print $2}' | tr '\n' ' ')"
   echo "  prestage render, kinds: $(grep '^kind:' "${K7D}/prestage.yaml" | awk '{print $2}' | tr '\n' ' ')"
 fi
