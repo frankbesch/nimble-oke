@@ -32,6 +32,8 @@
 #      runtime env holds the key -> FAIL, no bench, teardown; API Secret left ->
 #      FAIL; exec unavailable -> PASS on pod spec; key in Helm values -> FAIL
 #      and the key never reaches OUT_DIR; keyless budget defaults
+#   K9 deploy-parallel.sh: the key reaches helm on stdin (-f -); no values
+#      file in TMPDIR at any point; key not in argv, stdout, or stderr
 #   K7 helm template (real helm, if installed): keyless serve renders no
 #      NGC_API_KEY env and no Secret; the fake key never reaches a rendered
 #      manifest; keyless + ngc.apiKey refuses to render; the pre-stage Job
@@ -915,6 +917,26 @@ pass=true
 [[ "${rc}" -eq 0 ]] || pass=false
 grep -q '^step budgets: provision 3600s + deploy 3600s + ready 900s + bench 900s + keyless-check 120s = 9120s; WATCHDOG_SEC=10320s$' "${O}/preflight.log" || pass=false
 report K8f "${pass}" "keyless defaults rc=${rc} | $(grep -m1 '^step budgets' "${O}/preflight.log")" "${O}"
+
+# --- K9: deploy-parallel.sh passes the key to helm on stdin, never via a file ---
+reset
+K9KEY="$(fake_key k9)"
+K9TMP="${TMP_DIR}/k9-tmpdir"; mkdir -p "${K9TMP}"
+rc=0
+NGC_API_KEY="${K9KEY}" TMPDIR="${K9TMP}" STUB_HELM_OK=1 STUB_TMPDIR_PROBE="${K9TMP}" MODEL_CACHE_DIR="${TMP_DIR}/k9-cache" \
+  bash -c 'source "$1/scripts/deploy-parallel.sh" && deploy_nim_optimized' _ "${REPO_ROOT}" \
+  > "${TMP_DIR}/k9.stdout" 2> "${TMP_DIR}/k9.stderr" || rc=$?
+inst="$(grep '^helm upgrade --install' "${STUB_LOG}" || true)"
+hits="$(leak_scan "${K9KEY}" "${TMP_DIR}/k9.stdout" "${TMP_DIR}/k9.stderr" "${STUB_LOG}")"
+pass=true
+[[ "${rc}" -eq 0 ]] || pass=false
+[[ "${inst}" == *" -f - "* && "${inst}" != *"--values"* ]] || pass=false
+grep -q '^helm-stdin bytes=[0-9]* apiKey_line=yes apiKey_value=yes' "${STUB_LOG}" || pass=false
+# Every helm call saw an empty TMPDIR, and nothing was left behind.
+[[ "$(grep -c '^helm-tmpdir files=' "${STUB_LOG}")" -ge 2 && "$(grep -c '^helm-tmpdir files=0$' "${STUB_LOG}")" -eq "$(grep -c '^helm-tmpdir files=' "${STUB_LOG}")" ]] || pass=false
+[[ -z "$(ls -A "${K9TMP}")" ]] || pass=false
+[[ -z "${hits}" ]] || pass=false
+report K9 "${pass}" "rc=${rc} | ${inst} | $(grep '^helm-stdin' "${STUB_LOG}" | cut -d' ' -f1-4) | TMPDIR files during helm calls=[$(sed -n 's/^helm-tmpdir files=//p' "${STUB_LOG}" | tr '\n' ' ')] | files_with_key=[${hits}]" "${TMP_DIR}"
 
 # --- K7: helm template on the keyless path (real helm) ---
 if [[ -z "${REAL_HELM}" ]]; then

@@ -43,8 +43,9 @@ action fails on purpose ("NGC model download is not implemented") unless
 `SIMULATE_DOWNLOAD=yes` writes empty placeholder files. It reads
 `NGC_API_KEY` only to check that it is set.
 
-Outside the measured path, `scripts/deploy-parallel.sh:125-128` writes the
-key to a mode-600 temp values file. Not changed here.
+Outside the measured path, `scripts/deploy-parallel.sh` (`make deploy-parallel`)
+passes the key to Helm the same way as `deploy.sh`: `ngc_values_yaml` into a
+pipe, read with `-f -`. It no longer writes a temp values file (test K9).
 
 ## Keyless path (`--key-keychain SERVICE`, or `--keyless`)
 

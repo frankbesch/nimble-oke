@@ -19,7 +19,6 @@ DEPLOY_START_TIME=$(date +%s)
 # Set only when THIS run installs a new release; a failure then uninstalls it.
 # An existing release is never uninstalled by this script.
 DESTRUCTIVE_CLEANUP_ARMED="no"
-TEMP_VALUES=""
 
 log_info "Parallel Deployment Pipeline initialized"
 log_info "Release: $RELEASE_NAME"
@@ -28,7 +27,6 @@ log_info "Namespace: $NAMESPACE"
 cleanup_on_failure() {
     local rc=$?
     trap - EXIT INT TERM
-    if [[ -n "$TEMP_VALUES" ]]; then rm -f "$TEMP_VALUES"; fi
     if [[ "$rc" -ne 0 && "$DESTRUCTIVE_CLEANUP_ARMED" == "yes" ]]; then
         log_warn "Parallel deployment failed, removing the release this run created..."
         cleanup_helm_release "$RELEASE_NAME" "$NAMESPACE" || true
@@ -37,6 +35,16 @@ cleanup_on_failure() {
         log_warn "Parallel deployment failed; this run created no release, nothing removed"
     fi
     exit "$rc"
+}
+
+# The NGC key never touches disk and never appears in argv: the printf builtin
+# writes the values into a pipe and helm reads it as a values file (-f -),
+# as scripts/deploy.sh does.
+ngc_values_yaml() {
+    local k="$NGC_API_KEY"
+    k="${k//\\/\\\\}"
+    k="${k//\"/\\\"}"
+    printf 'ngc:\n  apiKey: "%s"\n' "$k"
 }
 
 # NGC key present (value never printed)
@@ -122,11 +130,6 @@ deploy_nim_optimized() {
         log_info "Model cache not available - standard deployment"
     fi
     
-    # Values file holds the NGC key: private mktemp file (mode 600), never argv.
-    TEMP_VALUES=$(mktemp "${TMPDIR:-/tmp}/nim-parallel-values.XXXXXX") || { log_error "mktemp failed"; return 1; }
-    chmod 600 "$TEMP_VALUES"
-    printf 'ngc:\n  apiKey: "%s"\n' "$NGC_API_KEY" > "$TEMP_VALUES"
-
     local existing_release
     existing_release=$(helm list -n "$NAMESPACE" -a -q --filter "^${RELEASE_NAME}\$") \
         || { log_error "Could not list Helm releases in namespace $NAMESPACE"; return 1; }
@@ -138,17 +141,14 @@ deploy_nim_optimized() {
 
     # Deploy with Helm (chart defaults for image, resources, PVC, and probes)
     log_info "Deploying NIM with Helm (cache_available=$cache_available)..."
-    helm upgrade --install "$RELEASE_NAME" "$HELM_CHART_DIR" \
+    ngc_values_yaml | helm upgrade --install "$RELEASE_NAME" "$HELM_CHART_DIR" \
         --namespace "$NAMESPACE" \
-        --values "$TEMP_VALUES" \
+        -f - \
         --wait \
         --timeout="${DEPLOY_TIMEOUT}s" \
         --atomic
 
     log_success "NIM deployment completed"
-
-    rm -f "$TEMP_VALUES"
-    TEMP_VALUES=""
 }
 
 # Function to verify deployment with parallel checks

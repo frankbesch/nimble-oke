@@ -10,7 +10,12 @@
 #                   STUB_HELM_MANIFEST (default one Deployment, no Secret)
 #   STUB_HELM_FAIL_MATCH=TEXT  with STUB_HELM_OK=1: a call whose argv contains
 #                   TEXT exits 1 (after reading stdin), e.g. "--wait-for-jobs"
+#   STUB_TMPDIR_PROBE=DIR  log how many files DIR holds at the moment of each
+#                   call (a values file written for helm would still exist then)
 echo "helm $*" >> "${STUB_LOG:-/dev/null}"
+if [[ -n "${STUB_TMPDIR_PROBE:-}" ]]; then
+  echo "helm-tmpdir files=$(find "${STUB_TMPDIR_PROBE}" -mindepth 1 | wc -l | tr -d ' ')" >> "${STUB_LOG:-/dev/null}"
+fi
 if [[ "${STUB_HELM_OK:-}" == "1" ]]; then
   # STUB_HELM_LIST=NAME: `helm list` reports release NAME as existing.
   if [[ "${1:-}" == "list" && -n "${STUB_HELM_LIST:-}" ]]; then echo "${STUB_HELM_LIST}"; exit 0; fi
