@@ -171,4 +171,7 @@ from the finished Job pod before the server pod mounts it.
 4. A chat completion returns HTTP 200.
 5. GPU nodes return to 0 after teardown.
 
+Commands and expected output for each gate:
+[keyless-run-runbook.md](keyless-run-runbook.md).
+
 No README claim about a credential-free serving pod until these pass.
