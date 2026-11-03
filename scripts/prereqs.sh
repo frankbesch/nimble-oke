@@ -79,7 +79,17 @@ check_helm_repos() {
     return 0
 }
 
+# Keychain or key-file source (KEYLESS path): confirm the source exists
+# without reading the key into this shell (scripts/ngc-secrets.sh check).
+ngc_key_source_external() {
+    [[ -n "${NGC_KEY_KEYCHAIN:-}" || -n "${NGC_KEY_FILE:-}" ]]
+}
+
 check_ngc_credentials() {
+    if ngc_key_source_external; then
+        "${SCRIPT_DIR}/ngc-secrets.sh" check || return 1
+        return 0
+    fi
     if [[ -z "${NGC_API_KEY:-}" ]]; then
         log_error "NGC_API_KEY environment variable not set"
         log_info "Get your key from: https://ngc.nvidia.com/setup/api-key"
@@ -96,7 +106,11 @@ check_ngc_model_access() {
     local model="${NIM_MODEL:-meta/llama3-8b-instruct}"
     
     log_info "Verifying NGC model access: $model"
-    
+
+    if ngc_key_source_external; then
+        log_info "NGC model access check skipped: the key stays in its source (Keychain or key file)"
+        return 0
+    fi
     if [[ -z "${NGC_API_KEY:-}" ]]; then
         log_warn "NGC_API_KEY not set, skipping model access check"
         return 1

@@ -12,6 +12,8 @@
 # Usage: export NGC_API_KEY first (e.g. `read -rs NGC_API_KEY; export NGC_API_KEY`),
 #        then: OCI_COMPARTMENT_ID=... scripts/run_measured.sh OUT_DIR
 #    or: OCI_COMPARTMENT_ID=... scripts/run_measured.sh --key-file PATH OUT_DIR
+#    or: OCI_COMPARTMENT_ID=... scripts/run_measured.sh --key-keychain SERVICE OUT_DIR
+#        (macOS Keychain; keyless serve; the runner never reads the key)
 #        OCI_COMPARTMENT_ID=... scripts/run_measured.sh --preflight-only OUT_DIR
 #        OCI_COMPARTMENT_ID=... scripts/run_measured.sh --autoscale OUT_DIR
 # Never put the key on the command line (shell history, ps).
@@ -38,6 +40,10 @@
 # removed from the environment. Only the deploy step gets it, as an
 # environment variable (never argv); its output is passed through a filter
 # that redacts the key and any base64 token that decodes to text containing it.
+# Keyless path (--key-keychain SERVICE, or --keyless with --key-file/env;
+# docs/key-path.md): deploy.sh runs with KEYLESS=1. With --key-keychain or
+# --keyless --key-file the runner holds only the service name or file path;
+# scripts/ngc-secrets.sh pipes the key from its source into kubectl.
 #
 # Test-only hooks (never for live use): RUNNER_PREFLIGHT, RUNNER_PROVISION,
 # RUNNER_DEPLOY, RUNNER_READY (readiness probe, polled until it exits 0),
@@ -69,6 +75,16 @@ Usage: export NGC_API_KEY beforehand (read -rs NGC_API_KEY; export NGC_API_KEY),
   OUT_DIR           new or empty directory for logs, phases.log and summary.json
   --key-file PATH   read the NGC key from PATH (mode 600 or 400; first line used);
                     overrides NGC_API_KEY; the contents are never logged
+  --key-keychain SERVICE
+                    macOS Keychain generic password SERVICE is the key source
+                    (security find-generic-password -w -s SERVICE). The runner
+                    never reads it: scripts/ngc-secrets.sh pipes it into
+                    kubectl. Implies --keyless. Not with --key-file.
+  --keyless         keyless serve (docs/key-path.md): a pre-stage Job fills the
+                    model cache with the key, its Secret is deleted, and the
+                    server runs with no NGC_API_KEY and no key in Helm values.
+                    With --key-file the runner passes the path, not the key.
+                    Not with --autoscale (yet). Deploy step cap default 3600
   --preflight-only  run only the no-cost preflight checks (real oci calls, read-only);
                     writes preflight.log and phases.log, starts no watchdog, creates
                     nothing, exits with the preflight status; NGC_API_KEY optional
@@ -78,7 +94,7 @@ Usage: export NGC_API_KEY beforehand (read -rs NGC_API_KEY; export NGC_API_KEY),
                     -> no GPU node); needs the autoscaler IAM policy
                     (scripts/setup-autoscaler-iam.sh --check); MAX_GPU_NODES must be 1
 
-Env (required): OCI_COMPARTMENT_ID, NGC_API_KEY (NGC_CLI_API_KEY accepted) or --key-file
+Env (required): OCI_COMPARTMENT_ID, NGC_API_KEY (NGC_CLI_API_KEY accepted), --key-file or --key-keychain
 Env (optional): OCI_REGION (us-phoenix-1; also exported as OCI_CLI_REGION),
   OKE_GPU_SHAPE (VM.GPU.A10.1),
   NODE_COUNT (1), CLUSTER_NAME (nimble-oke-cluster), OCI_TENANCY_OCID (for the
@@ -103,6 +119,8 @@ WD_MAIN_PID=""
 PREFLIGHT_ONLY=0
 AUTOSCALE_MODE=0
 KEY_FILE=""
+KEY_KEYCHAIN=""
+KEYLESS_MODE=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -h|--help) usage; exit 0 ;;
@@ -113,6 +131,13 @@ while [[ $# -gt 0 ]]; do
       [[ -n "${KEY_FILE}" ]] || { usage >&2; exit 2; }
       shift
       ;;
+    --key-keychain)
+      KEY_KEYCHAIN="${2:-}"
+      [[ -n "${KEY_KEYCHAIN}" && "${KEY_KEYCHAIN}" != -* ]] || { usage >&2; exit 2; }
+      KEYLESS_MODE=1
+      shift
+      ;;
+    --keyless) KEYLESS_MODE=1 ;;
     --watchdog-for)
       # Internal: the runner re-invokes itself in its own session as the
       # out-of-tree watchdog for runner pid $2.
@@ -135,7 +160,17 @@ done
 # the deploy step (and its redaction filter) ever sees it.
 NGC_KEY_VALUE="${NGC_API_KEY:-${NGC_CLI_API_KEY:-}}"
 unset NGC_API_KEY NGC_CLI_API_KEY
-[[ "${WATCHDOG_MODE}" == "1" ]] && { NGC_KEY_VALUE=""; KEY_FILE=""; }
+[[ "${WATCHDOG_MODE}" == "1" ]] && { NGC_KEY_VALUE=""; KEY_FILE=""; KEY_KEYCHAIN=""; }
+if [[ -n "${KEY_KEYCHAIN}" && -n "${KEY_FILE}" ]]; then
+  echo "ERROR: --key-keychain and --key-file are exclusive; pass one key source" >&2; exit 2
+fi
+if [[ "${KEYLESS_MODE}" == "1" && "${AUTOSCALE_MODE}" == "1" ]]; then
+  echo "ERROR: --keyless (or --key-keychain) with --autoscale is not supported yet" >&2; exit 2
+fi
+# Keychain source: the runner holds the service name only; drop any env key.
+[[ -n "${KEY_KEYCHAIN}" ]] && NGC_KEY_VALUE=""
+# KEY_SOURCE: keychain | file | env | none (names the source, never the key).
+KEY_SOURCE="none"
 # --key-file: the file must be a regular file with mode 600 or 400 (owner
 # only). Its contents go into a non-exported variable and are never logged.
 if [[ -n "${KEY_FILE}" ]]; then
@@ -147,10 +182,20 @@ if [[ -n "${KEY_FILE}" ]]; then
     *) echo "ERROR: --key-file ${KEY_FILE} has mode ${kf_mode}; it must be 600 or 400 (chmod 600 ${KEY_FILE})" >&2
        exit 2 ;;
   esac
-  IFS= read -r NGC_KEY_VALUE < "${KEY_FILE}" || true
-  NGC_KEY_VALUE="${NGC_KEY_VALUE%$'\r'}"
-  [[ -n "${NGC_KEY_VALUE}" ]] || { echo "ERROR: --key-file ${KEY_FILE} is empty" >&2; exit 2; }
+  if [[ "${KEYLESS_MODE}" == "1" ]]; then
+    # Keyless: pass the path to deploy; never read the key into this shell.
+    NGC_KEY_VALUE=""
+    [[ -s "${KEY_FILE}" ]] || { echo "ERROR: --key-file ${KEY_FILE} is empty" >&2; exit 2; }
+  else
+    IFS= read -r NGC_KEY_VALUE < "${KEY_FILE}" || true
+    NGC_KEY_VALUE="${NGC_KEY_VALUE%$'\r'}"
+    [[ -n "${NGC_KEY_VALUE}" ]] || { echo "ERROR: --key-file ${KEY_FILE} is empty" >&2; exit 2; }
+  fi
   unset kf_mode
+fi
+if [[ -n "${KEY_KEYCHAIN}" ]]; then KEY_SOURCE="keychain"
+elif [[ -n "${KEY_FILE}" ]]; then KEY_SOURCE="file"
+elif [[ -n "${NGC_KEY_VALUE}" ]]; then KEY_SOURCE="env"
 fi
 
 if [[ "${WATCHDOG_MODE}" != "1" && -d "${OUT_DIR}" && -n "$(ls -A "${OUT_DIR}" 2>/dev/null)" ]]; then
@@ -159,6 +204,11 @@ if [[ "${WATCHDOG_MODE}" != "1" && -d "${OUT_DIR}" && -n "$(ls -A "${OUT_DIR}" 2
 fi
 mkdir -p "${OUT_DIR}"
 OUT_DIR="$(cd "${OUT_DIR}" && pwd)"
+# Key source and mode for summary.json / receipt.md (names only, never a key;
+# the watchdog reads this file because it is started without the flags).
+if [[ "${WATCHDOG_MODE}" != "1" ]]; then
+  printf 'source=%s\nkeyless=%s\n' "${KEY_SOURCE}" "${KEYLESS_MODE}" > "${OUT_DIR}/.key_source"
+fi
 
 OCI_REGION="${OCI_REGION:-us-phoenix-1}"
 OKE_GPU_SHAPE="${OKE_GPU_SHAPE:-VM.GPU.A10.1}"
@@ -173,7 +223,11 @@ if [[ -z "${WATCHDOG_SEC:-}" ]]; then
 fi
 # Hard per-step caps. Their sum must fit inside WATCHDOG_SEC (preflight check).
 PROVISION_STEP_TIMEOUT_SEC="${PROVISION_STEP_TIMEOUT_SEC:-3600}"
-DEPLOY_STEP_TIMEOUT_SEC="${DEPLOY_STEP_TIMEOUT_SEC:-2400}"
+# Keyless: pre-stage (deploy.sh PRESTAGE_TIMEOUT 1500) + serve (DEPLOY_TIMEOUT
+# 1800) + margin; the step-budget sum 9000 still fits the default WATCHDOG_SEC.
+if [[ -z "${DEPLOY_STEP_TIMEOUT_SEC:-}" ]]; then
+  if [[ "${KEYLESS_MODE}" == "1" ]]; then DEPLOY_STEP_TIMEOUT_SEC=3600; else DEPLOY_STEP_TIMEOUT_SEC=2400; fi
+fi
 # Fixed mode: Helm has already waited for readiness, so this is a short check.
 # Autoscale mode: deploy does not wait, so this window covers the image pull
 # and the model download once the GPU node exists.
@@ -445,8 +499,15 @@ run_step() {
       local dtmp
       dtmp="$(mktemp -d "${TMPDIR:-/tmp}/nimble-deploy.XXXXXX")" || return 1
       echo "${dtmp}" > "${DEPLOY_TMP_MARKER}"
-      ( TMPDIR="${dtmp}" NGC_API_KEY="${NGC_KEY_VALUE}" CONFIRM_COST=yes "$@" < /dev/null 2>&1 \
-          | NIMBLE_REDACT_VALUE="${NGC_KEY_VALUE}" python3 -c "${REDACT_PY}" >> "${log}" ) &
+      if [[ "${KEYLESS_MODE}" == "1" && "${KEY_SOURCE}" != "env" ]]; then
+        # Keychain / key file: deploy gets the source name or path, not the key.
+        ( TMPDIR="${dtmp}" KEYLESS=1 NGC_KEY_KEYCHAIN="${KEY_KEYCHAIN}" NGC_KEY_FILE="${KEY_FILE}" \
+            CONFIRM_COST=yes "$@" < /dev/null 2>&1 \
+            | python3 -c "${REDACT_PY}" >> "${log}" ) &
+      else
+        ( TMPDIR="${dtmp}" KEYLESS="${KEYLESS_MODE}" NGC_API_KEY="${NGC_KEY_VALUE}" CONFIRM_COST=yes "$@" < /dev/null 2>&1 \
+            | NIMBLE_REDACT_VALUE="${NGC_KEY_VALUE}" python3 -c "${REDACT_PY}" >> "${log}" ) &
+      fi
       ;;
     provision)
       CONFIRM_COST=yes "$@" < /dev/null >> "${log}" 2>&1 &
@@ -693,6 +754,8 @@ rc = num(E.get("S_RC"))
 if rc is None:
     rc = prev.get("runner_exit_code")
 hooks = [h for h in E.get("S_HOOKS", "").split(",") if h]
+ks = dict(l.split("=", 1) for l in rd(".key_source").splitlines() if "=" in l)
+ngc_key = {"source": ks.get("source") or None, "keyless_serve": ks.get("keyless") == "1"}
 def usd(rate, sec):
     return round(rate * sec / 3600.0, 4) if (rate is not None and sec is not None) else None
 sys_cost = usd(sys_rate, cost_secs)
@@ -782,6 +845,7 @@ s = {
     "region": E["S_REGION"],
     "node_count": num(E["S_NODES"]),
     "image": image,
+    "ngc_key": ngc_key,
     "k8s_version": rd("k8s-version.txt") or None,
     "phase_order": order,
     "phase_seconds": secs,
@@ -840,6 +904,7 @@ L.append("- Live run: %s%s" % ("yes" if s["live_run"] else "no",
 L.append("- Region: %s" % s["region"])
 L.append("- Shape: %s x %s" % (s["shape"], fmt(s["node_count"])))
 L.append("- Image: %s" % fmt(image))
+L.append("- NGC key source: %s; keyless serve: %s" % (fmt(ngc_key["source"]), "yes" if ngc_key["keyless_serve"] else "no"))
 L.append("- Kubernetes version: %s" % fmt(s["k8s_version"]))
 L.append("- Runner exit code: %s" % fmt(rc))
 if AS is not None:
@@ -1049,6 +1114,17 @@ on_exit() {
 }
 
 # ---------------------------------------------------------- preflight
+# The key source exists. Keychain: `security find-generic-password -s` without
+# -w prints item attributes, never the secret, and its output is discarded.
+key_source_present() {
+  case "${KEY_SOURCE}" in
+    keychain) command -v security >/dev/null 2>&1 \
+                && security find-generic-password -s "${KEY_KEYCHAIN}" >/dev/null 2>&1 ;;
+    file|env) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # Each check prints "check: X", then "ok: X" or a "FAIL: ..." line.
 # RUNNER_OKE_CONFIG (test hook) points the detectors at a fixture copy of
 # oke-optimized-config.sh; the default is the file provision-cluster.sh sources.
@@ -1067,7 +1143,13 @@ default_preflight() {
   done
   [[ "${fail}" == "0" ]] || return 1
   echo "ok: required tools"
-  if [[ -n "${NGC_KEY_VALUE}" ]]; then
+  if [[ "${KEY_SOURCE}" == "keychain" ]]; then
+    echo "check: NGC key in macOS Keychain (service ${KEY_KEYCHAIN}; value not read)"
+    if key_source_present; then echo "ok: Keychain item present"
+    else echo "FAIL: Keychain item not found or 'security' missing (service ${KEY_KEYCHAIN})"; return 1; fi
+  elif [[ "${KEY_SOURCE}" == "file" && "${KEYLESS_MODE}" == "1" ]]; then
+    echo "ok: NGC key file present (path passed to deploy; value not read)"
+  elif [[ -n "${NGC_KEY_VALUE}" ]]; then
     echo "ok: NGC_API_KEY set"
   elif [[ "${PREFLIGHT_ONLY}" == "1" ]]; then
     echo "SKIPPED: NGC_API_KEY check (--preflight-only; a full run requires it)"
@@ -1292,9 +1374,9 @@ trap 'trap "" INT TERM HUP; SIGNAL_NAME=HUP; exit 129' HUP
 
 note "run start: region=${OCI_REGION} shape=${OKE_GPU_SHAPE} autoscale=${AUTOSCALE_MODE} out=${OUT_DIR}"
 phase preflight START 0
-if [[ -z "${OCI_COMPARTMENT_ID:-}" || -z "${NGC_KEY_VALUE}" ]]; then
-  echo "FAIL: OCI_COMPARTMENT_ID and NGC_API_KEY must be set" >> "${OUT_DIR}/preflight.log"
-  note "preflight FAILED: OCI_COMPARTMENT_ID and NGC_API_KEY must be set"
+if [[ -z "${OCI_COMPARTMENT_ID:-}" ]] || ! key_source_present; then
+  echo "FAIL: OCI_COMPARTMENT_ID and NGC_API_KEY must be set (or a usable --key-file / --key-keychain source)" >> "${OUT_DIR}/preflight.log"
+  note "preflight FAILED: OCI_COMPARTMENT_ID and NGC_API_KEY must be set (key source: ${KEY_SOURCE})"
   phase preflight END 1
   exit 1
 fi
