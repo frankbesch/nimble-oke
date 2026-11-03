@@ -60,7 +60,18 @@ Derived from the release fullname so releases never collide.
 Name of the dockerconfigjson Secret used to pull the NIM image from nvcr.io.
 */}}
 {{- define "nvidia-nim.imagePullSecretName" -}}
+{{- if and .Values.ngc.keyless .Values.ngc.pullSecretName }}
+{{- .Values.ngc.pullSecretName }}
+{{- else }}
 {{- printf "%s-ngc-registry" (include "nvidia-nim.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+{{- end }}
+
+{{/*
+Secret the pre-stage Job reads NGC_API_KEY from (keyless path).
+*/}}
+{{- define "nvidia-nim.prestageKeySecretName" -}}
+{{- default (include "nvidia-nim.ngcApiSecretName" .) .Values.prestage.apiKeySecretName }}
 {{- end }}
 
 {{/*

@@ -1,0 +1,93 @@
+{{- if .Values.prestage.enabled -}}
+{{- if not .Values.ngc.keyless -}}
+{{- fail "prestage.enabled=true requires ngc.keyless=true (the pre-stage Job is part of the keyless path)" -}}
+{{- end -}}
+{{- if not .Values.persistence.enabled -}}
+{{- fail "prestage.enabled=true requires persistence.enabled=true (the Job fills the model-cache PVC)" -}}
+{{- end -}}
+# One-shot pre-stage Job: the only pod that ever reads NGC_API_KEY on the
+# keyless path. It fills the model-cache PVC and exits; scripts/deploy.sh
+# then deletes the API Secret and starts the server without a key.
+# Pod labels deliberately omit app.kubernetes.io/instance so the Service and
+# the "app.kubernetes.io/instance=<release>" pod selectors never match it.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "nvidia-nim.fullname" . }}-prestage
+  labels:
+    {{- include "nvidia-nim.labels" . | nindent 4 }}
+    app.kubernetes.io/component: prestage
+spec:
+  backoffLimit: {{ .Values.prestage.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.prestage.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "nvidia-nim.name" . }}-prestage
+        app.kubernetes.io/part-of: {{ .Release.Name }}
+        app.kubernetes.io/component: prestage
+    spec:
+      restartPolicy: Never
+      imagePullSecrets:
+        - name: {{ include "nvidia-nim.imagePullSecretName" . }}
+        {{- with .Values.imagePullSecrets }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      serviceAccountName: {{ include "nvidia-nim.serviceAccountName" . }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+      - name: prestage
+        image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command:
+          {{- toYaml .Values.prestage.command | nindent 10 }}
+        {{- if .Values.prestage.profile }}
+        args:
+          - --profiles
+          - {{ .Values.prestage.profile | quote }}
+        {{- end }}
+        env:
+        - name: NGC_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "nvidia-nim.prestageKeySecretName" . }}
+              key: NGC_API_KEY
+        - name: NIM_CACHE_PATH
+          value: {{ .Values.persistence.mountPath | quote }}
+        resources:
+          {{- toYaml (default .Values.resources .Values.prestage.resources) | nindent 10 }}
+        volumeMounts:
+        - name: model-cache
+          mountPath: {{ .Values.persistence.mountPath }}
+        {{- if .Values.sharedMemory.enabled }}
+        - name: dshm
+          mountPath: /dev/shm
+        {{- end }}
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 10 }}
+      volumes:
+      - name: model-cache
+        persistentVolumeClaim:
+          claimName: {{ include "nvidia-nim.fullname" . }}-model-cache
+      {{- if .Values.sharedMemory.enabled }}
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: {{ .Values.sharedMemory.sizeLimit }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

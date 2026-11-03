@@ -19,14 +19,48 @@ image:
 # pull secret, named "<release fullname>-ngc-registry".
 imagePullSecrets: []
 
-# The chart renders two Secrets from ngc.apiKey:
+# Default path (ngc.keyless: false): the chart renders two Secrets from ngc.apiKey:
 #   <release fullname>-ngc-api       (Opaque, key NGC_API_KEY, read by the container)
 #   <release fullname>-ngc-registry  (dockerconfigjson, used to pull from nvcr.io)
-# ngc.apiKey is required; rendering fails without it.
+# ngc.apiKey is required; rendering fails without it. Helm also stores the
+# key in its release Secret (user values and rendered manifest).
+#
+# Keyless path (ngc.keyless: true; docs/key-path.md): the chart renders NO
+# Secret and no NGC_API_KEY env. ngc.apiKey must stay empty (rendering fails
+# otherwise), so the key never reaches Helm values or the release Secret.
+# scripts/ngc-secrets.sh creates both Secrets outside Helm from the key
+# source; the pull Secret stays for the kubelet, the API Secret is deleted
+# once the pre-stage Job (prestage below) has filled the model cache.
 ngc:
-  apiKey: "" # supplied at install time; scripts/deploy.sh pipes it to helm on stdin (-f -), never argv or disk
+  apiKey: "" # default path only; scripts/deploy.sh pipes it to helm on stdin (-f -), never argv or disk
+  keyless: false
+  # Keyless path: existing dockerconfigjson Secret for the image pull.
+  # Empty = "<release fullname>-ngc-registry" (the name scripts/ngc-secrets.sh uses).
+  pullSecretName: ""
   registry: nvcr.io
   username: "$oauthtoken"
+
+# One-shot pre-stage Job (keyless path only; needs persistence.enabled). It
+# mounts the model-cache PVC, reads NGC_API_KEY from the API Secret, runs
+# NIM's download-to-cache utility, and exits. scripts/deploy.sh installs with
+# prestage.enabled=true and replicaCount=0, waits for the Job, deletes the
+# API Secret, then upgrades with prestage.enabled=false and replicaCount=1.
+# UNVERIFIED for the pinned 1.0.3 image: the utility name, its flags, and
+# that the server then starts from the filled cache without a key
+# (docs/key-path.md, "What the docs establish").
+prestage:
+  enabled: false
+  command: ["download-to-cache"]
+  # Empty: no profile flag; NIM picks a profile for the GPU it detects, so the
+  # Job requests the same GPU as the server (resources below default to
+  # .Values.resources). Set a profile id to pass "--profiles <id>" and to set
+  # NIM_MODEL_PROFILE on the server; a wrong id crash-loops the server.
+  profile: ""
+  # Existing Opaque Secret with key NGC_API_KEY. Empty = "<release fullname>-ngc-api".
+  apiKeySecretName: ""
+  backoffLimit: 0
+  activeDeadlineSeconds: 3600
+  resources: {}
 
 resources:
   # Simplified resource allocation for stability
@@ -53,8 +87,9 @@ service:
   annotations:
     # LoadBalancer annotations removed for cost savings
 
-# Extra container env. NGC_API_KEY is added by the template from the
-# "<release fullname>-ngc-api" Secret; do not repeat it here.
+# Extra container env. On the default path NGC_API_KEY is added by the
+# template from the "<release fullname>-ngc-api" Secret; do not repeat it
+# here. On the keyless path the server gets no NGC_API_KEY at all.
 env:
   - name: NIM_CACHE_PATH
     value: "/model-cache"
