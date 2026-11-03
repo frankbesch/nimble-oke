@@ -24,7 +24,7 @@ if [[ -n "${STUB_KEYCHAIN_MISSING:-}" || "${svc}" != "${STUB_KEYCHAIN_SERVICE:-n
 fi
 if [[ "${want_pw}" == "1" ]]; then
   if [[ -n "${STUB_KEYCHAIN_DB:-}" ]]; then cat "${STUB_KEYCHAIN_DB}"
-  else printf '%s\n' "nvapi-FAKE-PLACEHOLDER-not-a-real-key"; fi
+  else printf '%s\n' "nvapi-xxxx-placeholder-not-a-real-key"; fi
 else
   printf 'keychain: "/Users/test/Library/Keychains/login.keychain-db"\nclass: "genp"\nattributes:\n    "svce"<blob>="%s"\n' "${svc}"
 fi
