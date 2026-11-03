@@ -61,7 +61,11 @@ fi
 # KEYLESS=1), active only when STUB_SECRET_DIR names a directory. A Secret is
 # a file there holding what kubectl read from /dev/stdin (the "cluster").
 # Only the byte count goes to STUB_LOG, never the content.
-#   STUB_DEPLOY_ENV_NAMES  env names the Deployment reports (default NIM_CACHE_PATH)
+#   STUB_DEPLOY_ENV_NAMES  env names the Deployment and its pods report (default NIM_CACHE_PATH)
+#   STUB_POD_ENV_KEYCOUNT  what `exec ... grep -cx NGC_API_KEY` prints (default 0)
+#   STUB_EXEC_FAIL=1       kubectl exec fails (no shell in the image)
+#   STUB_POD_ENVFROM       the pods' envFrom (default empty)
+#   STUB_JOB_PRESENT=1     the pre-stage Job still exists
 # It also reports one GPU node, so deploy.sh's fixed-mode GPU checks pass.
 if [[ -n "${STUB_SECRET_DIR:-}" ]]; then
   sargs=()
@@ -83,8 +87,22 @@ if [[ -n "${STUB_SECRET_DIR:-}" ]]; then
       exit 0 ;;
     "get secret "*)
       name="$3"
-      [[ -e "${STUB_SECRET_DIR}/${name}" ]] && { echo "NAME TYPE DATA AGE"; echo "${name} Opaque 1 1s"; exit 0; }
+      if [[ -e "${STUB_SECRET_DIR}/${name}" ]]; then
+        if [[ "$*" == *"-o name"* ]]; then echo "secret/${name}"; else echo "NAME TYPE DATA AGE"; echo "${name} Opaque 1 1s"; fi
+        exit 0
+      fi
       echo "Error from server (NotFound): secrets \"${name}\" not found" >&2; exit 1 ;;
+    "get secrets "*)
+      for f in "${STUB_SECRET_DIR}"/*; do [[ -e "${f}" ]] && echo "secret/$(basename "${f}")"; done
+      echo "secret/sh.helm.release.v1.nvidia-nim.v1"; exit 0 ;;
+    "exec "*)
+      [[ -n "${STUB_EXEC_FAIL:-}" ]] && { echo "error: exec: \"sh\": executable file not found in \$PATH" >&2; exit 1; }
+      echo "${STUB_POD_ENV_KEYCOUNT:-0}"; exit 0 ;;
+    "get pods "*"env[*].name"*) echo "${STUB_DEPLOY_ENV_NAMES:-NIM_CACHE_PATH}"; exit 0 ;;
+    "get pods "*"envFrom"*) printf '%s' "${STUB_POD_ENVFROM:-}"; exit 0 ;;
+    "get job "*)
+      [[ -n "${STUB_JOB_PRESENT:-}" ]] && { echo "job.batch/$3"; exit 0; }
+      echo "Error from server (NotFound): jobs.batch \"$3\" not found" >&2; exit 1 ;;
     "label secret "*) echo "secret/$3 labeled"; exit 0 ;;
     "get deployment "*"env[*].name"*) echo "${STUB_DEPLOY_ENV_NAMES:-NIM_CACHE_PATH}"; exit 0 ;;
     # One GPU node with allocatable nvidia.com/gpu=1 (fixed-mode prerequisites).

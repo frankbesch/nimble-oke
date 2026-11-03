@@ -7,14 +7,14 @@ Keychain, a pre-stage Job fills the model cache, and the server runs with no
 
 This run bills. The two earlier runs posted $0.63 and $0.53
 ([runs](runs/README.md)). The keyless run's cost is unmeasured; it adds a
-second pod start to the same model download. The step timeouts allow up to
-9000 s before the watchdog forces teardown: about $5.60 at the kit's
+second pod start to the same model download. The watchdog forces teardown
+after 10320 s (the keyless default `WATCHDOG_SEC`): about $6.40 at the kit's
 estimate rate of 2.2384 USD/h (`scripts/_lib.sh` `estimate_hourly_cost`), plus
 the teardown time.
 
-Two terminals: A runs the runner; B collects gates 1 and 2 while the server
-is up. The runner does not capture those two itself, and the server exists
-for only about a minute (ready check and bench) before teardown starts.
+One terminal. The runner collects gates 1 and 2 itself, in the
+`keyless-check` phase between ready and bench, and stops the run (teardown
+runs) if either fails.
 
 ## 0. Preconditions
 
@@ -26,7 +26,7 @@ for only about a minute (ready check and bench) before teardown starts.
 | No leftover cluster | `ls scripts/cluster-info.txt` | "No such file" |
 | OCI auth | `oci iam region list >/dev/null && echo ok` | `ok` |
 
-Environment for terminal A:
+Environment:
 
 ```bash
 export OCI_COMPARTMENT_ID=ocid1.compartment.oc1..<your-compartment>
@@ -46,7 +46,7 @@ Keep `NGC_API_KEY` unset in this shell; the runner ignores it with
 bash tests/run_measured_test.sh
 ```
 
-Expect the last line `RESULT: all passed`, with K0 to K7 PASS. Stop on any FAIL.
+Expect the last line `RESULT: all passed`, with K0 to K8f PASS. Stop on any FAIL.
 
 ## 2. Keychain item
 
@@ -75,10 +75,11 @@ scripts/run_measured.sh --key-keychain nimble-ngc --preflight-only /tmp/prefligh
 ```
 
 Expect exit 0. `/tmp/preflight-keyless/preflight.log` must hold
-`ok: Keychain item present` and `preflight checks passed`. Read-only `oci`
-calls only.
+`ok: Keychain item present`, `preflight checks passed`, and the line
+`step budgets: ... + keyless-check 120s = 9120s; WATCHDOG_SEC=10320s`.
+Read-only `oci` calls only.
 
-## 4. Run (terminal A, bills)
+## 4. Run (bills)
 
 ```bash
 OUT="docs/runs/$(date -u +%F)-run-3-keyless"
@@ -90,8 +91,8 @@ scripts/run_measured.sh --key-keychain nimble-ngc "$OUT"; echo "runner exit: $?"
 
 Expect `runner exit: 0`.
 
-Phases: preflight, provision, deploy, ready, bench, teardown,
-verify-clean. Follow them in `$OUT/phases.log`. In `$OUT/deploy.log` the
+Phases: preflight, provision, deploy, ready, keyless-check, bench,
+teardown, verify-clean. Follow them in `$OUT/phases.log`. In `$OUT/deploy.log` the
 keyless steps appear in this order:
 
 1. `Keyless: creating the NGC Secrets outside Helm (value never shown)...`
@@ -105,47 +106,44 @@ Leave it running. If you must stop it, Ctrl-C (or closing the terminal)
 still tears down: the runner traps the signal. A failed step also tears
 down.
 
-## 5. Gates 1 and 2 (terminal B, during the run)
+## 5. Gates 1 and 2 (the runner's keyless-check phase)
 
-Start this right after step 4 begins, from the repo root, with the same
-`OUT`. It waits for the cluster record, then for the server to be available,
-then records names and counts only. No command here prints a Secret value
-or an env value.
+Once the server is Ready, the runner reads the cluster and writes
+`$OUT/keyless-evidence.log`. It records names, counts, and NotFound lines
+only; no command prints a Secret value, an env value, or the Helm values
+(only the length of `ngc.apiKey`). Read it after the run:
 
 ```bash
-OUT="docs/runs/$(date -u +%F)-run-3-keyless"
-until grep -q '^KUBE_CONTEXT=' scripts/cluster-info.txt 2>/dev/null; do sleep 15; done
-CTX="$(sed -n 's/^KUBE_CONTEXT=//p' scripts/cluster-info.txt | tail -1)"
-k() { kubectl --context "$CTX" --request-timeout=20s -n default "$@"; }
-until [ "$(k get deploy nvidia-nim -o jsonpath='{.status.availableReplicas}' 2>/dev/null)" = 1 ]; do sleep 5; done
-{
-  echo "time: $(date -u +%FT%TZ)"
-  echo "G1a runtime env, count of NGC_API_KEY: $(k exec deploy/nvidia-nim -c nvidia-nim -- sh -c 'env | cut -d= -f1 | grep -cx NGC_API_KEY || true' 2>&1)"
-  echo "G1b pod spec env names: $(k get pods -l app.kubernetes.io/instance=nvidia-nim -o jsonpath='{.items[*].spec.containers[*].env[*].name}')"
-  echo "G1c pod spec envFrom: [$(k get pods -l app.kubernetes.io/instance=nvidia-nim -o jsonpath='{.items[*].spec.containers[*].envFrom}')]"
-  echo "G2 API Secret: $(k get secret nvidia-nim-ngc-api -o name 2>&1)"
-  echo "G2 Secret names: $(k get secrets -o name | tr '\n' ' ')"
-  echo "S1 Helm values ngc.apiKey length: $(helm --kube-context "$CTX" get values nvidia-nim -n default -o json | jq -r '(.ngc.apiKey // "") | length')"
-  echo "S2 kind: Secret in Helm manifest: $(helm --kube-context "$CTX" get manifest nvidia-nim -n default | grep -c '^kind: Secret' || true)"
-  echo "S3 pre-stage Job: $(k get job nvidia-nim-prestage -o name 2>&1)"
-} 2>&1 | tee "$OUT/keyless-gates.log"
+cat "$OUT/keyless-evidence.log"
 ```
-
-Expect:
 
 | Line | PASS |
 |------|------|
-| G1a | `0` (if `exec` fails, for example no `sh` in the image, G1b and G1c are the evidence) |
-| G1b | names without `NGC_API_KEY` (expected: `NIM_CACHE_PATH`) |
-| G1c | `[]` |
+| G1a | `0`: the server's runtime env, via `kubectl exec ... sh -c 'env \| cut -d= -f1 \| grep -cx NGC_API_KEY'` |
+| G1b | env names without `NGC_API_KEY` (expected: `NIM_CACHE_PATH`) |
+| G1c | `[]` (no `envFrom`) |
 | G2 API Secret | `Error from server (NotFound): secrets "nvidia-nim-ngc-api" not found` |
-| G2 Secret names | `secret/nvidia-nim-ngc-registry` and Helm's `sh.helm.release.v1.nvidia-nim.v1`, `.v2`; no `ngc-api` |
+| G2 Secret names | `secret/nvidia-nim-ngc-registry` and Helm's `sh.helm.release.v1.nvidia-nim.v*`; no `ngc-api` |
 | S1 | `0` (no key in Helm values, so none in the release Secret) |
 | S2 | `0` (no chart Secret in the release manifest) |
 | S3 | `NotFound` (Helm removed the Job at the serving install) |
+| `gate1:` | `PASS (runtime count 0; pod spec clean)` |
+| `gate2:` | `PASS (nvidia-nim-ngc-api NotFound)` |
+| `release_secret:` | `PASS (...)` |
 
-S1 to S3 are supplementary: they check the release-Secret copy, which is not
-one of the five gates.
+How the verdicts are set:
+
+- `gate1` fails on a runtime count above 0, an `NGC_API_KEY` env name, any
+  `envFrom`, or unreadable pod env names. If `kubectl exec` is unavailable
+  (no `sh` in the image), G1a reads `unavailable` and `gate1` passes on the
+  pod spec alone, saying so.
+- `gate2` passes only on NotFound. A Secret that exists, or no answer, fails.
+- `release_secret` fails on a non-zero `ngc.apiKey` length or any Secret in
+  the release manifest. If `helm get` fails it reads `UNKNOWN` and does not
+  stop the run; record it as not checked.
+
+`summary.json` (`keyless_gates`) and `receipt.md` ("Keyless gates") carry
+the three verdicts.
 
 ## 6. Gates 3, 4, 5 (after the runner exits)
 
@@ -190,8 +188,8 @@ Expect `0`. A `TERMINATING` instance counts; re-run after a few minutes.
 
 | Gate | Evidence | PASS when |
 |------|----------|-----------|
-| 1 Server pod env has 0 `NGC_API_KEY` | `keyless-gates.log` G1a to G1c; `deploy.log` line 6 | count 0, no `NGC_API_KEY` name, no `envFrom` |
-| 2 No `ngc-api` Secret after pre-stage | `keyless-gates.log` G2; `deploy.log` lines 4 and 6 | NotFound |
+| 1 Server pod env has 0 `NGC_API_KEY` | `keyless-evidence.log` G1a to G1c and `gate1`; `deploy.log` line 6 | `gate1: PASS` |
+| 2 No `ngc-api` Secret after pre-stage | `keyless-evidence.log` G2 and `gate2`; `deploy.log` lines 4 and 6 | `gate2: PASS` |
 | 3 No `nvapi-` in the output folder | `grep` in step 6 | grep exit 1 |
 | 4 Chat completion HTTP 200 | `bench.json` | 5 of 5, all 200 |
 | 5 GPU nodes back to 0 | `receipt.md`, `summary.json`, `oci` count | clean, verified, 0 |
@@ -207,6 +205,8 @@ pass.
 ## 8. If a gate fails
 
 - The run tears itself down on any step failure; check step 6, gate 5, either way.
+- `keyless-check` failed (`PHASE keyless-check END ... rc=1`; bench did not
+  run): `keyless-evidence.log` names the gate and the evidence.
 - Pre-stage failed (`deploy.log`, "NIM FAILURE DIAGNOSTICS"): the Job's
   `describe` and last 200 log lines are in that block. A wrong image tag or
   a failed pull points at the pull Secret; a download error points at the key

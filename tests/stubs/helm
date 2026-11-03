@@ -5,12 +5,23 @@
 #                   size, whether it holds an apiKey line or a non-empty
 #                   apiKey value, and the keyless/prestage/replicaCount
 #                   switches are logged
+#   with STUB_HELM_OK=1, `helm get values` prints STUB_HELM_VALUES_JSON (default
+#                   keyless values, empty apiKey) and `helm get manifest` prints
+#                   STUB_HELM_MANIFEST (default one Deployment, no Secret)
 #   STUB_HELM_FAIL_MATCH=TEXT  with STUB_HELM_OK=1: a call whose argv contains
 #                   TEXT exits 1 (after reading stdin), e.g. "--wait-for-jobs"
 echo "helm $*" >> "${STUB_LOG:-/dev/null}"
 if [[ "${STUB_HELM_OK:-}" == "1" ]]; then
   # STUB_HELM_LIST=NAME: `helm list` reports release NAME as existing.
   if [[ "${1:-}" == "list" && -n "${STUB_HELM_LIST:-}" ]]; then echo "${STUB_HELM_LIST}"; exit 0; fi
+  if [[ "${1:-} ${2:-}" == "get values" ]]; then
+    # Default kept outside ${...:-...}: braces in it would end the expansion early.
+    def='{"ngc":{"keyless":true,"apiKey":""}}'
+    printf '%s\n' "${STUB_HELM_VALUES_JSON:-${def}}"; exit 0
+  fi
+  if [[ "${1:-} ${2:-}" == "get manifest" ]]; then
+    printf '%s\n' "${STUB_HELM_MANIFEST:-kind: Deployment}"; exit 0
+  fi
   if [[ " $* " == *" -f - "* ]]; then
     in="$(cat)"
     has=no; [[ "${in}" == *"apiKey:"* ]] && has=yes

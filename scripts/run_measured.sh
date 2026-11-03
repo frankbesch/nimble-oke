@@ -84,7 +84,13 @@ Usage: export NGC_API_KEY beforehand (read -rs NGC_API_KEY; export NGC_API_KEY),
                     model cache with the key, its Secret is deleted, and the
                     server runs with no NGC_API_KEY and no key in Helm values.
                     With --key-file the runner passes the path, not the key.
-                    Not with --autoscale (yet). Deploy step cap default 3600
+                    Not with --autoscale (yet). Deploy step cap default 3600.
+                    Adds the phase keyless-check after ready: evidence for
+                    live gates 1 and 2 (server pod env, API Secret absent)
+                    and the Helm release record, in keyless-evidence.log;
+                    names and counts only. A FAIL stops the run (teardown
+                    runs). Cap KEYLESS_CHECK_TIMEOUT_SEC (120); WATCHDOG_SEC
+                    default 10320
   --preflight-only  run only the no-cost preflight checks (real oci calls, read-only);
                     writes preflight.log and phases.log, starts no watchdog, creates
                     nothing, exits with the preflight status; NGC_API_KEY optional
@@ -218,13 +224,16 @@ NODE_POOL_NAME="gpu-node-pool"            # fixed in provision-cluster.sh
 NIM_RELEASE="nvidia-nim"                  # fixed in deploy.sh; chart fullname == release
 NIM_NAMESPACE="default"                   # fixed in deploy.sh
 if [[ -z "${WATCHDOG_SEC:-}" ]]; then
-  # Step caps plus a teardown margin: fixed 7800 + 1200, autoscale 12600 + 1800.
-  if [[ "${AUTOSCALE_MODE}" == "1" ]]; then WATCHDOG_SEC=14400; else WATCHDOG_SEC=9000; fi
+  # Step caps plus a teardown margin: fixed 7800 + 1200, autoscale 12600 + 1800,
+  # keyless 9120 + 1200.
+  if [[ "${AUTOSCALE_MODE}" == "1" ]]; then WATCHDOG_SEC=14400
+  elif [[ "${KEYLESS_MODE}" == "1" ]]; then WATCHDOG_SEC=10320
+  else WATCHDOG_SEC=9000; fi
 fi
 # Hard per-step caps. Their sum must fit inside WATCHDOG_SEC (preflight check).
 PROVISION_STEP_TIMEOUT_SEC="${PROVISION_STEP_TIMEOUT_SEC:-3600}"
 # Keyless: pre-stage (deploy.sh PRESTAGE_TIMEOUT 1500) + serve (DEPLOY_TIMEOUT
-# 1800) + margin; the step-budget sum 9000 still fits the default WATCHDOG_SEC.
+# 1800) + margin.
 if [[ -z "${DEPLOY_STEP_TIMEOUT_SEC:-}" ]]; then
   if [[ "${KEYLESS_MODE}" == "1" ]]; then DEPLOY_STEP_TIMEOUT_SEC=3600; else DEPLOY_STEP_TIMEOUT_SEC=2400; fi
 fi
@@ -235,6 +244,9 @@ if [[ -z "${READY_TIMEOUT_SEC:-}" ]]; then
   if [[ "${AUTOSCALE_MODE}" == "1" ]]; then READY_TIMEOUT_SEC=2400; else READY_TIMEOUT_SEC=900; fi
 fi
 BENCH_STEP_TIMEOUT_SEC="${BENCH_STEP_TIMEOUT_SEC:-900}"
+# --keyless only: cap for the keyless-check phase (evidence for live gates 1
+# and 2, read from the cluster after ready and before bench).
+KEYLESS_CHECK_TIMEOUT_SEC="${KEYLESS_CHECK_TIMEOUT_SEC:-120}"
 # --autoscale only: scale-up / scale-down phase caps and autoscaler settings
 # passed to provision-cluster.sh (it reads AUTOSCALE, MAX_GPU_NODES, timers).
 SCALE_UP_TIMEOUT_SEC="${SCALE_UP_TIMEOUT_SEC:-1800}"
@@ -255,10 +267,11 @@ NIM_LOCAL_PORT="${NIM_LOCAL_PORT:-}"
 for v in NODE_COUNT WATCHDOG_SEC READY_TIMEOUT_SEC POLL_SEC CLEANUP_RETRY_SEC \
          TEARDOWN_RETRY_PAUSE_SEC STEP_STOP_WAIT_SEC CLEANUP_LOCK_WAIT_SEC \
          PROVISION_STEP_TIMEOUT_SEC DEPLOY_STEP_TIMEOUT_SEC BENCH_STEP_TIMEOUT_SEC \
-         SCALE_UP_TIMEOUT_SEC SCALE_DOWN_TIMEOUT_SEC MAX_GPU_NODES; do
+         SCALE_UP_TIMEOUT_SEC SCALE_DOWN_TIMEOUT_SEC MAX_GPU_NODES KEYLESS_CHECK_TIMEOUT_SEC; do
   [[ "${!v}" =~ ^[0-9]+$ ]] || { echo "ERROR: ${v} must be a non-negative integer" >&2; exit 2; }
 done
 STEP_BUDGET_SUM=$(( PROVISION_STEP_TIMEOUT_SEC + DEPLOY_STEP_TIMEOUT_SEC + READY_TIMEOUT_SEC + BENCH_STEP_TIMEOUT_SEC ))
+[[ "${KEYLESS_MODE}" == "1" ]] && STEP_BUDGET_SUM=$(( STEP_BUDGET_SUM + KEYLESS_CHECK_TIMEOUT_SEC ))
 if [[ "${AUTOSCALE_MODE}" == "1" ]]; then
   STEP_BUDGET_SUM=$(( STEP_BUDGET_SUM + SCALE_UP_TIMEOUT_SEC + SCALE_DOWN_TIMEOUT_SEC ))
   AUTOSCALE=1
@@ -756,6 +769,13 @@ if rc is None:
 hooks = [h for h in E.get("S_HOOKS", "").split(",") if h]
 ks = dict(l.split("=", 1) for l in rd(".key_source").splitlines() if "=" in l)
 ngc_key = {"source": ks.get("source") or None, "keyless_serve": ks.get("keyless") == "1"}
+kg = None
+if rd("keyless-evidence.log"):
+    kg = {}
+    for l in rd("keyless-evidence.log").splitlines():
+        k, sep, v = l.partition(": ")
+        if sep and k in ("gate1", "gate2", "release_secret"):
+            kg[k] = v
 def usd(rate, sec):
     return round(rate * sec / 3600.0, 4) if (rate is not None and sec is not None) else None
 sys_cost = usd(sys_rate, cost_secs)
@@ -846,6 +866,7 @@ s = {
     "node_count": num(E["S_NODES"]),
     "image": image,
     "ngc_key": ngc_key,
+    "keyless_gates": kg,
     "k8s_version": rd("k8s-version.txt") or None,
     "phase_order": order,
     "phase_seconds": secs,
@@ -905,6 +926,11 @@ L.append("- Region: %s" % s["region"])
 L.append("- Shape: %s x %s" % (s["shape"], fmt(s["node_count"])))
 L.append("- Image: %s" % fmt(image))
 L.append("- NGC key source: %s; keyless serve: %s" % (fmt(ngc_key["source"]), "yes" if ngc_key["keyless_serve"] else "no"))
+if kg is not None:
+    L += ["", "## Keyless gates (read from the cluster before bench)", ""]
+    L.append("- Gate 1, server pod env has no NGC_API_KEY: %s" % fmt(kg.get("gate1")))
+    L.append("- Gate 2, no API Secret after pre-stage: %s" % fmt(kg.get("gate2")))
+    L.append("- Helm release record holds no key: %s" % fmt(kg.get("release_secret")))
 L.append("- Kubernetes version: %s" % fmt(s["k8s_version"]))
 L.append("- Runner exit code: %s" % fmt(rc))
 if AS is not None:
@@ -1111,6 +1137,69 @@ on_exit() {
   note "runner exit ${final}; logs in ${OUT_DIR}"
   cat "${OUT_DIR}/trap.log" >&4 2>/dev/null || true
   exit "${final}"
+}
+
+# ------------------------------------------------------- keyless-check
+# --keyless: evidence for live gates 1 and 2, read once the server is Ready
+# and before bench, into OUT_DIR/keyless-evidence.log. Records names, counts
+# and NotFound lines only: no command here prints a Secret value, an env
+# value, or Helm values (only the length of ngc.apiKey). Gate 1 or 2 not
+# confirmed, or any sign of the key in the Helm release record, returns 1.
+kev() { kubectl ${KCTX_ARGS[@]+"${KCTX_ARGS[@]}"} --request-timeout=20s "$@"; }
+keyless_evidence() {
+  local ev="${OUT_DIR}/keyless-evidence.log" ns="${NIM_NAMESPACE}"
+  local sel="app.kubernetes.io/instance=${NIM_RELEASE}" api="${NIM_RELEASE}-ngc-api"
+  local cnt names envfrom sec secnames vlen mcount job spec_key=0 g1 g2 rel fail=0
+  cnt="$(kev exec "deploy/${NIM_RELEASE}" -n "${ns}" -c nvidia-nim -- \
+           sh -c 'env | cut -d= -f1 | grep -cx NGC_API_KEY || true' 2>/dev/null | tr -d '[:space:]')" || cnt=""
+  [[ "${cnt}" =~ ^[0-9]+$ ]] || cnt="unavailable"
+  names="$(kev get pods -n "${ns}" -l "${sel}" -o jsonpath='{.items[*].spec.containers[*].env[*].name}' 2>/dev/null)" \
+    || names="ERROR"
+  envfrom="$(kev get pods -n "${ns}" -l "${sel}" -o jsonpath='{.items[*].spec.containers[*].envFrom}' 2>/dev/null)" \
+    || envfrom="ERROR"
+  sec="$(kev get secret "${api}" -n "${ns}" -o name 2>&1 | head -1)" || true
+  secnames="$(kev get secrets -n "${ns}" -o name 2>/dev/null | tr '\n' ' ')" || secnames="ERROR"
+  vlen="$(helm get values "${NIM_RELEASE}" -n "${ns}" -o json 2>/dev/null | jq -r '(.ngc.apiKey // "") | length' 2>/dev/null)" || vlen=""
+  [[ "${vlen}" =~ ^[0-9]+$ ]] || vlen="unknown"
+  mcount="unknown"
+  if helm get manifest "${NIM_RELEASE}" -n "${ns}" > /dev/null 2>&1; then
+    mcount="$(helm get manifest "${NIM_RELEASE}" -n "${ns}" 2>/dev/null | grep -c '^kind: Secret' || true)"
+  fi
+  job="$(kev get job "${NIM_RELEASE}-prestage" -n "${ns}" -o name 2>&1 | head -1)" || true
+
+  if [[ "${names}" == "ERROR" || " ${names} " == *" NGC_API_KEY "* || ( -n "${envfrom}" && "${envfrom}" != "[]" ) ]]; then
+    spec_key=1
+  fi
+  if [[ "${cnt}" != "unavailable" && "${cnt}" != "0" ]] || [[ "${spec_key}" == "1" ]]; then
+    g1="FAIL (runtime count ${cnt}; pod spec env names [${names}]; envFrom [${envfrom}])"; fail=1
+  elif [[ "${cnt}" == "0" ]]; then
+    g1="PASS (runtime count 0; pod spec clean)"
+  else
+    g1="PASS (pod spec only: env names [${names}], no envFrom; kubectl exec unavailable)"
+  fi
+  if [[ "${sec}" == *NotFound* ]]; then g2="PASS (${api} NotFound)"
+  else g2="FAIL (${api}: ${sec:-no answer})"; fail=1; fi
+  if [[ "${vlen}" == "0" && "${mcount}" == "0" ]]; then rel="PASS (ngc.apiKey length 0; no Secret in the release manifest)"
+  elif [[ ( "${vlen}" =~ ^[0-9]+$ && "${vlen}" != "0" ) || ( "${mcount}" =~ ^[0-9]+$ && "${mcount}" != "0" ) ]]; then
+    rel="FAIL (ngc.apiKey length ${vlen}; kind: Secret in manifest ${mcount})"; fail=1
+  else rel="UNKNOWN (helm get failed: ngc.apiKey length ${vlen}; kind: Secret in manifest ${mcount})"; fi
+
+  {
+    echo "keyless evidence $(ts) (names and counts only)"
+    echo "G1a runtime env, count of NGC_API_KEY: ${cnt}"
+    echo "G1b pod spec env names: ${names}"
+    echo "G1c pod spec envFrom: [${envfrom}]"
+    echo "G2 API Secret ${api}: ${sec}"
+    echo "G2 Secret names: ${secnames}"
+    echo "S1 Helm values ngc.apiKey length: ${vlen}"
+    echo "S2 kind: Secret in Helm release manifest: ${mcount}"
+    echo "S3 pre-stage Job: ${job}"
+    echo "gate1: ${g1}"
+    echo "gate2: ${g2}"
+    echo "release_secret: ${rel}"
+  } > "${ev}"
+  cat "${ev}"
+  return "${fail}"
 }
 
 # ---------------------------------------------------------- preflight
@@ -1320,6 +1409,7 @@ isleep() { sleep "$1" & wait $! || true; }   # interruptible by trapped signals
 watchdog_budget_check() {
   local extra=""
   [[ "${AUTOSCALE_MODE}" == "1" ]] && extra=" + scale-up ${SCALE_UP_TIMEOUT_SEC}s + scale-down ${SCALE_DOWN_TIMEOUT_SEC}s"
+  [[ "${KEYLESS_MODE}" == "1" ]] && extra=" + keyless-check ${KEYLESS_CHECK_TIMEOUT_SEC}s"
   echo "step budgets: provision ${PROVISION_STEP_TIMEOUT_SEC}s + deploy ${DEPLOY_STEP_TIMEOUT_SEC}s + ready ${READY_TIMEOUT_SEC}s + bench ${BENCH_STEP_TIMEOUT_SEC}s${extra} = ${STEP_BUDGET_SUM}s; WATCHDOG_SEC=${WATCHDOG_SEC}s"
   if (( WATCHDOG_SEC >= STEP_BUDGET_SUM )); then
     echo "ok: WATCHDOG_SEC ${WATCHDOG_SEC} >= step-budget sum ${STEP_BUDGET_SUM}"
@@ -1564,6 +1654,16 @@ if [[ "${ready}" != "1" ]]; then
 fi
 phase ready END 0
 [[ "${AUTOSCALE_MODE}" == "1" ]] && now > "${AS_POD_READY}"
+
+if [[ "${KEYLESS_MODE}" == "1" ]]; then
+  phase keyless-check START 0
+  rc=0
+  STEP_TIMEOUT="${KEYLESS_CHECK_TIMEOUT_SEC}"
+  run_step keyless-check keyless_evidence || rc=$?
+  phase keyless-check END "${rc}"
+  note "keyless-check: $(grep -E '^(gate1|gate2|release_secret):' "${OUT_DIR}/keyless-evidence.log" 2>/dev/null | cut -d' ' -f1-2 | tr '\n' ' ')"
+  [[ "${rc}" == "0" ]] || { note "keyless-check FAILED (see keyless-evidence.log)"; exit 1; }
+fi
 
 phase bench START 0
 rc=0

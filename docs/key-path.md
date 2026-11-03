@@ -90,9 +90,21 @@ phase measures. The runner refuses the combination.
 ### Timing defaults
 
 With `--keyless`, the runner's deploy step cap defaults to 3600 s
-(pre-stage 1500 s + serve wait 1800 s + margin). The step-budget sum becomes
-3600 + 3600 + 900 + 900 = 9000 s, equal to the default `WATCHDOG_SEC`.
+(pre-stage 1500 s + serve wait 1800 s + margin), and the `keyless-check`
+phase is capped at 120 s. The step-budget sum becomes
+3600 + 3600 + 900 + 900 + 120 = 9120 s; the keyless default `WATCHDOG_SEC`
+is 10320 s (the sum plus the usual 1200 s teardown margin).
 The real pre-stage duration is unmeasured.
+
+### Evidence phase
+
+With `--keyless`, the runner adds `keyless-check` between ready and bench.
+It reads the cluster and writes `keyless-evidence.log`: the server's runtime
+env count of `NGC_API_KEY` (`kubectl exec`), the pod spec env names and
+`envFrom`, whether `<fullname>-ngc-api` exists, the Secret names, the length
+of `ngc.apiKey` in the Helm release values, and the count of Secrets in the
+release manifest. Names and counts only. A failed gate 1 or 2, or a key in
+the release record, stops the run before bench; teardown runs.
 
 ## Usage
 
@@ -165,8 +177,8 @@ from the finished Job pod before the server pod mounts it.
 ## Live gates still owed (measured run)
 
 1. Server pod env shows 0 `NGC_API_KEY` (`kubectl exec ... env`, or the pod
-   spec env names).
-2. No `<fullname>-ngc-api` Secret after pre-stage.
+   spec env names). Collected by the runner's `keyless-check` phase.
+2. No `<fullname>-ngc-api` Secret after pre-stage. Collected by the same phase.
 3. No `nvapi-` match anywhere in the run's output folder.
 4. A chat completion returns HTTP 200.
 5. GPU nodes return to 0 after teardown.

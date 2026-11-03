@@ -28,6 +28,10 @@
 #      release -> refused before any Secret is made
 #   K6 ngc-secrets.sh sources: --key-file (600 ok, 644 refused), env fallback,
 #      empty Keychain value refused and no Secret left; leak grep
+#   K8 keyless-check phase (evidence for gates 1 and 2 before bench):
+#      runtime env holds the key -> FAIL, no bench, teardown; API Secret left ->
+#      FAIL; exec unavailable -> PASS on pod spec; key in Helm values -> FAIL
+#      and the key never reaches OUT_DIR; keyless budget defaults
 #   K7 helm template (real helm, if installed): keyless serve renders no
 #      NGC_API_KEY env and no Secret; the fake key never reaches a rendered
 #      manifest; keyless + ngc.apiKey refuses to render; the pre-stage Job
@@ -85,7 +89,8 @@ echo "deploy-env KEYLESS=${KEYLESS:-unset} NGC_API_KEY_set=${NGC_API_KEY:+yes} N
 if [[ -n "${FAKE_DEPLOY_HELPER:-}" ]]; then
   # Run the real agent-blind helper, as deploy.sh KEYLESS=1 does.
   "${REPO_ROOT_FOR_FAKE}/scripts/ngc-secrets.sh" create || exit 1
-  "${REPO_ROOT_FOR_FAKE}/scripts/ngc-secrets.sh" delete-api || exit 1
+  # create-only: leave the API Secret behind (gate 2 must then fail).
+  [[ "${FAKE_DEPLOY_HELPER}" == "create-only" ]] || "${REPO_ROOT_FOR_FAKE}/scripts/ngc-secrets.sh" delete-api || exit 1
 fi
 if [[ -n "${FAKE_DEPLOY_LEAK:-}" ]]; then
   # Print the key four ways, as deploy.sh's helm --dry-run would render it.
@@ -123,7 +128,8 @@ reset() {
         FAKE_PROVISION_INFO NIMBLE_CLUSTER_INFO NIM_LOCAL_PORT STUB_PF_EXIT STUB_PF_SERVE STUB_K8S_VERSIONS \
         ALLOW_SHORT_WATCHDOG OCI_REGION OCI_CLI_REGION \
         FAKE_DEPLOY_HELPER STUB_SECRET_DIR STUB_KEYCHAIN_DB STUB_KEYCHAIN_MISSING STUB_KEYCHAIN_SERVICE \
-        STUB_HELM_OK STUB_HELM_FAIL_MATCH STUB_HELM_LIST STUB_DEPLOY_ENV_NAMES
+        STUB_HELM_OK STUB_HELM_FAIL_MATCH STUB_HELM_LIST STUB_DEPLOY_ENV_NAMES \
+        STUB_POD_ENV_KEYCOUNT STUB_EXEC_FAIL STUB_POD_ENVFROM STUB_JOB_PRESENT STUB_HELM_VALUES_JSON STUB_HELM_MANIFEST
   : > "${STUB_ENV_LOG}"
   export STUB_CLUSTER=absent
 }
@@ -658,7 +664,7 @@ O="${TMP_DIR}/outK1"
 K1KEY="$(fake_key k1)"
 export STUB_KEYCHAIN_DB="${TMP_DIR}/k1-keychain.db"; printf '%s\n' "${K1KEY}" > "${STUB_KEYCHAIN_DB}"
 export STUB_SECRET_DIR="${TMP_DIR}/k1-secrets"; mkdir -p "${STUB_SECRET_DIR}"
-export FAKE_DEPLOY_HELPER=1 FAKE_DEPLOY_SLEEP=2
+export FAKE_DEPLOY_HELPER=1 FAKE_DEPLOY_SLEEP=2 STUB_HELM_OK=1
 export FAKE_PROVISION_INFO=1 NIMBLE_CLUSTER_INFO="${TMP_DIR}/k1-cluster-info.txt"
 PS_LOG="${TMP_DIR}/ps_samplesK1.txt"; : > "${PS_LOG}"
 # NGC_API_KEY stays set to the suite's dummy: the runner must drop it.
@@ -691,8 +697,18 @@ grep -q '^security find-generic-password -s nimble-test-ngc$' "${STUB_LOG}" || p
 python3 -c 'import json,sys; k=json.load(open(sys.argv[1]))["ngc_key"]; assert k=={"source":"keychain","keyless_serve":True}, k' "${O}/summary.json" || pass=false
 grep -q '^- NGC key source: keychain; keyless serve: yes$' "${O}/receipt.md" || pass=false
 receipt_ok "${O}" || pass=false
+k1order="$(grep ' START ' "${O}/phases.log" | awk '{print $2}' | tr '\n' ' ')"
+[[ "${k1order}" == "preflight provision deploy ready keyless-check bench teardown verify-clean " ]] || pass=false
+grep -q '^gate1: PASS (runtime count 0; pod spec clean)$' "${O}/keyless-evidence.log" || pass=false
+grep -q '^gate2: PASS (nvidia-nim-ngc-api NotFound)$' "${O}/keyless-evidence.log" || pass=false
+grep -q '^release_secret: PASS ' "${O}/keyless-evidence.log" || pass=false
+python3 -c 'import json,sys; g=json.load(open(sys.argv[1]))["keyless_gates"]; assert all(g[k].startswith("PASS") for k in ("gate1","gate2","release_secret")), g' "${O}/summary.json" || pass=false
+grep -q '^- Gate 1, server pod env has no NGC_API_KEY: PASS' "${O}/receipt.md" || pass=false
+grep -q '^- Gate 2, no API Secret after pre-stage: PASS' "${O}/receipt.md" || pass=false
 [[ -z "$(wd_alive "${O}")" ]] || pass=false
 report K1 "${pass}" "rc=${rc} | ${denv} | keychain -w reads=$(w_reads) (helper only) | pull secret dockerconfigjson matches=${reg_ok}; api secret left=$([[ -e "${STUB_SECRET_DIR}/nvidia-nim-ngc-api" ]] && echo yes || echo no) | files_with_key=[${hits}] ps_samples=${samples} argv_lines_with_key=${argv_hits}" "${O}"
+echo "  phases: ${k1order% }"
+echo "  keyless-evidence.log:"; sed 's/^/    /' "${O}/keyless-evidence.log"
 echo "  stub calls (key source and Secrets):"; grep -E '^(security|kubectl-stdin)|secret' "${STUB_LOG}" | sed 's/^/    /'
 
 # --- K2: Keychain item missing -> preflight fails before anything billable; no -w read ---
@@ -838,6 +854,67 @@ rc=0; env -u NGC_API_KEY "${HELPER}" create >> "${K6OUT}" 2>&1 || rc=$?
 hits="$(leak_scan "${K6KEY}" "${K6OUT}" "${STUB_LOG}")"
 [[ -z "${hits}" ]] || pass=false
 report K6 "${pass}" "${why} | files_with_key=[${hits}]" "${TMP_DIR}"
+
+
+# --- K8: keyless-check phase failures and fallbacks (runner, stubs) ---
+k8_run() {  # $1 tag; call reset and export the case's stub knobs first; sets K8_RC and O
+  O="${TMP_DIR}/out$1"
+  export STUB_KEYCHAIN_DB="${TMP_DIR}/$1-keychain.db"; printf '%s\n' "$(fake_key "$1")" > "${STUB_KEYCHAIN_DB}"
+  export STUB_SECRET_DIR="${TMP_DIR}/$1-secrets"; mkdir -p "${STUB_SECRET_DIR}"
+  export FAKE_DEPLOY_HELPER="${K8_HELPER:-1}" STUB_HELM_OK=1
+  export FAKE_PROVISION_INFO=1 NIMBLE_CLUSTER_INFO="${TMP_DIR}/$1-cluster-info.txt"
+  K8_RC=0
+  "${RUNNER}" --key-keychain nimble-test-ngc "${O}" > "${TMP_DIR}/$1.out" 2>&1 || K8_RC=$?
+}
+k8_line() { grep -m1 "^$1: " "${O}/keyless-evidence.log" 2>/dev/null | cut -c1-120; }
+
+reset; export STUB_POD_ENV_KEYCOUNT=1; k8_run K8a
+pass=true
+[[ "${K8_RC}" -eq 1 && "$(count bench)" -eq 0 && "$(count teardown)" -eq 1 ]] || pass=false
+grep -q '^PHASE keyless-check END [0-9]* rc=1$' "${O}/phases.log" || pass=false
+grep -q '^gate1: FAIL (runtime count 1;' "${O}/keyless-evidence.log" || pass=false
+grep -q '^- Gate 1, server pod env has no NGC_API_KEY: FAIL' "${O}/receipt.md" || pass=false
+[[ -z "$(wd_alive "${O}")" ]] || pass=false
+report K8a "${pass}" "runtime env has the key: rc=${K8_RC} bench_calls=$(count bench) teardown_calls=$(count teardown) | $(k8_line gate1)" "${O}"
+
+reset; K8_HELPER=create-only k8_run K8b
+pass=true
+[[ "${K8_RC}" -eq 1 && "$(count bench)" -eq 0 && "$(count teardown)" -eq 1 ]] || pass=false
+grep -q '^gate2: FAIL (nvidia-nim-ngc-api: secret/nvidia-nim-ngc-api)$' "${O}/keyless-evidence.log" || pass=false
+grep -q '^gate1: PASS' "${O}/keyless-evidence.log" || pass=false
+report K8b "${pass}" "API Secret left behind: rc=${K8_RC} bench_calls=$(count bench) | $(k8_line gate2)" "${O}"
+
+reset; export STUB_EXEC_FAIL=1; k8_run K8c
+pass=true
+[[ "${K8_RC}" -eq 0 && "$(count bench)" -eq 1 ]] || pass=false
+grep -q '^G1a runtime env, count of NGC_API_KEY: unavailable$' "${O}/keyless-evidence.log" || pass=false
+grep -q '^gate1: PASS (pod spec only: env names \[NIM_CACHE_PATH\], no envFrom; kubectl exec unavailable)$' "${O}/keyless-evidence.log" || pass=false
+report K8c "${pass}" "exec unavailable: rc=${K8_RC} bench_calls=$(count bench) | $(k8_line gate1)" "${O}"
+
+reset; export STUB_EXEC_FAIL=1 STUB_DEPLOY_ENV_NAMES='NGC_API_KEY NIM_CACHE_PATH'; k8_run K8d
+pass=true
+[[ "${K8_RC}" -eq 1 && "$(count bench)" -eq 0 ]] || pass=false
+grep -q '^gate1: FAIL ' "${O}/keyless-evidence.log" || pass=false
+report K8d "${pass}" "pod spec names NGC_API_KEY: rc=${K8_RC} | $(k8_line gate1)" "${O}"
+
+K8EKEY="$(fake_key k8e)"
+reset; export STUB_HELM_VALUES_JSON="{\"ngc\":{\"keyless\":true,\"apiKey\":\"${K8EKEY}\"}}"; k8_run K8e
+hits="$(leak_scan "${K8EKEY}" "${O}" "${TMP_DIR}/K8e.out")"
+pass=true
+[[ "${K8_RC}" -eq 1 && "$(count bench)" -eq 0 && -z "${hits}" ]] || pass=false
+grep -q "^S1 Helm values ngc.apiKey length: ${#K8EKEY}$" "${O}/keyless-evidence.log" || pass=false
+grep -q '^release_secret: FAIL ' "${O}/keyless-evidence.log" || pass=false
+report K8e "${pass}" "key in Helm values: rc=${K8_RC} | $(k8_line release_secret) | files_with_key=[${hits}]" "${O}"
+
+reset
+O="${TMP_DIR}/outK8f"
+rc=0
+env -u WATCHDOG_SEC -u READY_TIMEOUT_SEC -u PROVISION_STEP_TIMEOUT_SEC -u DEPLOY_STEP_TIMEOUT_SEC \
+  -u BENCH_STEP_TIMEOUT_SEC "${RUNNER}" --key-keychain nimble-test-ngc --preflight-only "${O}" > "${O}.out" 2>&1 || rc=$?
+pass=true
+[[ "${rc}" -eq 0 ]] || pass=false
+grep -q '^step budgets: provision 3600s + deploy 3600s + ready 900s + bench 900s + keyless-check 120s = 9120s; WATCHDOG_SEC=10320s$' "${O}/preflight.log" || pass=false
+report K8f "${pass}" "keyless defaults rc=${rc} | $(grep -m1 '^step budgets' "${O}/preflight.log")" "${O}"
 
 # --- K7: helm template on the keyless path (real helm) ---
 if [[ -z "${REAL_HELM}" ]]; then
