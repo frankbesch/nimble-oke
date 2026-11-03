@@ -1,0 +1,31 @@
+#!/bin/bash
+# Stub for the macOS `security` command (Keychain). Never touches a keychain.
+# Logs its argv (never the value) to STUB_LOG.
+#   STUB_KEYCHAIN_SERVICE  the one service name that exists (default nimble-test-ngc)
+#   STUB_KEYCHAIN_DB       file holding the fake key returned by `find-generic-password -w`
+#                          (the stand-in keychain; no process env carries the key).
+#                          Unset: an obviously fake placeholder is returned.
+#   STUB_KEYCHAIN_MISSING=1  no item exists (exit 44, as the real command does)
+echo "security $*" >> "${STUB_LOG:-/dev/null}"
+[[ "${1:-}" == "find-generic-password" ]] || { echo "security stub: unsupported: $*" >&2; exit 1; }
+shift
+svc="" want_pw=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -s) svc="${2:-}"; shift ;;
+    -w) want_pw=1 ;;
+    -a|-l|-c|-D|-j|-r|-G) shift ;;
+  esac
+  shift
+done
+if [[ -n "${STUB_KEYCHAIN_MISSING:-}" || "${svc}" != "${STUB_KEYCHAIN_SERVICE:-nimble-test-ngc}" ]]; then
+  echo "security: SecKeychainSearchCopyNext: The specified item could not be found in the keychain." >&2
+  exit 44
+fi
+if [[ "${want_pw}" == "1" ]]; then
+  if [[ -n "${STUB_KEYCHAIN_DB:-}" ]]; then cat "${STUB_KEYCHAIN_DB}"
+  else printf '%s\n' "nvapi-FAKE-PLACEHOLDER-not-a-real-key"; fi
+else
+  printf 'keychain: "/Users/test/Library/Keychains/login.keychain-db"\nclass: "genp"\nattributes:\n    "svce"<blob>="%s"\n' "${svc}"
+fi
+exit 0
