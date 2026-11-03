@@ -45,9 +45,9 @@ ngc:
 # NIM's download-to-cache utility, and exits. scripts/deploy.sh installs with
 # prestage.enabled=true and replicaCount=0, waits for the Job, deletes the
 # API Secret, then upgrades with prestage.enabled=false and replicaCount=1.
-# UNVERIFIED for the pinned 1.0.3 image: the utility name, its flags, and
-# that the server then starts from the filled cache without a key
-# (docs/key-path.md, "What the docs establish").
+# NVIDIA's 1.0.x docs (release 1.0.3) document download-to-cache and serving
+# a filled cache without NGC_API_KEY, for Docker. Not yet observed on this
+# chart; see docs/key-path.md, "What the docs establish".
 prestage:
   enabled: false
   command: ["download-to-cache"]

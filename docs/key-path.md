@@ -4,8 +4,10 @@ Where the NGC API key travels, from its source to the cluster, on the
 default path and on the keyless path. Line numbers refer to this commit.
 
 Status: the keyless path is built and tested offline only (stubs and
-`helm template`). It has not run on a cluster. Every statement below about
-NIM container behaviour is UNVERIFIED until the live gates at the end pass.
+`helm template`). It has not run on a cluster. NVIDIA's 1.0.x docs describe
+the pre-stage-then-serve-without-key flow for 1.0.3 (see "What the docs
+establish"); it has not been observed on this chart until the live gates at
+the end pass.
 
 ## Terms
 
@@ -113,26 +115,43 @@ KEYLESS=1 NGC_KEY_KEYCHAIN=nimble-ngc scripts/deploy.sh
 ## What the docs establish
 
 The pinned image is `nvcr.io/nim/meta/llama3-8b-instruct:1.0.3`
-(`helm/values.yaml` `image`, `helm/Chart.yaml` `appVersion`). That is a NIM
-for LLMs 1.0.x image.
+(`helm/values.yaml` `image`, `helm/Chart.yaml` `appVersion`). NVIDIA
+publishes no separate 1.0.3 doc set (`1.0.3/` returns 404; `versions1.json`
+lists 1.7.0 and later, plus `1.0.0`). The 1.0.0 doc set covers release 1.0.3:
+its release notes have a "Release 1.0.3" entry. Pages read on 2026-11-03:
 
-docs.nvidia.com was not reachable from the session that built this (network
-policy). No NVIDIA doc page was read directly, so each claim below is
-UNVERIFIED. Search-engine summaries of docs.nvidia.com pages were seen and
-are listed only as leads to check:
+- R: `large-language-models/1.0.0/release-notes.html`
+- G: `large-language-models/1.0.0/getting-started.html`, section "Serving Models from Local Assets"
+- U: `large-language-models/1.0.0/utilities.html`
+- C: `large-language-models/1.0.0/configuration.html`
+- E: `large-language-models/latest/reference/environment-variables.html` (latest = 2.1.4)
+- A: `large-language-models/latest/deployment/air-gap-deployment.html` (2.1.4)
 
-| Claim | Status | Lead (search summary only) |
-|-------|--------|----------------------------|
-| NIM 2.x: `NGC_API_KEY` is needed only to download production-branch models from `ngc://` | UNVERIFIED | `large-language-models/latest/reference/environment-variables.html` |
-| Air gap: pre-stage with `download-to-cache` (optionally `create-model-store`), then serve without `NGC_API_KEY` | UNVERIFIED | `large-language-models/latest/deployment/air-gap-deployment.html`; 1.10.0 and 1.12.0 `deploy-air-gap.html` |
-| 1.0.x ships `download-to-cache`, and the flag is `--profiles` (one 1.0.0 example used `--profile`) | UNVERIFIED | `large-language-models/1.0.0/getting-started.html` |
-| A 1.0.3 server started on a filled cache with no `NGC_API_KEY` serves without contacting NGC | UNVERIFIED; no 1.0.x page found that states it (the earliest summary that did was 1.1.0) | none |
-| The server picks the same profile the Job downloaded when `NIM_MODEL_PROFILE` is unset (the Job runs on the same GPU type) | UNVERIFIED | none |
-| `download-to-cache` honours `NIM_CACHE_PATH=/model-cache` (the chart's mount path) | UNVERIFIED | `latest/deployment/model-download.html` (default `/opt/nim/.cache`) |
+| Claim | Status | Evidence |
+|-------|--------|----------|
+| 1.0.3 supports air-gapped serving | DOCUMENTED | R, Release 1.0.3 summary: "AirGapped support"; "Fixes for model downloading, and cache corruption." |
+| 1.0.3 ships `download-to-cache` | DOCUMENTED | G: the section is headed "NIM LLM Version 1.0.3 or later"; U: "Downloads selected or default model profile(s) to NIM cache. Can be used to pre-cache profiles prior to deployment." |
+| The flag is `--profiles` / `-p`; no flag downloads the optimal profile | DOCUMENTED, with a doc inconsistency | U and the `-h` output in G: "--profiles [PROFILES ...], -p [PROFILES ...] ... If none are provided, the optimal profile is downloaded." One example in G uses `--profile`. The chart passes `--profiles` only when `prestage.profile` is set; the default passes no flag |
+| A 1.0.x server on a filled cache, with no `NGC_API_KEY`, serves without contacting NGC | DOCUMENTED (Docker example only) | G: "If NIM detects a previously loaded profile in the cache, it serves that profile from the cache." and "the cache can be transferred to an air-gapped system to run a NIM without any internet connection or with no connection to the NGC registry. Too see this in action, don't provide the NGC_API_KEY". The example `docker run` has no `NGC_API_KEY` |
+| With `NIM_MODEL_PROFILE` unset, the server picks the profile `download-to-cache` chose | DOCUMENTED for the default download | G: "Assuming the command run prior was `download-to-cache`, downloading the optimal profile", followed by a `docker run` with no `NIM_MODEL_PROFILE`. Holds only on the same GPU type; the Job requests the server's GPU |
+| `download-to-cache` writes to `NIM_CACHE_PATH` (`/model-cache` in this chart) | INFERRED, not stated | C: `NIM_CACHE_PATH`, default `/opt/nim/.cache`, "Location (in container) where the container caches model artifacts"; volumes row "/opt/nim/.cache (or NIM_CACHE_PATH if present)". No page says the utility itself reads the variable. Every 1.0.x example mounts the cache at `/opt/nim/.cache` |
+| NIM 2.x: `NGC_API_KEY` is "Only required when downloading production branch (PB) models from ngc:// repositories" | DOCUMENTED (2.1.4) | E, verbatim |
+| Air gap: "you must pre-stage the model using download-to-cache (and optionally create-model-store)"; "do not set NGC_API_KEY or HF_TOKEN" in the air-gapped phase | DOCUMENTED (2.1.4) | A, verbatim |
 
-If the live run shows 1.0.3 cannot start without a key, the options are a
-newer pinned image (re-check the docs for that version first) or
-`prestage.profile` plus `NIM_MODEL_PROFILE`. Neither is decided here.
+Doc conflict to note: C lists `NGC_API_KEY` as "Required? Yes" ("You must
+set this variable to the value of your personal NGC API key."). G, in the
+1.0.3 section, says to leave it out for a pre-filled cache. The 1.0.3 section
+is the more specific statement; the live run decides.
+
+What the docs do not establish:
+
+- Kubernetes: every 1.0.x example is `docker run`. Nothing covers a Job that
+  fills a PVC and a separate pod that serves from it.
+- The `NIM_CACHE_PATH` inference above. If the utility ignores the variable,
+  the Job fills `/opt/nim/.cache` inside its own container, the PVC stays
+  empty, and the keyless server fails to download (no key). Live gate 4
+  catches that; the fix would be to mount the PVC at `/opt/nim/.cache`.
+- Pre-stage time on an A10. Unmeasured.
 
 Not NIM behaviour, also unverified on a live cluster: `kubectl create secret
 --from-file=KEY=/dev/stdin` reading a pipe; Helm `--wait-for-jobs` failing
